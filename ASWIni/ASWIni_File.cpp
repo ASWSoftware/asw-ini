@@ -68,33 +68,6 @@ constexpr int MaxTempFileAttempts = 100;
 // Numbers the temporary files of this process's saves
 std::atomic<unsigned long> g_TempFileCounter{ 0 };
 
-bool DeleteFileAt(std::filesystem::path const& path, int& error) noexcept;
-TASWIniResult ExceptionFailure(std::filesystem::path const& path, char const* what) noexcept;
-TASWIniResult Failure(EIniCode code, std::string const& what, std::filesystem::path const& path,
-    std::string const& after, int systemError);
-bool IsAccessDeniedError(int error) noexcept;
-bool IsExistsError(int error) noexcept;
-bool IsNotFoundError(int error) noexcept;
-int LastSystemError() noexcept;
-EIniCode OpenFailureCode(int error) noexcept;
-unsigned long ProcessId() noexcept;
-bool ReplaceWithTemp(std::filesystem::path const& temp, std::filesystem::path const& target, bool targetExists,
-    int& error);
-std::string SystemErrorText(int error);
-std::filesystem::path TempFilePath(std::filesystem::path const& target);
-TASWIniMessage Warning(EIniCode code, std::string const& what, std::filesystem::path const& path,
-    std::string const& after, int systemError);
-#if defined(_WIN32)
-std::string WideToUtf8(std::wstring const& wide);
-#endif
-TASWIniResult WriteAtomically(std::filesystem::path const& target, std::string_view contents, bool targetExists,
-    std::vector<TASWIniMessage>& warnings);
-void WriteBackup(std::filesystem::path const& target, TASWIniSavingOptions const& options,
-    std::vector<TASWIniMessage>& warnings);
-TASWIniResult WriteInPlace(std::filesystem::path const& target, std::string_view contents);
-
-//---------------------------------------------------------------------------
-
 /////////////////////////////////////////////////////////////////////////////
 // TNativeFile
 //
@@ -135,324 +108,30 @@ public:
 
 //---------------------------------------------------------------------------
 
-/////////////////////////////////////////////////////////////////////////////
-// TNativeFile
-/////////////////////////////////////////////////////////////////////////////
-
-//---------------------------------------------------------------------------
-TNativeFile::~TNativeFile()
-{
-    Close();
-}
-//---------------------------------------------------------------------------
-void TNativeFile::Close() noexcept
-{
-    int error = 0;
-    Close(error);
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::Close(int& error) noexcept
-{
+bool DeleteFileAt(std::filesystem::path const& path, int& error) noexcept;
+TASWIniResult ExceptionFailure(std::filesystem::path const& path, char const* what) noexcept;
+TASWIniResult Failure(EIniCode code, std::string const& what, std::filesystem::path const& path,
+    std::string const& after, int systemError);
+bool IsAccessDeniedError(int error) noexcept;
+bool IsExistsError(int error) noexcept;
+bool IsNotFoundError(int error) noexcept;
+int LastSystemError() noexcept;
+EIniCode OpenFailureCode(int error) noexcept;
+unsigned long ProcessId() noexcept;
+bool ReplaceWithTemp(std::filesystem::path const& temp, std::filesystem::path const& target, bool targetExists,
+    int& error);
+std::string SystemErrorText(int error);
+std::filesystem::path TempFilePath(std::filesystem::path const& target);
+TASWIniMessage Warning(EIniCode code, std::string const& what, std::filesystem::path const& path,
+    std::string const& after, int systemError);
 #if defined(_WIN32)
-    if (m_Handle == INVALID_HANDLE_VALUE)
-        return true;
-
-    bool const closed = ::CloseHandle(m_Handle) != 0;
-    if (!closed)
-        error = LastSystemError();
-    m_Handle = INVALID_HANDLE_VALUE;
-
-    return closed;
-#else
-    if (m_Descriptor < 0)
-        return true;
-
-    // A failed close() must not be retried (the descriptor may already be reused), not even after EINTR
-    bool const closed = ::close(m_Descriptor) == 0;
-    if (!closed)
-        error = LastSystemError();
-    m_Descriptor = -1;
-
-    return closed;
+std::string WideToUtf8(std::wstring const& wide);
 #endif
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::CreateNew(std::filesystem::path const& path, int& error) noexcept
-{
-    Close();
-
-#if defined(_WIN32)
-    m_Handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (m_Handle == INVALID_HANDLE_VALUE)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#else
-    do
-    {
-        m_Descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
-    } while (m_Descriptor < 0 && errno == EINTR);
-
-    if (m_Descriptor < 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::Flush(int& error) noexcept
-{
-#if defined(_WIN32)
-    if (!::FlushFileBuffers(m_Handle))
-    {
-        error = LastSystemError();
-        return false;
-    }
-#else
-    int result;
-    do
-    {
-        result = ::fsync(m_Descriptor);
-    } while (result != 0 && errno == EINTR);
-
-    if (result != 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-#if !defined(_WIN32)
-int TNativeFile::GetDescriptor() const noexcept
-{
-    return m_Descriptor;
-}
-#endif
-//---------------------------------------------------------------------------
-bool TNativeFile::GetSize(std::uint64_t& size, int& error) noexcept
-{
-#if defined(_WIN32)
-    LARGE_INTEGER fileSize;
-    if (!::GetFileSizeEx(m_Handle, &fileSize))
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    size = static_cast<std::uint64_t>(fileSize.QuadPart);
-#else
-    struct stat status;
-    if (::fstat(m_Descriptor, &status) != 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    size = static_cast<std::uint64_t>(status.st_size);
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::IsRegularFile(bool& isRegular, int& error) noexcept
-{
-#if defined(_WIN32)
-    // A folder can't be opened without FILE_FLAG_BACKUP_SEMANTICS, so a disk file is a regular file; a device or a
-    // pipe isn't
-    DWORD const type = ::GetFileType(m_Handle);
-    if (type == FILE_TYPE_UNKNOWN && ::GetLastError() != NO_ERROR)
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    isRegular = type == FILE_TYPE_DISK;
-#else
-    struct stat status;
-    if (::fstat(m_Descriptor, &status) != 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    isRegular = S_ISREG(status.st_mode);
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::OpenForOverwrite(std::filesystem::path const& path, int& error) noexcept
-{
-    Close();
-
-#if defined(_WIN32)
-    // OPEN_ALWAYS rather than CREATE_ALWAYS, which fails for a hidden or system file and resets the attributes
-    m_Handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
-        FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (m_Handle == INVALID_HANDLE_VALUE)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#else
-    do
-    {
-        m_Descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
-    } while (m_Descriptor < 0 && errno == EINTR);
-
-    if (m_Descriptor < 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::OpenForRead(std::filesystem::path const& path, int& error) noexcept
-{
-    Close();
-
-#if defined(_WIN32)
-    m_Handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-    if (m_Handle == INVALID_HANDLE_VALUE)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#else
-    do
-    {
-        m_Descriptor = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
-    } while (m_Descriptor < 0 && errno == EINTR);
-
-    if (m_Descriptor < 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::Read(char* buffer, std::size_t size, std::size_t& readSize, int& error) noexcept
-{
-    std::size_t const chunkSize = size < IoChunkSize ? size : IoChunkSize;
-
-#if defined(_WIN32)
-    DWORD bytesRead = 0;
-    if (!::ReadFile(m_Handle, buffer, static_cast<DWORD>(chunkSize), &bytesRead, nullptr))
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    readSize = bytesRead;
-#else
-    ssize_t bytesRead;
-    do
-    {
-        bytesRead = ::read(m_Descriptor, buffer, chunkSize);
-    } while (bytesRead < 0 && errno == EINTR);
-
-    if (bytesRead < 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-
-    readSize = static_cast<std::size_t>(bytesRead);
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::Truncate(std::uint64_t size, int& error) noexcept
-{
-#if defined(_WIN32)
-    LARGE_INTEGER position;
-    position.QuadPart = static_cast<LONGLONG>(size);
-    if (!::SetFilePointerEx(m_Handle, position, nullptr, FILE_BEGIN) || !::SetEndOfFile(m_Handle))
-    {
-        error = LastSystemError();
-        return false;
-    }
-#else
-    int result;
-    do
-    {
-        result = ::ftruncate(m_Descriptor, static_cast<off_t>(size));
-    } while (result != 0 && errno == EINTR);
-
-    if (result != 0)
-    {
-        error = LastSystemError();
-        return false;
-    }
-#endif
-
-    return true;
-}
-//---------------------------------------------------------------------------
-bool TNativeFile::WriteAll(std::string_view data, int& error) noexcept
-{
-    while (!data.empty())
-    {
-        std::size_t const chunkSize = data.size() < IoChunkSize ? data.size() : IoChunkSize;
-        std::size_t written;
-
-#if defined(_WIN32)
-        DWORD bytesWritten = 0;
-        if (!::WriteFile(m_Handle, data.data(), static_cast<DWORD>(chunkSize), &bytesWritten, nullptr))
-        {
-            error = LastSystemError();
-            return false;
-        }
-
-        written = bytesWritten;
-#else
-        ssize_t bytesWritten;
-        do
-        {
-            bytesWritten = ::write(m_Descriptor, data.data(), chunkSize);
-        } while (bytesWritten < 0 && errno == EINTR);
-
-        if (bytesWritten < 0)
-        {
-            error = LastSystemError();
-            return false;
-        }
-
-        written = static_cast<std::size_t>(bytesWritten);
-#endif
-
-        if (written == 0)
-        {
-            // Nothing written without an error (e.g. a full disk on some systems): stop rather than loop forever
-#if defined(_WIN32)
-            error = ERROR_DISK_FULL;
-#else
-            error = ENOSPC;
-#endif
-            return false;
-        }
-
-        data.remove_prefix(written);
-    }
-
-    return true;
-}
-//---------------------------------------------------------------------------
+TASWIniResult WriteAtomically(std::filesystem::path const& target, std::string_view contents, bool targetExists,
+    std::vector<TASWIniMessage>& warnings);
+void WriteBackup(std::filesystem::path const& target, TASWIniSavingOptions const& options,
+    std::vector<TASWIniMessage>& warnings);
+TASWIniResult WriteInPlace(std::filesystem::path const& target, std::string_view contents);
 
 //---------------------------------------------------------------------------
 /*
@@ -861,6 +540,326 @@ TASWIniResult WriteInPlace(std::filesystem::path const& target, std::string_view
     }
 
     return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TNativeFile
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TNativeFile::~TNativeFile()
+{
+    Close();
+}
+//---------------------------------------------------------------------------
+void TNativeFile::Close() noexcept
+{
+    int error = 0;
+    Close(error);
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::Close(int& error) noexcept
+{
+#if defined(_WIN32)
+    if (m_Handle == INVALID_HANDLE_VALUE)
+        return true;
+
+    bool const closed = ::CloseHandle(m_Handle) != 0;
+    if (!closed)
+        error = LastSystemError();
+    m_Handle = INVALID_HANDLE_VALUE;
+
+    return closed;
+#else
+    if (m_Descriptor < 0)
+        return true;
+
+    // A failed close() must not be retried (the descriptor may already be reused), not even after EINTR
+    bool const closed = ::close(m_Descriptor) == 0;
+    if (!closed)
+        error = LastSystemError();
+    m_Descriptor = -1;
+
+    return closed;
+#endif
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::CreateNew(std::filesystem::path const& path, int& error) noexcept
+{
+    Close();
+
+#if defined(_WIN32)
+    m_Handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (m_Handle == INVALID_HANDLE_VALUE)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#else
+    do
+    {
+        m_Descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0666);
+    } while (m_Descriptor < 0 && errno == EINTR);
+
+    if (m_Descriptor < 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::Flush(int& error) noexcept
+{
+#if defined(_WIN32)
+    if (!::FlushFileBuffers(m_Handle))
+    {
+        error = LastSystemError();
+        return false;
+    }
+#else
+    int result;
+    do
+    {
+        result = ::fsync(m_Descriptor);
+    } while (result != 0 && errno == EINTR);
+
+    if (result != 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+#if !defined(_WIN32)
+int TNativeFile::GetDescriptor() const noexcept
+{
+    return m_Descriptor;
+}
+#endif
+//---------------------------------------------------------------------------
+bool TNativeFile::GetSize(std::uint64_t& size, int& error) noexcept
+{
+#if defined(_WIN32)
+    LARGE_INTEGER fileSize;
+    if (!::GetFileSizeEx(m_Handle, &fileSize))
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    size = static_cast<std::uint64_t>(fileSize.QuadPart);
+#else
+    struct stat status;
+    if (::fstat(m_Descriptor, &status) != 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    size = static_cast<std::uint64_t>(status.st_size);
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::IsRegularFile(bool& isRegular, int& error) noexcept
+{
+#if defined(_WIN32)
+    // A folder can't be opened without FILE_FLAG_BACKUP_SEMANTICS, so a disk file is a regular file; a device or a
+    // pipe isn't
+    DWORD const type = ::GetFileType(m_Handle);
+    if (type == FILE_TYPE_UNKNOWN && ::GetLastError() != NO_ERROR)
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    isRegular = type == FILE_TYPE_DISK;
+#else
+    struct stat status;
+    if (::fstat(m_Descriptor, &status) != 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    isRegular = S_ISREG(status.st_mode);
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::OpenForOverwrite(std::filesystem::path const& path, int& error) noexcept
+{
+    Close();
+
+#if defined(_WIN32)
+    // OPEN_ALWAYS rather than CREATE_ALWAYS, which fails for a hidden or system file and resets the attributes
+    m_Handle = ::CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (m_Handle == INVALID_HANDLE_VALUE)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#else
+    do
+    {
+        m_Descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+    } while (m_Descriptor < 0 && errno == EINTR);
+
+    if (m_Descriptor < 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::OpenForRead(std::filesystem::path const& path, int& error) noexcept
+{
+    Close();
+
+#if defined(_WIN32)
+    m_Handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (m_Handle == INVALID_HANDLE_VALUE)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#else
+    do
+    {
+        m_Descriptor = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    } while (m_Descriptor < 0 && errno == EINTR);
+
+    if (m_Descriptor < 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::Read(char* buffer, std::size_t size, std::size_t& readSize, int& error) noexcept
+{
+    std::size_t const chunkSize = size < IoChunkSize ? size : IoChunkSize;
+
+#if defined(_WIN32)
+    DWORD bytesRead = 0;
+    if (!::ReadFile(m_Handle, buffer, static_cast<DWORD>(chunkSize), &bytesRead, nullptr))
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    readSize = bytesRead;
+#else
+    ssize_t bytesRead;
+    do
+    {
+        bytesRead = ::read(m_Descriptor, buffer, chunkSize);
+    } while (bytesRead < 0 && errno == EINTR);
+
+    if (bytesRead < 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+
+    readSize = static_cast<std::size_t>(bytesRead);
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::Truncate(std::uint64_t size, int& error) noexcept
+{
+#if defined(_WIN32)
+    LARGE_INTEGER position;
+    position.QuadPart = static_cast<LONGLONG>(size);
+    if (!::SetFilePointerEx(m_Handle, position, nullptr, FILE_BEGIN) || !::SetEndOfFile(m_Handle))
+    {
+        error = LastSystemError();
+        return false;
+    }
+#else
+    int result;
+    do
+    {
+        result = ::ftruncate(m_Descriptor, static_cast<off_t>(size));
+    } while (result != 0 && errno == EINTR);
+
+    if (result != 0)
+    {
+        error = LastSystemError();
+        return false;
+    }
+#endif
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TNativeFile::WriteAll(std::string_view data, int& error) noexcept
+{
+    while (!data.empty())
+    {
+        std::size_t const chunkSize = data.size() < IoChunkSize ? data.size() : IoChunkSize;
+        std::size_t written;
+
+#if defined(_WIN32)
+        DWORD bytesWritten = 0;
+        if (!::WriteFile(m_Handle, data.data(), static_cast<DWORD>(chunkSize), &bytesWritten, nullptr))
+        {
+            error = LastSystemError();
+            return false;
+        }
+
+        written = bytesWritten;
+#else
+        ssize_t bytesWritten;
+        do
+        {
+            bytesWritten = ::write(m_Descriptor, data.data(), chunkSize);
+        } while (bytesWritten < 0 && errno == EINTR);
+
+        if (bytesWritten < 0)
+        {
+            error = LastSystemError();
+            return false;
+        }
+
+        written = static_cast<std::size_t>(bytesWritten);
+#endif
+
+        if (written == 0)
+        {
+            // Nothing written without an error (e.g. a full disk on some systems): stop rather than loop forever
+#if defined(_WIN32)
+            error = ERROR_DISK_FULL;
+#else
+            error = ENOSPC;
+#endif
+            return false;
+        }
+
+        data.remove_prefix(written);
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------
 

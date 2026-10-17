@@ -98,6 +98,26 @@ char const* ToString(EBomMode bom) noexcept
     return "Unknown";
 }
 //---------------------------------------------------------------------------
+char const* ToString(EBoolFormat boolFormat) noexcept
+{
+    switch (boolFormat)
+    {
+        case EBoolFormat::TrueFalse:
+            return "TrueFalse";
+
+        case EBoolFormat::YesNo:
+            return "YesNo";
+
+        case EBoolFormat::OnOff:
+            return "OnOff";
+
+        case EBoolFormat::OneZero:
+            return "OneZero";
+    }
+
+    return "Unknown";
+}
+//---------------------------------------------------------------------------
 char const* ToString(EDuplicateKeys duplicateKeys) noexcept
 {
     switch (duplicateKeys)
@@ -252,6 +272,30 @@ TASWIniResult TASWIniSavingOptions::Validate() const
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TASWIniValueOptions
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniValueOptions::Validate() const
+{
+    // The enumeration, in case it was cast from a number
+    if (std::string_view(ToString(BoolFormat)) == "Unknown")
+        return Invalid("Values.BoolFormat isn't one of the EBoolFormat values.");
+
+    // ListDelimiter: not a blank (items are trimmed), not a line break, and not the quote that items are written in
+    char const c = ListDelimiter;
+    if (Detail::IsBlank(c) || c == '\r' || c == '\n' || c == '\0' || c == '"')
+    {
+        return Invalid("Values.ListDelimiter can't be a space, tab, line break, NUL or '\"'; it is " +
+            (c == '\0' ? std::string("NUL") : Quoted(c)) + ".");
+    }
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TASWIniOptions
 /////////////////////////////////////////////////////////////////////////////
 
@@ -267,6 +311,10 @@ TASWIniResult TASWIniOptions::Validate() const
         return result;
 
     result = Saving.Validate();
+    if (!result.IsOk())
+        return result;
+
+    result = Values.Validate();
     if (!result.IsOk())
         return result;
 
@@ -293,6 +341,21 @@ TASWIniResult TASWIniOptions::Validate() const
     {
         return Invalid("Writing.CommentPrefix \"" + Writing.CommentPrefix +
             "\" must start with one of the Reading.CommentPrefixes.");
+    }
+
+    // A list with an empty item has the delimiter after a blank ("a, , b"), which starts an inline comment when the
+    // delimiter starts a comment prefix
+    if (Reading.InlineComments)
+    {
+        for (std::string const& prefix : Reading.CommentPrefixes)
+        {
+            if (prefix[0] == Values.ListDelimiter)
+            {
+                return Invalid("Values.ListDelimiter " + Quoted(Values.ListDelimiter) +
+                    " starts the comment prefix \"" + prefix +
+                    "\" of Reading.CommentPrefixes, so with Reading.InlineComments a list could hold a comment.");
+            }
+        }
     }
 
     return TASWIniResult();

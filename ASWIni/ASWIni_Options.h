@@ -4,12 +4,13 @@ Author: Anthony S. West - ASW Software
 
 An INI file reader/writer library.
 
-TASWIniOptions and its three groups: how INI text is read
+TASWIniOptions and its four groups: how INI text is read
 (TASWIniReadingOptions: separators, comments, duplicates), written
 (TASWIniWritingOptions: separator, comment prefix, line ending, byte order
 mark) and saved (TASWIniSavingOptions: atomically, with a backup, creating
-the folder), each with Validate() to check that the options describe a file
-that can be read back.
+the folder), and how values are converted (TASWIniValueOptions: how a bool is
+written, the list delimiter), each with Validate() to check that the options
+describe a file that can be read back.
 
 Requires C++ 17 or higher.
 
@@ -67,6 +68,16 @@ enum class EDuplicateKeys : int
 {
     FirstWins = 0, // The first line's (as the Windows profile API reads them)
     LastWins = 1, // The last line's
+};
+
+// How a bool value is written. Every form is read, whichever is written: true/false, yes/no, on/off and 1/0, with
+// the ASCII letters' case ignored.
+enum class EBoolFormat : int
+{
+    TrueFalse = 0, // "true" and "false"
+    YesNo = 1, // "yes" and "no"
+    OnOff = 2, // "on" and "off"
+    OneZero = 3, // "1" and "0"
 };
 
 
@@ -181,20 +192,44 @@ struct TASWIniSavingOptions
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TASWIniValueOptions
+//
+// How typed values (bool, numbers, enumerations, lists) are converted to and from the text of a value: how a bool is
+// written, and what separates the items of a list
+/////////////////////////////////////////////////////////////////////////////
+struct TASWIniValueOptions
+{
+    // How a bool is written; every form is read, whichever this is
+    EBoolFormat BoolFormat = EBoolFormat::TrueFalse;
+
+    // The character between the items of a list (a std::vector), which are written with it and one space ("a, b, c").
+    // An item that holds it is written in double quotes.
+    char ListDelimiter = ',';
+
+    // Ok if these options can be used on their own, else EIniCode::InvalidOptions with the first problem found, e.g. a
+    // ListDelimiter that is a space. Whether ListDelimiter can be read back with the reading options is checked by
+    // TASWIniOptions::Validate().
+    TASWIniResult Validate() const;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TASWIniOptions
 //
-// How INI text is read, written and saved, e.g. options.Writing.Separator = "=". The defaults read the common INI
-// dialects and write "key = value" lines and "; comment" lines.
+// How INI text is read, written and saved, and how values are converted, e.g. options.Writing.Separator = "=". The
+// defaults read the common INI dialects and write "key = value" lines and "; comment" lines.
 /////////////////////////////////////////////////////////////////////////////
 struct TASWIniOptions
 {
     TASWIniReadingOptions Reading;
     TASWIniWritingOptions Writing;
     TASWIniSavingOptions Saving;
+    TASWIniValueOptions Values;
 
     // Ok if these options can be used, else EIniCode::InvalidOptions with the first problem found: each group's own
     // (see their Validate()), then whether a file written with them could be read back (Writing.Separator must be one
-    // of Reading.Separators, and Writing.CommentPrefix must start with one of Reading.CommentPrefixes).
+    // of Reading.Separators, Writing.CommentPrefix must start with one of Reading.CommentPrefixes, and with
+    // Reading.InlineComments, Values.ListDelimiter can't be the first character of one of Reading.CommentPrefixes).
     TASWIniResult Validate() const;
 };
 
@@ -202,6 +237,7 @@ struct TASWIniOptions
 
 // The value's name, e.g. "CRLF"; "Unknown" for a value that isn't one of the enumerators
 char const* ToString(EBomMode bom) noexcept;
+char const* ToString(EBoolFormat boolFormat) noexcept;
 char const* ToString(EDuplicateKeys duplicateKeys) noexcept;
 char const* ToString(ELineEnding lineEnding) noexcept;
 

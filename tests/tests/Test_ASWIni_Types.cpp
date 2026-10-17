@@ -69,6 +69,8 @@ std::vector<ASWIni::EIniCode> AllIniCodes()
     codes.push_back(EIniCode::TempFileCleanupFailed);
     codes.push_back(EIniCode::NotFound);
     codes.push_back(EIniCode::AlreadyExists);
+    codes.push_back(EIniCode::InvalidValue);
+    codes.push_back(EIniCode::ValueOutOfRange);
     return codes;
 }
 

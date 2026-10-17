@@ -21,7 +21,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   section, key and system error it is about) and `TASWIniResult` (an operation's outcome, which
   converts to `true` when it succeeded). `ToString()` names a code, a line break or a severity, and
   writes a message as one line of text. New sources: `ASWIni_Types.cpp` and `ASWIni_Utils.cpp`.
-- `TASWIniOptions` (`ASWIni_Options.h`), the settings for INI files in three groups:
+- `TASWIniOptions` (`ASWIni_Options.h`), the settings for INI files in four groups:
   - `Reading` (`TASWIniReadingOptions`): the separators (`=` and `:`) and comment prefixes (`;`
     and `#`) read, inline comments and quoted values (both off), case-sensitive names (off), which
     duplicate key wins (the first), strict parsing (off) and the largest file loaded (16 MiB).
@@ -30,6 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     before a new section (on).
   - `Saving` (`TASWIniSavingOptions`): atomic saves (on), backups (off, `.bak`) and creating
     missing folders (on).
+  - `Values` (`TASWIniValueOptions`): how a bool is written (`EBoolFormat`: `TrueFalse`, the
+    default, `YesNo`, `OnOff` or `OneZero`) and the character between the items of a list (`,`).
 
   Each group's `Validate()` checks its own settings, and `TASWIniOptions::Validate()` also checks
   that a file written with them can be read back (e.g. `Writing.Separator` must be one of

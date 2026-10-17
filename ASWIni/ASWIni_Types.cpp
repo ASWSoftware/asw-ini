@@ -104,6 +104,12 @@ char const* ToString(EIniCode code) noexcept
 
         case EIniCode::AlreadyExists:
             return "AlreadyExists";
+
+        case EIniCode::InvalidValue:
+            return "InvalidValue";
+
+        case EIniCode::ValueOutOfRange:
+            return "ValueOutOfRange";
     }
 
     return "Unknown";

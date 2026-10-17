@@ -444,6 +444,152 @@ ASW_TEST(TTest_ASWIni_SavingOptions, Validate_ChecksBackupSuffixOnlyWithBackup)
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ValueOptions
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_ValueOptions::TTest_ASWIni_ValueOptions()
+    : inherited("ASWIni_ValueOptions_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_ValueOptions::~TTest_ASWIni_ValueOptions()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ValueOptions::CheckInvalid(ASWIni::TASWIniValueOptions const& options,
+    std::string const& expectedText, std::string const& method, int line, std::string const& msg)
+{
+    ASWIni::TASWIniResult const result = options.Validate();
+
+    CheckEquals(ASWIni::EIniCode::InvalidOptions, result.Code, method, line,
+        msg + ": the code should be InvalidOptions");
+    CheckContains(result.Message, expectedText, method, line, msg + ": the message should name the problem");
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ValueOptions::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ValueOptions::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ValueOptions::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ValueOptions::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, Defaults_AreValid)
+{
+    // Arrange
+    ASWIni::TASWIniValueOptions const options;
+
+    // Act
+    ASWIni::TASWIniResult const result = options.Validate();
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the default value options should be valid: " + result.Message);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, Defaults_MatchDocumentedValues)
+{
+    // Act
+    ASWIni::TASWIniValueOptions const options;
+
+    // Assert
+    // The defaults the 1.0 decisions document: booleans written as true/false, lists as "a, b, c"
+    CheckEquals(ASWIni::EBoolFormat::TrueFalse, options.BoolFormat, __func__, __LINE__, "BoolFormat");
+    CheckEquals(',', options.ListDelimiter, __func__, __LINE__, "ListDelimiter");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, ToString_BoolFormatNames)
+{
+    CheckEquals(std::string("TrueFalse"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::TrueFalse)), __func__,
+        __LINE__, "EBoolFormat::TrueFalse");
+    CheckEquals(std::string("YesNo"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::YesNo)), __func__, __LINE__,
+        "EBoolFormat::YesNo");
+    CheckEquals(std::string("OnOff"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::OnOff)), __func__, __LINE__,
+        "EBoolFormat::OnOff");
+    CheckEquals(std::string("OneZero"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::OneZero)), __func__,
+        __LINE__, "EBoolFormat::OneZero");
+    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::EBoolFormat>(99))), __func__,
+        __LINE__, "an unknown EBoolFormat");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, Validate_AcceptsOtherDelimiters)
+{
+    // Arrange
+    ASWIni::TASWIniValueOptions options;
+
+    // Act & Assert
+    for (char const delimiter : { ';', '|', '/', '=', ':', '#' })
+    {
+        options.ListDelimiter = delimiter;
+        ASWIni::TASWIniResult const result = options.Validate();
+        CheckTrue(result.IsOk(), __func__, __LINE__, std::string("'") + delimiter + "' should be a valid delimiter: " +
+            result.Message);
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, Validate_RejectsBadDelimiters)
+{
+    // Arrange
+    ASWIni::TASWIniValueOptions options;
+
+    // Act & Assert
+    // Blanks are trimmed from items, a line break would end the value, and '"' quotes an item
+    options.ListDelimiter = ' ';
+    CheckInvalid(options, "Values.ListDelimiter can't be a space", __func__, __LINE__, "a space");
+
+    options.ListDelimiter = '\t';
+    CheckInvalid(options, "Values.ListDelimiter can't be a space", __func__, __LINE__, "a tab");
+
+    options.ListDelimiter = '\r';
+    CheckInvalid(options, "Values.ListDelimiter can't be a space", __func__, __LINE__, "a CR");
+
+    options.ListDelimiter = '\n';
+    CheckInvalid(options, "Values.ListDelimiter can't be a space", __func__, __LINE__, "an LF");
+
+    options.ListDelimiter = '\0';
+    CheckInvalid(options, "it is NUL", __func__, __LINE__, "NUL");
+
+    options.ListDelimiter = '"';
+    CheckInvalid(options, "it is '\"'", __func__, __LINE__, "a double quote");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ValueOptions, Validate_RejectsUnknownBoolFormat)
+{
+    // Arrange
+    ASWIni::TASWIniValueOptions options;
+    options.BoolFormat = static_cast<ASWIni::EBoolFormat>(99);
+
+    // Act & Assert
+    CheckInvalid(options, "Values.BoolFormat isn't one of the EBoolFormat values", __func__, __LINE__,
+        "an EBoolFormat cast from a number");
+
+    ASWIni::EBoolFormat const formats[] = {
+        ASWIni::EBoolFormat::TrueFalse, ASWIni::EBoolFormat::YesNo, ASWIni::EBoolFormat::OnOff,
+        ASWIni::EBoolFormat::OneZero,
+    };
+    for (ASWIni::EBoolFormat const format : formats)
+    {
+        options.BoolFormat = format;
+        CheckTrue(options.Validate().IsOk(), __func__, __LINE__, std::string(ASWIni::ToString(format)) +
+            " should be valid");
+    }
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_Options
 /////////////////////////////////////////////////////////////////////////////
 
@@ -534,6 +680,31 @@ ASW_TEST(TTest_ASWIni_Options, Validate_RejectsCommentPrefixNotInReadingPrefixes
     CheckTrue(options.Validate().IsOk(), __func__, __LINE__, "\"#\" should be valid");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_Options, Validate_RejectsListDelimiterStartingCommentPrefix)
+{
+    // Arrange
+    // With InlineComments, an empty item ("a; ; b") would put the delimiter after a blank, where it starts a comment
+    ASWIni::TASWIniOptions options;
+    options.Values.ListDelimiter = ';';
+
+    // Act & Assert
+    CheckTrue(options.Validate().IsOk(), __func__, __LINE__, "';' should be valid without InlineComments");
+
+    options.Reading.InlineComments = true;
+    CheckInvalid(options, "Values.ListDelimiter ';' starts the comment prefix \";\"", __func__, __LINE__,
+        "';' with InlineComments");
+
+    options.Values.ListDelimiter = '/';
+    CheckTrue(options.Validate().IsOk(), __func__, __LINE__, "'/' should be valid when \"//\" isn't a prefix");
+
+    options.Reading.CommentPrefixes.push_back("//");
+    CheckInvalid(options, "Values.ListDelimiter '/' starts the comment prefix \"//\"", __func__, __LINE__,
+        "'/' with InlineComments and the prefix \"//\"");
+
+    options.Values.ListDelimiter = ',';
+    CheckTrue(options.Validate().IsOk(), __func__, __LINE__, "the default ',' should be valid with InlineComments");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Options, Validate_RejectsSeparatorNotInReadingSeparators)
 {
     // Arrange
@@ -570,6 +741,10 @@ ASW_TEST(TTest_ASWIni_Options, Validate_ReportsEachGroupsProblems)
     options.Saving.Backup = true;
     options.Saving.BackupSuffix.clear();
     CheckInvalid(options, "Saving.BackupSuffix is empty", __func__, __LINE__, "a saving problem");
+
+    options = ASWIni::TASWIniOptions();
+    options.Values.ListDelimiter = ' ';
+    CheckInvalid(options, "Values.ListDelimiter can't be a space", __func__, __LINE__, "a values problem");
 }
 //---------------------------------------------------------------------------
 
@@ -579,4 +754,5 @@ ASW_TEST(TTest_ASWIni_Options, Validate_ReportsEachGroupsProblems)
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_Options, "Options")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_ReadingOptions, "Options")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SavingOptions, "Options")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_ValueOptions, "Options")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_WritingOptions, "Options")

@@ -130,6 +130,38 @@ public:
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ValueOptions
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_ValueOptions : public TAutoTestGroup<TTest_ASWIni_ValueOptions>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_ValueOptions> inherited;
+
+private:
+    // Checks that 'options' fail Validate() with InvalidOptions and a message that contains 'expectedText'
+    void CheckInvalid(ASWIni::TASWIniValueOptions const& options, std::string const& expectedText,
+        std::string const& method, int line, std::string const& msg);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Defaults_AreValid();
+    void Test_Defaults_MatchDocumentedValues();
+    void Test_ToString_BoolFormatNames();
+    void Test_Validate_AcceptsOtherDelimiters();
+    void Test_Validate_RejectsBadDelimiters();
+    void Test_Validate_RejectsUnknownBoolFormat();
+
+public:
+    TTest_ASWIni_ValueOptions();
+    ~TTest_ASWIni_ValueOptions() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_Options
 /////////////////////////////////////////////////////////////////////////////
 class TTest_ASWIni_Options : public TAutoTestGroup<TTest_ASWIni_Options>
@@ -146,6 +178,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Defaults_AreValid();
     void Test_Validate_AcceptsMatchingCustomDialect();
     void Test_Validate_RejectsCommentPrefixNotInReadingPrefixes();
+    void Test_Validate_RejectsListDelimiterStartingCommentPrefix();
     void Test_Validate_RejectsSeparatorNotInReadingSeparators();
     void Test_Validate_ReportsEachGroupsProblems();
 

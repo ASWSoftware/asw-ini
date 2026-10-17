@@ -75,6 +75,10 @@ enum class EIniCode : int
     // Errors added after the warnings: an edit of a TASWIniDocument failed
     NotFound = 22, // The section or key to rename, or to set the comment of, doesn't exist
     AlreadyExists = 23, // A section or key can't be renamed to the name of another one that exists
+
+    // Errors added for values: a value couldn't be converted to or from its text
+    InvalidValue = 24, // The text isn't a value of the type, or the value can't be written as text
+    ValueOutOfRange = 25, // The number is outside the range of its type (or of its setting)
 };
 
 // The line break that ends a line of an INI text

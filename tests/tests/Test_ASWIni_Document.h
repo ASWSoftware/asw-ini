@@ -217,6 +217,31 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentFuzz
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentFuzz : public TAutoTestGroup<TTest_ASWIni_DocumentFuzz>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentFuzz> inherited;
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_RandomText_IsTheSameEverywhere();
+    void Test_RandomTexts_ConvertedLineEndingsKeepTheLines();
+    void Test_RandomTexts_ParseAndWriteBack();
+    void Test_RandomTexts_StrictParsingFailsCleanly();
+
+public:
+    TTest_ASWIni_DocumentFuzz();
+    ~TTest_ASWIni_DocumentFuzz() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

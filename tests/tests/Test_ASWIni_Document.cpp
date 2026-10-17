@@ -27,7 +27,9 @@ limitations under the License.
 #include "ASWUnitTests_Registry.h"
 //---------------------------------------------------------------------------
 #include <cstddef>
+#include <cstdint>
 #include <initializer_list>
+#include <random>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -53,6 +55,11 @@ using ASWIni::TASWIniReadingOptions;
 using ASWIni::TASWIniResult;
 using ASWIni::TASWIniWritingOptions;
 
+// The fuzz tests' texts: how many, the seed of the first (each next one's is one more), and their largest size
+constexpr std::size_t FuzzTextCount = 2000;
+constexpr std::uint32_t FuzzFirstSeed = 20261017;
+constexpr std::size_t FuzzMaxTextSize = 300;
+
 /////////////////////////////////////////////////////////////////////////////
 // TCorpusText
 //
@@ -67,6 +74,18 @@ struct TCorpusText
     std::vector<EIniCode> Warnings;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TFuzzToken
+//
+// A piece the fuzz tests' texts are made of, and how often it is picked compared with the others
+/////////////////////////////////////////////////////////////////////////////
+struct TFuzzToken
+{
+    std::string Text;
+    std::uint32_t Weight;
+};
+
 //---------------------------------------------------------------------------
 
 std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
@@ -75,6 +94,7 @@ std::vector<TCorpusText> Corpus();
 std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
 TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
+std::string RandomText(std::uint32_t seed);
 std::vector<TASWIniReadingOptions> ReadingOptionSets();
 
 //---------------------------------------------------------------------------
@@ -186,6 +206,53 @@ TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& op
     result = document.Parse(text, options, messages);
 
     return document;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomText
+
+    A text of 0 to FuzzMaxTextSize bytes made of weighted INI pieces (brackets, separators, comment prefixes, blanks,
+    line breaks, quotes, letters, digits, a section header that repeats, a UTF-8 byte order mark, an invalid byte and
+    NUL), the same for the same
+    'seed' everywhere: std::mt19937's numbers are defined by the standard, and they are used directly, since the
+    standard distributions may give different results on different libraries. There is no 0xFE byte, so no text
+    starts with a UTF-16 or UTF-32 byte order mark. The last piece may be cut short.
+*/
+std::string RandomText(std::uint32_t seed)
+{
+    std::vector<TFuzzToken> const tokens = {
+        { "[", 4 }, { "]", 4 }, { "=", 4 }, { ":", 3 }, { ";", 3 }, { "#", 3 }, { "//", 1 }, { " ", 5 },
+        { "\t", 2 }, { "\r", 3 }, { "\n", 5 }, { "\r\n", 3 }, { "\"", 2 }, { "a", 4 }, { "K", 3 }, { "z", 2 },
+        { "0", 2 }, { "7", 1 }, { ".", 1 }, { "[a]", 2 }, { "\xEF\xBB\xBF", 1 }, { "\xFF", 1 },
+        { std::string(1, '\0'), 1 },
+    };
+
+    std::uint32_t totalWeight = 0;
+    for (TFuzzToken const& token : tokens)
+        totalWeight += token.Weight;
+
+    std::mt19937 generator(seed);
+    std::size_t const size = static_cast<std::size_t>(generator() % (FuzzMaxTextSize + 1));
+
+    std::string text;
+    while (text.size() < size)
+    {
+        std::uint32_t pick = static_cast<std::uint32_t>(generator() % totalWeight);
+        for (TFuzzToken const& token : tokens)
+        {
+            if (pick < token.Weight)
+            {
+                text += token.Text;
+                break;
+            }
+
+            pick -= token.Weight;
+        }
+    }
+
+    text.resize(size);
+
+    return text;
 }
 //---------------------------------------------------------------------------
 /*
@@ -1463,9 +1530,174 @@ ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_WritesBackByteForByte)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentFuzz
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentFuzz::TTest_ASWIni_DocumentFuzz()
+    : inherited("ASWIni_DocumentFuzz_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentFuzz::~TTest_ASWIni_DocumentFuzz()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentFuzz::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentFuzz::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentFuzz::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentFuzz::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomText_IsTheSameEverywhere)
+{
+    // Arrange
+    // The standard requires the 10000th number of a default-constructed std::mt19937 to be 4123659995, so a seed
+    // in a failure message gives the same text on every platform
+    std::mt19937 generator;
+    generator.discard(9999);
+
+    // Act
+    std::uint32_t const tenThousandth = static_cast<std::uint32_t>(generator());
+
+    // Assert
+    CheckTrue(tenThousandth == 4123659995u, __func__, __LINE__,
+        "std::mt19937 should give the numbers the standard defines");
+    CheckEquals(RandomText(FuzzFirstSeed), RandomText(FuzzFirstSeed), __func__, __LINE__,
+        "the same seed should give the same text");
+    CheckFalse(RandomText(FuzzFirstSeed) == RandomText(FuzzFirstSeed + 1), __func__, __LINE__,
+        "different seeds should give different texts");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ConvertedLineEndingsKeepTheLines)
+{
+    // Arrange
+    TASWIniWritingOptions options;
+    options.LineEnding = ASWIni::ELineEnding::LF;
+
+    for (std::size_t i = 0; i < FuzzTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::string const name = "seed " + std::to_string(seed);
+        TASWIniResult result;
+        std::vector<TASWIniMessage> messages;
+        TASWIniDocument const original = ParseText(RandomText(seed), TASWIniReadingOptions(), result, messages);
+        AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+
+        // Act
+        TASWIniDocument const converted = ParseText(original.ToText(options), TASWIniReadingOptions(), result,
+            messages);
+
+        // Assert
+        AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the converted text should parse: " + result.Message);
+        std::vector<TASWIniDocumentLine> const originalLines = AllLines(original);
+        std::vector<TASWIniDocumentLine> const convertedLines = AllLines(converted);
+        AssertEquals(static_cast<int>(originalLines.size()), static_cast<int>(convertedLines.size()), __func__,
+            __LINE__, name + ": the converted text should have as many lines");
+        for (std::size_t line = 0; line < originalLines.size(); ++line)
+        {
+            if (originalLines[line].GetKind() != convertedLines[line].GetKind() ||
+                originalLines[line].GetText() != convertedLines[line].GetText())
+            {
+                CheckTrue(false, __func__, __LINE__, name + ", line " + std::to_string(line + 1) +
+                    ": the converted line should have the same kind and text");
+            }
+        }
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ParseAndWriteBack)
+{
+    // Arrange
+    std::vector<TASWIniReadingOptions> const optionSets = ReadingOptionSets();
+
+    for (std::size_t i = 0; i < FuzzTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::string const text = RandomText(seed);
+
+        for (std::size_t set = 0; set < optionSets.size(); ++set)
+        {
+            std::string const name = "seed " + std::to_string(seed) + " (reading options " + std::to_string(set) +
+                ")";
+            TASWIniResult result;
+            std::vector<TASWIniMessage> messages;
+
+            // Act
+            TASWIniDocument const document = ParseText(text, optionSets[set], result, messages);
+
+            // Assert
+            AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+            CheckTrue(document.ToText(TASWIniWritingOptions()) == text, __func__, __LINE__,
+                name + ": the text should be written back byte for byte");
+        }
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_StrictParsingFailsCleanly)
+{
+    // Arrange
+    TASWIniReadingOptions strict;
+    strict.StrictParsing = true;
+    std::size_t failures = 0;
+
+    for (std::size_t i = 0; i < FuzzTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::string const name = "seed " + std::to_string(seed);
+        std::string const text = RandomText(seed);
+        TASWIniResult lenientResult;
+        std::vector<TASWIniMessage> lenientMessages;
+        TASWIniDocument const lenient = ParseText(text, TASWIniReadingOptions(), lenientResult, lenientMessages);
+        TASWIniDocument document;
+        std::vector<TASWIniMessage> messages;
+
+        // Act
+        TASWIniResult const result = document.Parse(text, strict, messages);
+
+        // Assert
+        if (result.IsOk())
+        {
+            CheckTrue(document.ToText(TASWIniWritingOptions()) == text, __func__, __LINE__,
+                name + ": a text that parses strictly should be written back byte for byte");
+            continue;
+        }
+
+        ++failures;
+        CheckEquals(EIniCode::ParseFailed, result.Code, __func__, __LINE__, name + ": a strict failure's code");
+        CheckTrue(result.Line >= 1 && result.Line <= lenient.GetLineCount(), __func__, __LINE__,
+            name + ": the failure should name one of the text's lines");
+        CheckEquals(0, static_cast<int>(document.GetLineCount()), __func__, __LINE__,
+            name + ": a failed parse should leave the document as it was");
+        CheckEquals(0, static_cast<int>(messages.size()), __func__, __LINE__,
+            name + ": a failed parse should add no messages");
+    }
+
+    // Most random texts have a malformed line, so this test checks failures, not only successes
+    CheckTrue(failures > FuzzTextCount / 2, __func__, __LINE__, "most random texts should fail strict parsing");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentFuzz, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentModel, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentParse, "Document")

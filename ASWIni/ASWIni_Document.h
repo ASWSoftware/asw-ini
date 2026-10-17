@@ -211,6 +211,21 @@ public:
     // Clears the modified flag (see IsModified()), e.g. after the document was saved
     void ClearModified() noexcept;
 
+    // The line of key 'key' of section 'section' ("" for the keys before the first header), or nullptr when there is
+    // none. Names compare as Reading.CaseSensitive says. Sections of the same name count as one: the key is looked for
+    // in each of them, in file order, and when it is there more than once, Reading.DuplicateKeys picks the first or
+    // the last line. The pointer is valid until the document changes.
+    TASWIniDocumentLine const* FindKey(std::string_view section, std::string_view key) const;
+
+    // The first section named 'name' (compared as Reading.CaseSensitive says), or nullptr when there is none; "" is
+    // the preamble, which every document has. The pointer is valid until the document changes.
+    TASWIniDocumentSection const* FindSection(std::string_view name) const;
+
+    // The keys of section 'section' ("" for the keys before the first header), each once, in file order, as the first
+    // of its lines writes it. Sections of the same name count as one. Empty when the section doesn't exist or has no
+    // keys.
+    std::vector<std::string> GetKeyNames(std::string_view section) const;
+
     // The line break new lines get with ELineEnding::Auto: the most common one of the text that was read (the one
     // found first in a tie), or the platform's (CRLF on Windows, LF elsewhere) when there was none
     ELineBreak GetLineBreak() const noexcept;
@@ -220,6 +235,11 @@ public:
 
     // The options the document was parsed or reset with (the defaults for a new document)
     TASWIniOptions const& GetOptions() const noexcept;
+
+    // The names of the sections that have a header (so not the preamble), each once, in file order, as the first of
+    // its headers writes it. With 'prefix', only the names that start with it (compared as Reading.CaseSensitive
+    // says), e.g. "Window." for [Window.Main] and [Window.Tools]; a dot is an ordinary character in a name.
+    std::vector<std::string> GetSectionNames(std::string_view prefix = std::string_view()) const;
 
     // The sections in file order: the preamble (with no header and the name "") first, then one for each header
     std::vector<TASWIniDocumentSection> const& GetSections() const noexcept;

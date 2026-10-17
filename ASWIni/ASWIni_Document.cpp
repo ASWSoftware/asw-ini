@@ -27,6 +27,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <map>
+#include <set>
 #include <string>
 #include <utility>
 //---------------------------------------------------------------------------
@@ -58,10 +59,12 @@ struct TNameLess
 
 std::size_t FindInlineComment(std::string_view text, std::size_t from, std::vector<std::string> const& prefixes,
     std::size_t& prefixSize) noexcept;
+bool HasNamePrefix(std::string_view name, std::string_view prefix, bool caseSensitive) noexcept;
 std::size_t MatchCommentPrefix(std::string_view text, std::size_t pos,
     std::vector<std::string> const& prefixes) noexcept;
 ELineBreak MostCommonLineBreak(std::vector<Detail::TLineSpan> const& lines) noexcept;
 std::string Quoted(std::string_view name);
+bool SameName(std::string_view left, std::string_view right, bool caseSensitive) noexcept;
 std::size_t SkipBlanks(std::string_view text, std::size_t pos) noexcept;
 std::size_t TrimBlanksBefore(std::string_view text, std::size_t begin, std::size_t end) noexcept;
 TASWIniMessage Warning(EIniCode code, std::string const& text, std::size_t line, std::string_view section,
@@ -89,6 +92,19 @@ std::size_t FindInlineComment(std::string_view text, std::size_t from, std::vect
     }
 
     return std::string_view::npos;
+}
+//---------------------------------------------------------------------------
+/*
+    HasNamePrefix
+
+    Whether section or key name 'name' starts with 'prefix', byte by byte or with the ASCII letters' case ignored.
+*/
+bool HasNamePrefix(std::string_view name, std::string_view prefix, bool caseSensitive) noexcept
+{
+    if (name.size() < prefix.size())
+        return false;
+
+    return SameName(name.substr(0, prefix.size()), prefix, caseSensitive);
 }
 //---------------------------------------------------------------------------
 /*
@@ -160,6 +176,19 @@ std::string Quoted(std::string_view name)
     text += "\"";
 
     return text;
+}
+//---------------------------------------------------------------------------
+/*
+    SameName
+
+    Whether section or key names 'left' and 'right' are the same, byte by byte or with the ASCII letters' case ignored.
+*/
+bool SameName(std::string_view left, std::string_view right, bool caseSensitive) noexcept
+{
+    if (caseSensitive)
+        return left == right;
+
+    return Detail::EqualsNoCase(left, right);
 }
 //---------------------------------------------------------------------------
 /*
@@ -553,6 +582,64 @@ void TASWIniDocument::ClearModified() noexcept
     m_Modified = false;
 }
 //---------------------------------------------------------------------------
+TASWIniDocumentLine const* TASWIniDocument::FindKey(std::string_view section, std::string_view key) const
+{
+    bool const caseSensitive = m_Options.Reading.CaseSensitive;
+    bool const lastWins = m_Options.Reading.DuplicateKeys == EDuplicateKeys::LastWins;
+
+    TASWIniDocumentLine const* found = nullptr;
+    for (TASWIniDocumentSection const& documentSection : m_Sections)
+    {
+        if (!SameName(documentSection.GetName(), section, caseSensitive))
+            continue;
+
+        for (TASWIniDocumentLine const& line : documentSection.m_Lines)
+        {
+            if (line.m_Kind != ELineKind::KeyValue || !SameName(line.GetKey(), key, caseSensitive))
+                continue;
+
+            if (!lastWins)
+                return &line;
+
+            found = &line;
+        }
+    }
+
+    return found;
+}
+//---------------------------------------------------------------------------
+TASWIniDocumentSection const* TASWIniDocument::FindSection(std::string_view name) const
+{
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        if (SameName(section.GetName(), name, m_Options.Reading.CaseSensitive))
+            return &section;
+    }
+
+    return nullptr;
+}
+//---------------------------------------------------------------------------
+std::vector<std::string> TASWIniDocument::GetKeyNames(std::string_view section) const
+{
+    bool const caseSensitive = m_Options.Reading.CaseSensitive;
+
+    std::vector<std::string> names;
+    std::set<std::string_view, TNameLess> found(TNameLess{ caseSensitive });
+    for (TASWIniDocumentSection const& documentSection : m_Sections)
+    {
+        if (!SameName(documentSection.GetName(), section, caseSensitive))
+            continue;
+
+        for (TASWIniDocumentLine const& line : documentSection.m_Lines)
+        {
+            if (line.m_Kind == ELineKind::KeyValue && found.insert(line.GetKey()).second)
+                names.emplace_back(line.GetKey());
+        }
+    }
+
+    return names;
+}
+//---------------------------------------------------------------------------
 ELineBreak TASWIniDocument::GetLineBreak() const noexcept
 {
     return m_LineBreak;
@@ -570,6 +657,22 @@ std::size_t TASWIniDocument::GetLineCount() const noexcept
 TASWIniOptions const& TASWIniDocument::GetOptions() const noexcept
 {
     return m_Options;
+}
+//---------------------------------------------------------------------------
+std::vector<std::string> TASWIniDocument::GetSectionNames(std::string_view prefix) const
+{
+    bool const caseSensitive = m_Options.Reading.CaseSensitive;
+
+    std::vector<std::string> names;
+    std::set<std::string_view, TNameLess> found(TNameLess{ caseSensitive });
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        std::string_view const name = section.GetName();
+        if (section.HasHeader() && HasNamePrefix(name, prefix, caseSensitive) && found.insert(name).second)
+            names.emplace_back(name);
+    }
+
+    return names;
 }
 //---------------------------------------------------------------------------
 std::vector<TASWIniDocumentSection> const& TASWIniDocument::GetSections() const noexcept

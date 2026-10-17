@@ -61,5 +61,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   line break, while `LF`, `CRLF` and `Native` give every line that one. A last line without a line
   break never gets one. The UTF-8 byte order mark follows `Writing.Bom` (`Auto`: as the parsed text
   had it).
+- Lookups by name in `TASWIniDocument`: `FindSection()` (the first section of that name; `""` is
+  the part before the first header), `FindKey()` (a key's line, or `nullptr`), `GetSectionNames()`
+  (optionally only the names that start with a prefix, e.g. `"Window."`) and `GetKeyNames()`.
+  Names compare as `Reading.CaseSensitive` says, sections of the same name count as one, and of a
+  key that appears more than once, `Reading.DuplicateKeys` picks the first or the last line.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

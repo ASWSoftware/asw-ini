@@ -91,6 +91,7 @@ struct TFuzzToken
 std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
 std::string CodeNames(std::vector<EIniCode> const& codes);
 std::vector<TCorpusText> Corpus();
+std::string JoinedNames(std::vector<std::string> const& names);
 std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
 TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
@@ -178,6 +179,24 @@ std::vector<TCorpusText> Corpus()
         { "git's subsection syntax", "[remote \"origin\"]\n\turl = https://x\n", 2, {} },
         { "an .editorconfig glob", "[*.md]\nindent_size = 2\n", 2, {} },
     };
+}
+//---------------------------------------------------------------------------
+/*
+    JoinedNames
+
+    'names' separated by '|', e.g. "General|Window.Main"; "" when there are none.
+*/
+std::string JoinedNames(std::vector<std::string> const& names)
+{
+    std::string joined;
+    for (std::size_t i = 0; i < names.size(); ++i)
+    {
+        if (i > 0)
+            joined += "|";
+        joined += names[i];
+    }
+
+    return joined;
 }
 //---------------------------------------------------------------------------
 /*
@@ -1825,10 +1844,249 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_StrictParsingFailsCleanly)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentLookup
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentLookup::TTest_ASWIni_DocumentLookup()
+    : inherited("ASWIni_DocumentLookup_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentLookup::~TTest_ASWIni_DocumentLookup()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentLookup::CheckFoundValue(TASWIniDocumentLine const* line, std::string const& value,
+    std::string const& method, int lineNumber, std::string const& msg)
+{
+    AssertTrue(line != nullptr, method, lineNumber, msg + ": the key should be found");
+    CheckEquals(value, std::string(line->GetValue()), method, lineNumber, msg + ": the value");
+}
+//---------------------------------------------------------------------------
+TASWIniDocument TTest_ASWIni_DocumentLookup::Parsed(std::string_view text, TASWIniOptions const& options,
+    std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, options, result, messages);
+
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+
+    return document;
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentLookup::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentLookup::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentLookup::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentLookup::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindKey_DuplicatesPickTheWinner)
+{
+    // Arrange
+    // [a] is a duplicate of [A], so k is in it three times
+    std::string const text = "[A]\nk=1\nk=2\n[B]\nk=3\n[a]\nk=4\n";
+    TASWIniOptions lastWins;
+    lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+
+    // Act
+    TASWIniDocument const first = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+    TASWIniDocument const last = Parsed(text, lastWins, __func__, __LINE__);
+
+    // Assert
+    CheckFoundValue(first.FindKey("A", "k"), "1", __func__, __LINE__, "FirstWins");
+    CheckTrue(first.FindKey("A", "k") == &first.GetSections()[1].GetLines()[1], __func__, __LINE__,
+        "the result should point to the document's line");
+    CheckFoundValue(last.FindKey("A", "k"), "4", __func__, __LINE__, "LastWins, across the duplicate sections");
+    CheckFoundValue(first.FindKey("B", "k"), "3", __func__, __LINE__, "another section, with FirstWins");
+    CheckFoundValue(last.FindKey("B", "k"), "3", __func__, __LINE__, "another section, with LastWins");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindKey_IgnoresLinesThatArentKeys)
+{
+    // Arrange
+    std::string const text = "[S]\n; k = 1\nk\nx = k=5\n[k]\nother = 2\n";
+
+    // Act
+    TASWIniDocument const document = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+
+    // Assert
+    CheckTrue(document.FindKey("S", "k") == nullptr, __func__, __LINE__,
+        "a comment, a Raw line, a value and a header named k shouldn't be the key k");
+    CheckTrue(document.FindKey("k", "k") == nullptr, __func__, __LINE__, "a header shouldn't be a key of its section");
+    CheckFoundValue(document.FindKey("k", "other"), "2", __func__, __LINE__, "a key of the section named k");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindKey_IsNullWhenMissing)
+{
+    // Arrange
+    TASWIniDocument const document = Parsed("[A]\nk=1\n", TASWIniOptions(), __func__, __LINE__);
+
+    // Act & Assert
+    CheckTrue(document.FindKey("A", "missing") == nullptr, __func__, __LINE__, "a missing key");
+    CheckTrue(document.FindKey("B", "k") == nullptr, __func__, __LINE__, "a missing section");
+    CheckTrue(document.FindKey("", "k") == nullptr, __func__, __LINE__, "a key that isn't in the preamble");
+    CheckTrue(TASWIniDocument().FindKey("", "k") == nullptr, __func__, __LINE__, "an empty document");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindKey_NamesFollowCaseSensitive)
+{
+    // Arrange
+    std::string const text = "[Main]\nWidth=1\nwidth=2\n[main]\nWIDTH=3\n";
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+
+    // Act
+    TASWIniDocument const ignoringCase = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+    TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
+
+    // Assert
+    CheckFoundValue(ignoringCase.FindKey("MAIN", "width"), "1", __func__, __LINE__,
+        "names that differ only in case should match by default");
+    CheckFoundValue(matchingCase.FindKey("Main", "width"), "2", __func__, __LINE__,
+        "the key written in that case, with CaseSensitive");
+    CheckFoundValue(matchingCase.FindKey("main", "WIDTH"), "3", __func__, __LINE__,
+        "the section written in that case, with CaseSensitive");
+    CheckTrue(matchingCase.FindKey("MAIN", "Width") == nullptr, __func__, __LINE__,
+        "a section name in another case shouldn't match with CaseSensitive");
+    CheckTrue(matchingCase.FindKey("main", "Width") == nullptr, __func__, __LINE__,
+        "a key of the other section shouldn't match with CaseSensitive");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindKey_PreambleIsTheEmptyName)
+{
+    // Arrange
+    TASWIniDocument const document = Parsed("top = 0\n[A]\ntop = 1\n", TASWIniOptions(), __func__, __LINE__);
+
+    // Act & Assert
+    CheckFoundValue(document.FindKey("", "top"), "0", __func__, __LINE__, "a key before the first header");
+    CheckFoundValue(document.FindKey("A", "top"), "1", __func__, __LINE__, "the same key in a section");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindSection_FindsTheFirstOfThatName)
+{
+    // Arrange
+    TASWIniDocument const document = Parsed("k=0\n[A]\nk=1\n[B]\n[a]\nk=2\n", TASWIniOptions(), __func__, __LINE__);
+    std::vector<ASWIni::TASWIniDocumentSection> const& sections = document.GetSections();
+    TASWIniDocument const empty;
+
+    // Act & Assert
+    CheckTrue(document.FindSection("a") == &sections[1], __func__, __LINE__,
+        "the first of the sections named A, in any case");
+    CheckTrue(document.FindSection("B") == &sections[2], __func__, __LINE__, "the section B");
+    CheckTrue(document.FindSection("") == &sections[0], __func__, __LINE__, "\"\" should be the preamble");
+    CheckTrue(empty.FindSection("") == &empty.GetSections()[0], __func__, __LINE__,
+        "an empty document should have its preamble");
+    CheckTrue(document.FindSection("C") == nullptr, __func__, __LINE__, "a missing section");
+    CheckTrue(document.FindSection(" A") == nullptr, __func__, __LINE__, "a name with a blank isn't A");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, FindSection_NamesFollowCaseSensitive)
+{
+    // Arrange
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+    TASWIniDocument const document = Parsed("[A]\n[a]\n", caseSensitive, __func__, __LINE__);
+
+    // Act & Assert
+    CheckTrue(document.FindSection("A") == &document.GetSections()[1], __func__, __LINE__, "[A] with CaseSensitive");
+    CheckTrue(document.FindSection("a") == &document.GetSections()[2], __func__, __LINE__, "[a] with CaseSensitive");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, GetKeyNames_EachKeyOnceInFileOrder)
+{
+    // Arrange
+    std::string const text = "p=1\nq=2\n[A]\nb=1\na=2\nB=3\n; c=0\nraw\n[X]\nz=0\n[a]\nc=4\nA=5\n";
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+
+    // Act
+    TASWIniDocument const ignoringCase = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+    TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("b|a|c"), JoinedNames(ignoringCase.GetKeyNames("a")), __func__, __LINE__,
+        "the keys of both [A] and [a], each once, as first written");
+    CheckEquals(std::string("p|q"), JoinedNames(ignoringCase.GetKeyNames("")), __func__, __LINE__,
+        "the keys before the first header");
+    CheckEquals(std::string(), JoinedNames(ignoringCase.GetKeyNames("Missing")), __func__, __LINE__,
+        "a missing section has no keys");
+    CheckEquals(std::string("b|a|B"), JoinedNames(matchingCase.GetKeyNames("A")), __func__, __LINE__,
+        "the keys of [A] with CaseSensitive");
+    CheckEquals(std::string("c|A"), JoinedNames(matchingCase.GetKeyNames("a")), __func__, __LINE__,
+        "the keys of [a] with CaseSensitive");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, GetSectionNames_EachNameOnceInFileOrder)
+{
+    // Arrange
+    std::string const text = "top=1\n[B]\n[A]\n[b]\n[C]\n";
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+
+    // Act
+    TASWIniDocument const ignoringCase = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+    TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
+    TASWIniDocument const preambleOnly = Parsed("k=1\n", TASWIniOptions(), __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("B|A|C"), JoinedNames(ignoringCase.GetSectionNames()), __func__, __LINE__,
+        "each name once, as first written, without the preamble");
+    CheckEquals(std::string("B|A|b|C"), JoinedNames(matchingCase.GetSectionNames()), __func__, __LINE__,
+        "names that differ in case are different names with CaseSensitive");
+    CheckEquals(std::string(), JoinedNames(preambleOnly.GetSectionNames()), __func__, __LINE__,
+        "a document with no header has no section names");
+    CheckEquals(std::string(), JoinedNames(TASWIniDocument().GetSectionNames()), __func__, __LINE__,
+        "an empty document has no section names");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentLookup, GetSectionNames_PrefixSelectsTheNames)
+{
+    // Arrange
+    std::string const text = "[Window.Main]\n[Other]\n[window.Tools]\n[Window]\n[Window.Main]\n";
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+
+    // Act
+    TASWIniDocument const ignoringCase = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+    TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("Window.Main|window.Tools"), JoinedNames(ignoringCase.GetSectionNames("Window.")),
+        __func__, __LINE__, "the names that start with \"Window.\" in any case");
+    CheckEquals(std::string("Window.Main"), JoinedNames(matchingCase.GetSectionNames("Window.")), __func__,
+        __LINE__, "the names that start with \"Window.\" with CaseSensitive");
+    CheckEquals(std::string("Window.Main|window.Tools|Window"), JoinedNames(ignoringCase.GetSectionNames("WINDOW")),
+        __func__, __LINE__, "a prefix that is a whole name");
+    CheckEquals(std::string("Window.Main|Other|window.Tools|Window"), JoinedNames(ignoringCase.GetSectionNames("")),
+        __func__, __LINE__, "an empty prefix selects every name");
+    CheckEquals(std::string(), JoinedNames(ignoringCase.GetSectionNames("Window.Main.Extra")), __func__, __LINE__,
+        "a prefix longer than every name");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentFuzz, "Document")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentLookup, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentModel, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentParse, "Document")

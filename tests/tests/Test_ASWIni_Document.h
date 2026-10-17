@@ -246,6 +246,46 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentLookup
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentLookup : public TAutoTestGroup<TTest_ASWIni_DocumentLookup>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentLookup> inherited;
+
+private:
+    // Checks that 'line' was found (isn't nullptr) and has the value 'value'
+    void CheckFoundValue(ASWIni::TASWIniDocumentLine const* line, std::string const& value, std::string const& method,
+        int lineNumber, std::string const& msg);
+
+    // 'text' parsed with 'options', checking that it parses (warnings, e.g. about duplicates, are allowed)
+    ASWIni::TASWIniDocument Parsed(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_FindKey_DuplicatesPickTheWinner();
+    void Test_FindKey_IgnoresLinesThatArentKeys();
+    void Test_FindKey_IsNullWhenMissing();
+    void Test_FindKey_NamesFollowCaseSensitive();
+    void Test_FindKey_PreambleIsTheEmptyName();
+    void Test_FindSection_FindsTheFirstOfThatName();
+    void Test_FindSection_NamesFollowCaseSensitive();
+    void Test_GetKeyNames_EachKeyOnceInFileOrder();
+    void Test_GetSectionNames_EachNameOnceInFileOrder();
+    void Test_GetSectionNames_PrefixSelectsTheNames();
+
+public:
+    TTest_ASWIni_DocumentLookup();
+    ~TTest_ASWIni_DocumentLookup() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

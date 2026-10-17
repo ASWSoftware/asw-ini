@@ -73,7 +73,7 @@ enum class EIniCode : int
     TempFileCleanupFailed = 21, // A temporary file of a failed save couldn't be deleted
 
     // Errors added after the warnings: an edit of a TASWIniDocument failed
-    NotFound = 22, // The section or key to rename doesn't exist
+    NotFound = 22, // The section or key to rename, or to set the comment of, doesn't exist
     AlreadyExists = 23, // A section or key can't be renamed to the name of another one that exists
 };
 

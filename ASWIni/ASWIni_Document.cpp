@@ -66,6 +66,7 @@ bool HasNamePrefix(std::string_view name, std::string_view prefix, bool caseSens
 TASWIniResult InvalidKeyName(std::string_view key);
 TASWIniResult InvalidSectionName(std::string_view name);
 TASWIniResult InvalidValue(std::string_view section, std::string_view key, std::string_view value);
+std::string JoinedComments(std::vector<TASWIniDocumentLine> const& lines, std::size_t begin, std::size_t end);
 std::size_t MatchCommentPrefix(std::string_view text, std::size_t pos,
     std::vector<std::string> const& prefixes) noexcept;
 ELineBreak MostCommonLineBreak(std::vector<Detail::TLineSpan> const& lines) noexcept;
@@ -193,6 +194,24 @@ TASWIniResult InvalidValue(std::string_view section, std::string_view key, std::
     return Failure(EIniCode::InvalidArgument, what + " can't be written so that it reads back as it is: blanks at "
         "either end, a leading '\"' and, with InlineComments, a comment prefix after a blank need QuotedValues, and a "
         "quoted value can't hold a '\"'.");
+}
+//---------------------------------------------------------------------------
+/*
+    JoinedComments
+
+    The comments of lines 'begin' up to 'end' of 'lines' (see TASWIniDocumentLine::GetComment()), joined with "\n".
+*/
+std::string JoinedComments(std::vector<TASWIniDocumentLine> const& lines, std::size_t begin, std::size_t end)
+{
+    std::string text;
+    for (std::size_t i = begin; i < end; ++i)
+    {
+        if (i > begin)
+            text += '\n';
+        text += lines[i].GetComment();
+    }
+
+    return text;
 }
 //---------------------------------------------------------------------------
 /*
@@ -753,24 +772,38 @@ std::size_t TASWIniDocument::FileCommentSize() const noexcept
 //---------------------------------------------------------------------------
 TASWIniDocumentLine const* TASWIniDocument::FindKey(std::string_view section, std::string_view key) const
 {
+    std::size_t sectionIndex = 0;
+    std::size_t lineIndex = 0;
+    if (!FindKeyLine(section, key, sectionIndex, lineIndex))
+        return nullptr;
+
+    return &m_Sections[sectionIndex].m_Lines[lineIndex];
+}
+//---------------------------------------------------------------------------
+bool TASWIniDocument::FindKeyLine(std::string_view section, std::string_view key, std::size_t& sectionIndex,
+    std::size_t& lineIndex) const noexcept
+{
     bool const caseSensitive = m_Options.Reading.CaseSensitive;
     bool const lastWins = m_Options.Reading.DuplicateKeys == EDuplicateKeys::LastWins;
 
-    TASWIniDocumentLine const* found = nullptr;
-    for (TASWIniDocumentSection const& documentSection : m_Sections)
+    bool found = false;
+    for (std::size_t s = 0; s < m_Sections.size(); ++s)
     {
-        if (!SameName(documentSection.GetName(), section, caseSensitive))
+        if (!SameName(m_Sections[s].GetName(), section, caseSensitive))
             continue;
 
-        for (TASWIniDocumentLine const& line : documentSection.m_Lines)
+        std::vector<TASWIniDocumentLine> const& lines = m_Sections[s].m_Lines;
+        for (std::size_t i = 0; i < lines.size(); ++i)
         {
-            if (line.m_Kind != ELineKind::KeyValue || !SameName(line.GetKey(), key, caseSensitive))
+            if (lines[i].m_Kind != ELineKind::KeyValue || !SameName(lines[i].GetKey(), key, caseSensitive))
                 continue;
 
+            sectionIndex = s;
+            lineIndex = i;
             if (!lastWins)
-                return &line;
+                return true;
 
-            found = &line;
+            found = true;
         }
     }
 
@@ -795,6 +828,23 @@ std::size_t TASWIniDocument::FindSectionIndex(std::string_view name) const noexc
     }
 
     return m_Sections.size();
+}
+//---------------------------------------------------------------------------
+std::string TASWIniDocument::GetFileComment() const
+{
+    return JoinedComments(m_Sections.front().m_Lines, 0, FileCommentSize());
+}
+//---------------------------------------------------------------------------
+std::string TASWIniDocument::GetKeyComment(std::string_view section, std::string_view key) const
+{
+    std::size_t sectionIndex = 0;
+    std::size_t lineIndex = 0;
+    if (!FindKeyLine(section, key, sectionIndex, lineIndex))
+        return std::string();
+
+    std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex].m_Lines;
+
+    return JoinedComments(lines, CommentBlockBegin(lines, lineIndex), lineIndex);
 }
 //---------------------------------------------------------------------------
 std::vector<std::string> TASWIniDocument::GetKeyNames(std::string_view section) const
@@ -837,6 +887,18 @@ TASWIniOptions const& TASWIniDocument::GetOptions() const noexcept
     return m_Options;
 }
 //---------------------------------------------------------------------------
+std::string TASWIniDocument::GetSectionComment(std::string_view section) const
+{
+    // The comment of a section is at the end of the section before it
+    std::size_t const sectionIndex = FindSectionIndex(section);
+    if (sectionIndex == 0 || sectionIndex == m_Sections.size())
+        return std::string();
+
+    std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex - 1].m_Lines;
+
+    return JoinedComments(lines, CommentBlockBegin(lines, lines.size()), lines.size());
+}
+//---------------------------------------------------------------------------
 std::vector<std::string> TASWIniDocument::GetSectionNames(std::string_view prefix) const
 {
     bool const caseSensitive = m_Options.Reading.CaseSensitive;
@@ -863,25 +925,36 @@ bool TASWIniDocument::HasBom() const noexcept
     return m_HasBom;
 }
 //---------------------------------------------------------------------------
-void TASWIniDocument::InsertLines(std::size_t sectionIndex, std::size_t lineIndex,
-    std::vector<TASWIniDocumentLine>& lines)
-{
-    std::vector<TASWIniDocumentLine>& target = m_Sections[sectionIndex].m_Lines;
-
-    // Room is made first, so nothing after it can throw
-    target.reserve(target.size() + lines.size());
-
-    if (sectionIndex + 1 == m_Sections.size() && lineIndex == target.size())
-        EndLastLine();
-
-    target.insert(target.begin() + static_cast<std::ptrdiff_t>(lineIndex), std::make_move_iterator(lines.begin()),
-        std::make_move_iterator(lines.end()));
-    m_Modified = true;
-}
-//---------------------------------------------------------------------------
 bool TASWIniDocument::IsModified() const noexcept
 {
     return m_Modified;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::MakeCommentLines(std::string_view text, std::string_view indentation,
+    std::vector<TASWIniDocumentLine>& lines) const
+{
+    std::string const& prefix = m_Options.Writing.CommentPrefix;
+    std::string_view const emptyLinePrefix = Detail::TrimRight(prefix);
+
+    lines.clear();
+    for (Detail::TLineSpan const& span : Detail::SplitLines(text))
+    {
+        std::string_view const comment = Detail::Trim(span.Text);
+        std::string lineText(indentation);
+        lineText += comment.empty() ? emptyLinePrefix : std::string_view(prefix);
+        lineText += comment;
+
+        TASWIniDocumentLine line = MakeLine(lineText, NewLineBreak());
+        if (line.m_Kind != ELineKind::Comment || line.GetComment() != comment)
+        {
+            return Failure(EIniCode::InvalidArgument, "The comment line " + Quoted(comment) + " can't be written "
+                "after the comment prefix " + Quoted(prefix) + " so that it reads back as it is.");
+        }
+
+        lines.push_back(std::move(line));
+    }
+
+    return TASWIniResult();
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWIniDocument::MakeKeyLine(std::string_view section, std::string_view key, std::string_view value,
@@ -1363,6 +1436,52 @@ TASWIniResult TASWIniDocument::RenameSection(std::string_view name, std::string_
     return TASWIniResult();
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::ReplaceComment(std::size_t sectionIndex, std::size_t begin, std::size_t end,
+    std::string_view text, std::string_view indentation, bool fileComment)
+{
+    std::vector<TASWIniDocumentLine> lines;
+    TASWIniResult const result = MakeCommentLines(text, indentation, lines);
+    if (!result)
+        return result;
+
+    // A comment that reads the same stays as it is, even when its lines are written another way
+    std::vector<TASWIniDocumentLine> const& current = m_Sections[sectionIndex].m_Lines;
+    bool same = lines.size() == end - begin;
+    for (std::size_t i = 0; same && i < lines.size(); ++i)
+        same = lines[i].GetComment() == current[begin + i].GetComment();
+
+    if (same)
+        return result;
+
+    // A file comment is followed by a blank line, which goes with it
+    bool const blankLineFollows = end < current.size() && current[end].m_Kind == ELineKind::Blank;
+    if (fileComment && lines.empty() && blankLineFollows)
+        ++end;
+    else if (fileComment && begin == end && !blankLineFollows)
+        lines.push_back(MakeLine(std::string_view(), NewLineBreak()));
+
+    ReplaceLines(sectionIndex, begin, end, lines);
+
+    return result;
+}
+//---------------------------------------------------------------------------
+void TASWIniDocument::ReplaceLines(std::size_t sectionIndex, std::size_t begin, std::size_t end,
+    std::vector<TASWIniDocumentLine>& lines)
+{
+    std::vector<TASWIniDocumentLine>& target = m_Sections[sectionIndex].m_Lines;
+
+    // Room is made first, so nothing after it can throw
+    target.reserve(target.size() - (end - begin) + lines.size());
+
+    if (sectionIndex + 1 == m_Sections.size() && begin == target.size())
+        EndLastLine();
+
+    std::ptrdiff_t const first = static_cast<std::ptrdiff_t>(begin);
+    target.erase(target.begin() + first, target.begin() + static_cast<std::ptrdiff_t>(end));
+    target.insert(target.begin() + first, std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()));
+    m_Modified = true;
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWIniDocument::Reset(TASWIniOptions const& options)
 {
     TASWIniResult result = options.Validate();
@@ -1377,21 +1496,68 @@ TASWIniResult TASWIniDocument::Reset(TASWIniOptions const& options)
     return result;
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::SetFileComment(std::string_view text)
+{
+    return ReplaceComment(0, 0, FileCommentSize(), text, std::string_view(), true);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::SetKeyComment(std::string_view section, std::string_view key, std::string_view text)
+{
+    std::size_t sectionIndex = 0;
+    std::size_t lineIndex = 0;
+    if (!FindKeyLine(section, key, sectionIndex, lineIndex))
+    {
+        return Failure(EIniCode::NotFound, "The comment of the key " + Quoted(key) + " of the section " +
+            Quoted(section) + " can't be set: the key doesn't exist.");
+    }
+
+    // Directly above the key, with its indentation
+    std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex].m_Lines;
+    TASWIniDocumentLine const& line = lines[lineIndex];
+
+    return ReplaceComment(sectionIndex, CommentBlockBegin(lines, lineIndex), lineIndex, text,
+        std::string_view(line.m_Text).substr(0, line.m_Name.Begin), false);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::SetSectionComment(std::string_view section, std::string_view text)
+{
+    if (section.empty())
+    {
+        return Failure(EIniCode::InvalidArgument, "The section \"\" (the lines before the first header) has no "
+            "header to put a comment above; SetFileComment() sets the comment at the start of the file.");
+    }
+
+    std::size_t const sectionIndex = FindSectionIndex(section);
+    if (sectionIndex == m_Sections.size())
+    {
+        return Failure(EIniCode::NotFound, "The comment of the section " + Quoted(section) + " can't be set: the "
+            "section doesn't exist.");
+    }
+
+    // At the end of the section before it, with the header's indentation
+    std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex - 1].m_Lines;
+    std::string const& header = m_Sections[sectionIndex].m_Lines.front().m_Text;
+
+    return ReplaceComment(sectionIndex - 1, CommentBlockBegin(lines, lines.size()), lines.size(), text,
+        std::string_view(header).substr(0, SkipBlanks(header, 0)), false);
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWIniDocument::SetValue(std::string_view section, std::string_view key, std::string_view value)
 {
-    TASWIniDocumentLine const* const found = FindKey(section, key);
-    if (found != nullptr)
+    std::size_t keySectionIndex = 0;
+    std::size_t keyLineIndex = 0;
+    if (FindKeyLine(section, key, keySectionIndex, keyLineIndex))
     {
-        if (found->GetValue() == value)
+        TASWIniDocumentLine& found = m_Sections[keySectionIndex].m_Lines[keyLineIndex];
+        if (found.GetValue() == value)
             return TASWIniResult();
 
         TASWIniDocumentLine changed;
-        TASWIniResult const result = MakeValueLine(*found, section, value, changed);
+        TASWIniResult const result = MakeValueLine(found, section, value, changed);
         if (!result)
             return result;
 
-        // The line is this document's, which isn't const here
-        *const_cast<TASWIniDocumentLine*>(found) = std::move(changed);
+        found = std::move(changed);
         m_Modified = true;
 
         return result;
@@ -1430,7 +1596,7 @@ TASWIniResult TASWIniDocument::SetValue(std::string_view section, std::string_vi
     if (!result)
         return result;
 
-    InsertLines(sectionIndex, lineIndex, lines);
+    ReplaceLines(sectionIndex, lineIndex, lineIndex, lines);
 
     return result;
 }

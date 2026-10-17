@@ -3024,9 +3024,369 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_RenamesEveryDuplicate)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentComments
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentComments::TTest_ASWIni_DocumentComments()
+    : inherited("ASWIni_DocumentComments_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentComments::~TTest_ASWIni_DocumentComments()
+{
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentComments::FileCommentAndWrite(std::string_view text, TASWIniOptions const& options,
+    std::string_view comment, std::string const& method, int lineNumber)
+{
+    TASWIniDocument document = Parsed(text, options, method, lineNumber);
+    std::string const before = document.ToText();
+
+    TASWIniResult result = document.SetFileComment(comment);
+    AssertTrue(result.IsOk(), method, lineNumber, "SetFileComment() should succeed: " + result.Message);
+    std::string const written = document.ToText();
+    CheckEquals(written != before, document.IsModified(), method, lineNumber,
+        "the document should be modified exactly when its text changed");
+
+    TASWIniDocument const reread = Parsed(written, options, method, lineNumber);
+    CheckEquals(document.GetFileComment(), reread.GetFileComment(), method, lineNumber,
+        "the file comment should read back");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentComments::KeyCommentAndWrite(std::string_view text, TASWIniOptions const& options,
+    std::string_view section, std::string_view key, std::string_view comment, std::string const& method,
+    int lineNumber)
+{
+    TASWIniDocument document = Parsed(text, options, method, lineNumber);
+    std::string const before = document.ToText();
+
+    TASWIniResult result = document.SetKeyComment(section, key, comment);
+    AssertTrue(result.IsOk(), method, lineNumber, "SetKeyComment() should succeed: " + result.Message);
+    std::string const written = document.ToText();
+    CheckEquals(written != before, document.IsModified(), method, lineNumber,
+        "the document should be modified exactly when its text changed");
+
+    TASWIniDocument const reread = Parsed(written, options, method, lineNumber);
+    CheckEquals(document.GetKeyComment(section, key), reread.GetKeyComment(section, key), method, lineNumber,
+        "the key's comment should read back");
+    CheckEquals(document.GetFileComment(), reread.GetFileComment(), method, lineNumber,
+        "the file comment should read back");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+TASWIniDocument TTest_ASWIni_DocumentComments::Parsed(std::string_view text, TASWIniOptions const& options,
+    std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, options, result, messages);
+
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+
+    return document;
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentComments::SectionCommentAndWrite(std::string_view text,
+    TASWIniOptions const& options, std::string_view section, std::string_view comment, std::string const& method,
+    int lineNumber)
+{
+    TASWIniDocument document = Parsed(text, options, method, lineNumber);
+    std::string const before = document.ToText();
+
+    TASWIniResult result = document.SetSectionComment(section, comment);
+    AssertTrue(result.IsOk(), method, lineNumber, "SetSectionComment() should succeed: " + result.Message);
+    std::string const written = document.ToText();
+    CheckEquals(written != before, document.IsModified(), method, lineNumber,
+        "the document should be modified exactly when its text changed");
+
+    TASWIniDocument const reread = Parsed(written, options, method, lineNumber);
+    CheckEquals(document.GetSectionComment(section), reread.GetSectionComment(section), method, lineNumber,
+        "the section's comment should read back");
+    CheckEquals(document.GetFileComment(), reread.GetFileComment(), method, lineNumber,
+        "the file comment should read back");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentComments::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentComments::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentComments::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentComments::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, GetFileComment_IsTheBlockAtTheStartBeforeABlankLine)
+{
+    // Arrange
+    TASWIniOptions const options;
+
+    // Act & Assert
+    CheckEquals(std::string("a\nb"), Parsed("; a\n# b\n\n[A]\n", options, __func__, __LINE__).GetFileComment(),
+        __func__, __LINE__, "the comment lines at the start, before a blank line");
+    CheckEquals(std::string("only"), Parsed("; only\n", options, __func__, __LINE__).GetFileComment(), __func__,
+        __LINE__, "comment lines before the end of the file");
+    CheckEquals(std::string(), Parsed("; a\n[A]\n", options, __func__, __LINE__).GetFileComment(), __func__,
+        __LINE__, "comment lines that lead into the first header are its comment");
+    CheckEquals(std::string(), Parsed("; a\nk=1\n", options, __func__, __LINE__).GetFileComment(), __func__,
+        __LINE__, "comment lines directly above a key are its comment");
+    CheckEquals(std::string(), Parsed("\n; a\n\n", options, __func__, __LINE__).GetFileComment(), __func__,
+        __LINE__, "comment lines after a blank line aren't at the start");
+    CheckEquals(std::string(), TASWIniDocument().GetFileComment(), __func__, __LINE__, "an empty document");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, GetKeyComment_IsTheBlockDirectlyAboveTheKey)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions lastWins;
+    lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+    std::string const duplicates = "[A]\n; first\nk=1\n; second\nk=2\n";
+
+    // Act & Assert
+    CheckEquals(std::string("one\ntwo"), Parsed("[A]\n; one\n  ;two\nk=1\n", options, __func__, __LINE__)
+        .GetKeyComment("A", "k"), __func__, __LINE__, "the comment lines directly above the key");
+    CheckEquals(std::string("\nb"), Parsed("[A]\n;\n; b\nk=1\n", options, __func__, __LINE__).GetKeyComment("A",
+        "k"), __func__, __LINE__, "an empty comment line");
+    CheckEquals(std::string(), Parsed("[A]\n; x\n\nk=1\n", options, __func__, __LINE__).GetKeyComment("A", "k"),
+        __func__, __LINE__, "a comment with a blank line under it isn't the key's");
+    CheckEquals(std::string(), Parsed("[A]\n; c\n[B]\nk=1\n", options, __func__, __LINE__).GetKeyComment("B", "k"),
+        __func__, __LINE__, "a comment above the header isn't the key's");
+    CheckEquals(std::string(), Parsed("[A]\n; c\nk=1\n", options, __func__, __LINE__).GetKeyComment("A", "x"),
+        __func__, __LINE__, "a missing key has no comment");
+    CheckEquals(std::string("first"), Parsed(duplicates, options, __func__, __LINE__).GetKeyComment("A", "k"),
+        __func__, __LINE__, "the first line's, with FirstWins");
+    CheckEquals(std::string("second"), Parsed(duplicates, lastWins, __func__, __LINE__).GetKeyComment("A", "k"),
+        __func__, __LINE__, "the last line's, with LastWins");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, GetSectionComment_IsTheBlockDirectlyAboveTheHeader)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniDocument const document = Parsed("; file\n\n; about A\n[A]\nk=1\n; about B\n[B]\n", options, __func__,
+        __LINE__);
+
+    // Act & Assert
+    CheckEquals(std::string("about A"), document.GetSectionComment("a"), __func__, __LINE__,
+        "the comment above the first header, after the file comment");
+    CheckEquals(std::string("about B"), document.GetSectionComment("B"), __func__, __LINE__,
+        "the comment at the end of the section before");
+    CheckEquals(std::string("file"), document.GetFileComment(), __func__, __LINE__, "the file comment");
+    CheckEquals(std::string(), document.GetKeyComment("A", "k"), __func__, __LINE__, "k has no comment");
+    CheckEquals(std::string(), document.GetSectionComment(""), __func__, __LINE__, "the preamble has no header");
+    CheckEquals(std::string(), document.GetSectionComment("X"), __func__, __LINE__, "a missing section");
+    CheckEquals(std::string("about A"), Parsed("; about A\n[A]\n", options, __func__, __LINE__).GetSectionComment(
+        "A"), __func__, __LINE__, "comment lines that lead into the first header");
+    CheckEquals(std::string(), Parsed("[A]\n; about a\n[a]\n", options, __func__, __LINE__).GetSectionComment("a"),
+        __func__, __LINE__, "the first section of that name's");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetComment_FailsForMissingNamesAndThePreamble)
+{
+    // Arrange
+    std::string const text = "[A]\nk=1\n";
+    TASWIniDocument document = Parsed(text, TASWIniOptions(), __func__, __LINE__);
+
+    // Act & Assert
+    CheckEquals(EIniCode::NotFound, document.SetKeyComment("A", "x", "c").Code, __func__, __LINE__, "a missing key");
+    CheckEquals(EIniCode::NotFound, document.SetKeyComment("B", "k", "c").Code, __func__, __LINE__,
+        "a key of a missing section");
+    CheckEquals(EIniCode::NotFound, document.SetSectionComment("B", "c").Code, __func__, __LINE__,
+        "a missing section");
+    CheckEquals(EIniCode::InvalidArgument, document.SetSectionComment("", "c").Code, __func__, __LINE__,
+        "the preamble has no header");
+    CheckEquals(text, document.ToText(), __func__, __LINE__, "the text shouldn't change");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetComment_RejectsLinesThatWouldntReadBack)
+{
+    // Arrange
+    // ";x" written after ";" is ";;x", which reads back as the comment "x" after the longer prefix ";;"
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { ";", ";;" };
+    options.Writing.CommentPrefix = ";";
+    std::string const text = "[A]\nk=1\n";
+    TASWIniDocument document = Parsed(text, options, __func__, __LINE__);
+
+    // Act
+    TASWIniResult const fileResult = document.SetFileComment("ok\n;x");
+    TASWIniResult const keyResult = document.SetKeyComment("A", "k", ";x");
+    TASWIniResult const sectionResult = document.SetSectionComment("A", ";x");
+
+    // Assert
+    CheckEquals(EIniCode::InvalidArgument, fileResult.Code, __func__, __LINE__, "the file comment");
+    CheckFalse(fileResult.Message.empty(), __func__, __LINE__, "the result should describe the problem");
+    CheckEquals(EIniCode::InvalidArgument, keyResult.Code, __func__, __LINE__, "the key's comment");
+    CheckEquals(EIniCode::InvalidArgument, sectionResult.Code, __func__, __LINE__, "the section's comment");
+    CheckEquals(text, document.ToText(), __func__, __LINE__, "the text shouldn't change, not even the first line");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetComment_SameTextChangesNothing)
+{
+    // Arrange
+    // FileCommentAndWrite() and the others also check that the document isn't modified when its text doesn't change
+    TASWIniOptions const options;
+    std::string const text = "# a\n#b \n\n[A]\n; x\nk=1\n#  about B \n[B]\n";
+
+    // Act & Assert
+    CheckEquals(text, FileCommentAndWrite(text, options, "a\nb", __func__, __LINE__), __func__, __LINE__,
+        "the file comment, written with another prefix");
+    CheckEquals(text, FileCommentAndWrite(text, options, " a \r\n\tb\r\n", __func__, __LINE__), __func__, __LINE__,
+        "a text that is the same once split and trimmed");
+    CheckEquals(text, KeyCommentAndWrite(text, options, "A", "k", "x", __func__, __LINE__), __func__, __LINE__,
+        "the key's comment");
+    CheckEquals(text, SectionCommentAndWrite(text, options, "B", "about B", __func__, __LINE__), __func__, __LINE__,
+        "the section's comment");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetComment_UsesTheWritingCommentPrefix)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions hash;
+    hash.Writing.CommentPrefix = "#";
+    TASWIniOptions slashes;
+    slashes.Reading.CommentPrefixes = { ";", "#", "//" };
+    slashes.Writing.CommentPrefix = "// ";
+
+    // Act & Assert
+    CheckEquals(std::string("#note\n\n[A]\n"), FileCommentAndWrite("[A]\n", hash, "note", __func__, __LINE__),
+        __func__, __LINE__, "\"#\"");
+    CheckEquals(std::string("// note\n\n[A]\n"), FileCommentAndWrite("[A]\n", slashes, "note", __func__, __LINE__),
+        __func__, __LINE__, "\"// \"");
+    CheckEquals(std::string("; a\n;\n; b\n\n[A]\n"), FileCommentAndWrite("[A]\n", options, "a\n\nb", __func__,
+        __LINE__), __func__, __LINE__, "an empty line gets the prefix without its trailing blank");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_AddsItAtTheStartWithABlankLine)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions lf;
+    lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
+
+    // Act & Assert
+    CheckEquals(std::string("; File\n\n[A]\nk=1\n"), FileCommentAndWrite("[A]\nk=1\n", options, "File", __func__,
+        __LINE__), __func__, __LINE__, "before the first header, with a blank line");
+    CheckEquals(std::string("; File\n\n[A]\n"), FileCommentAndWrite("\n[A]\n", options, "File", __func__, __LINE__),
+        __func__, __LINE__, "no second blank line when one follows already");
+    CheckEquals(std::string("; File\n\n; about A\n[A]\n"), FileCommentAndWrite("; about A\n[A]\n", options, "File",
+        __func__, __LINE__), __func__, __LINE__, "above the comment of the first section");
+    CheckEquals(std::string("; File\n\n"), FileCommentAndWrite("", lf, "File", __func__, __LINE__), __func__,
+        __LINE__, "an empty document");
+    CheckEquals(std::string("; a\n; b\n;\n; c\n\n[A]\n"), FileCommentAndWrite("[A]\n", options, "a\r\nb\n\n c ",
+        __func__, __LINE__), __func__, __LINE__, "a line for each line of the text, trimmed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_ReplacesAndRemovesIt)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions lf;
+    lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
+
+    // Act & Assert
+    CheckEquals(std::string("; new\n\n[A]\n"), FileCommentAndWrite("# old\n# more\n\n[A]\n", options, "new",
+        __func__, __LINE__), __func__, __LINE__, "every line is replaced; the blank line stays");
+    CheckEquals(std::string("[A]\n"), FileCommentAndWrite("# old\n\n[A]\n", options, "", __func__, __LINE__),
+        __func__, __LINE__, "an empty text removes it with the blank line under it");
+    CheckEquals(std::string("\n[A]\n"), FileCommentAndWrite("# old\n\n\n[A]\n", options, "", __func__, __LINE__),
+        __func__, __LINE__, "only one blank line goes with it");
+    CheckEquals(std::string(), FileCommentAndWrite("; only", lf, "", __func__, __LINE__), __func__, __LINE__,
+        "a file comment with nothing after it");
+    CheckEquals(std::string("[A]\n"), FileCommentAndWrite("[A]\n", options, "", __func__, __LINE__), __func__,
+        __LINE__, "removing a file comment that isn't there changes nothing");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_StaysAboveNewKeys)
+{
+    // Arrange
+    TASWIniOptions lf;
+    lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
+    TASWIniDocument document;
+    AssertTrue(document.Reset(lf).IsOk(), __func__, __LINE__, "the document should reset");
+
+    // Act
+    AssertTrue(document.SetFileComment("c").IsOk(), __func__, __LINE__, "the file comment should be set");
+    AssertTrue(document.SetValue("", "k", "v").IsOk(), __func__, __LINE__, "the key should be set");
+    AssertTrue(document.SetValue("A", "x", "1").IsOk(), __func__, __LINE__, "the section should be added");
+    AssertTrue(document.SetSectionComment("A", "about A").IsOk(), __func__, __LINE__,
+        "the section's comment should be set");
+
+    // Assert
+    CheckEquals(std::string("; c\n\nk = v\n\n; about A\n[A]\nx = 1\n"), document.ToText(), __func__, __LINE__,
+        "the text");
+    CheckEquals(std::string("c"), document.GetFileComment(), __func__, __LINE__, "the file comment");
+    CheckEquals(std::string(), document.GetKeyComment("", "k"), __func__, __LINE__, "k has no comment");
+    CheckEquals(std::string("about A"), document.GetSectionComment("A"), __func__, __LINE__, "the section's comment");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetKeyComment_GoesDirectlyAboveTheKey)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions lastWins;
+    lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+
+    // Act & Assert
+    CheckEquals(std::string("[A]\n  ; note\n  k=1\n"), KeyCommentAndWrite("[A]\n  k=1\n", options, "A", "k", "note",
+        __func__, __LINE__), __func__, __LINE__, "with the key's indentation");
+    CheckEquals(std::string("[A]\n; new\nk=1\n"), KeyCommentAndWrite("[A]\n; old\nk=1\n", options, "A", "k", "new",
+        __func__, __LINE__), __func__, __LINE__, "replacing the comment");
+    CheckEquals(std::string("[A]\nk=1\n"), KeyCommentAndWrite("[A]\n; old\n# more\nk=1\n", options, "A", "k", "",
+        __func__, __LINE__), __func__, __LINE__, "an empty text removes it");
+    CheckEquals(std::string("[A]\n; c\n\n; n\nk=1\n"), KeyCommentAndWrite("[A]\n; c\n\nk=1\n", options, "A", "k",
+        "n", __func__, __LINE__), __func__, __LINE__, "a comment with a blank line under it stays");
+    CheckEquals(std::string("[A]\nk=1\n; n\nk=2\n"), KeyCommentAndWrite("[A]\nk=1\nk=2\n", lastWins, "A", "k", "n",
+        __func__, __LINE__), __func__, __LINE__, "above the winning line");
+    CheckEquals(std::string("; n\nk=1\n[A]\n"), KeyCommentAndWrite("k=1\n[A]\n", options, "", "k", "n", __func__,
+        __LINE__), __func__, __LINE__, "a key at the start of the file, whose comment isn't the file comment");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetSectionComment_GoesDirectlyAboveTheHeader)
+{
+    // Arrange
+    TASWIniOptions const options;
+
+    // Act & Assert
+    CheckEquals(std::string("[A]\nk=1\n\n  ; about B\n  [B]\n"), SectionCommentAndWrite("[A]\nk=1\n\n  [B]\n",
+        options, "B", "about B", __func__, __LINE__), __func__, __LINE__, "with the header's indentation");
+    CheckEquals(std::string("; about A\n[A]\n"), SectionCommentAndWrite("[A]\n", options, "A", "about A", __func__,
+        __LINE__), __func__, __LINE__, "the first header, with an empty preamble");
+    CheckEquals(std::string("; file\n\n; about A\n[A]\n"), SectionCommentAndWrite("; file\n\n[A]\n", options, "A",
+        "about A", __func__, __LINE__), __func__, __LINE__, "under the file comment");
+    CheckEquals(std::string("[A]\n[B]\n"), SectionCommentAndWrite("[A]\n; old\n[B]\n", options, "B", "", __func__,
+        __LINE__), __func__, __LINE__, "an empty text removes it");
+    CheckEquals(std::string("; x\n[A]\n[B]\n[a]\n"), SectionCommentAndWrite("[A]\n[B]\n[a]\n", options, "a", "x",
+        __func__, __LINE__), __func__, __LINE__, "the first section of that name");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentComments, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentFuzz, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentLookup, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")

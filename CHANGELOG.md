@@ -84,5 +84,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `EIniCode::NotFound` (no such key or section) and `EIniCode::AlreadyExists` (the new name is
   taken), or with `InvalidArgument` for a name that wouldn't read back or for the preamble (`""`),
   which has no header.
+- Comments in `TASWIniDocument`: `GetFileComment()`/`SetFileComment()` (the comment lines at the
+  start of the file, before a blank line), `GetKeyComment()`/`SetKeyComment()` (the comment lines
+  directly above a key) and `GetSectionComment()`/`SetSectionComment()` (directly above a header).
+  A comment reads as its lines' texts joined with `"\n"`. Setting one writes a line per line of the
+  text (each trimmed) with `Writing.CommentPrefix` and the key's or header's indentation, replacing
+  the old lines; an empty text removes them, and a new file comment gets a blank line under it. A
+  text the comment already reads as changes nothing, whatever prefix its lines use. Inline and
+  header comments (`k = v ; note`) stay as they are.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

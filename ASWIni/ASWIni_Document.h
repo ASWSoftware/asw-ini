@@ -216,13 +216,19 @@ private:
     // there is none
     std::size_t FileCommentSize() const noexcept;
 
+    // Whether key 'key' of section 'section' exists, and if it does, where its line (the one FindKey() finds) is
+    bool FindKeyLine(std::string_view section, std::string_view key, std::size_t& sectionIndex,
+        std::size_t& lineIndex) const noexcept;
+
     // The index of the first section named 'name' (0 for ""), or m_Sections.size() when there is none
     std::size_t FindSectionIndex(std::string_view name) const noexcept;
 
-    // Inserts 'lines' before line 'lineIndex' of section 'sectionIndex' (giving the line before them a line break
-    // when they go at the end of the document), and sets the modified flag. Throws only std::bad_alloc, and then
-    // nothing changes.
-    void InsertLines(std::size_t sectionIndex, std::size_t lineIndex, std::vector<TASWIniDocumentLine>& lines);
+    // In 'lines', the comment lines of 'text': one for each of its lines (split as Detail::SplitLines() does, each
+    // without the spaces and tabs around it), as 'indentation', Writing.CommentPrefix and the line (the prefix
+    // without its trailing blanks for an empty line); none for an empty 'text'. Fails with InvalidArgument when a
+    // line wouldn't read back as that comment.
+    TASWIniResult MakeCommentLines(std::string_view text, std::string_view indentation,
+        std::vector<TASWIniDocumentLine>& lines) const;
 
     // In 'line', a new line of key 'key' with value 'value', written after 'indentation' with Writing.Separator (and
     // in double quotes when it needs them, with QuotedValues). Fails with InvalidArgument when the key or the value
@@ -248,6 +254,19 @@ private:
 
     // The line break of new lines: GetLineBreak(), or the one Writing.LineEnding converts every line to
     ELineBreak NewLineBreak() const noexcept;
+
+    // Replaces the comment lines 'begin' up to 'end' of section 'sectionIndex' with the comment lines of 'text' (see
+    // MakeCommentLines()), unless they read the same already. With 'fileComment', a new comment gets a blank line
+    // under it (unless one follows already) and a removed one loses the blank line under it. Fails with
+    // InvalidArgument, and then nothing changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult ReplaceComment(std::size_t sectionIndex, std::size_t begin, std::size_t end, std::string_view text,
+        std::string_view indentation, bool fileComment);
+
+    // Replaces lines 'begin' up to 'end' of section 'sectionIndex' with 'lines' (giving the line before them a line
+    // break when they go at the end of the document), and sets the modified flag. Throws only std::bad_alloc, and
+    // then nothing changes.
+    void ReplaceLines(std::size_t sectionIndex, std::size_t begin, std::size_t end,
+        std::vector<TASWIniDocumentLine>& lines);
 
     // Whether 'before', 'value' and 'after', as a line, read back as key line 'line' with the value 'value' (the same
     // key and comment); if they do, that line replaces 'line'. 'value' is tried in double quotes when 'quotedFirst',
@@ -280,6 +299,16 @@ public:
     // the preamble, which every document has. The pointer is valid until the document changes.
     TASWIniDocumentSection const* FindSection(std::string_view name) const;
 
+    // The file comment: the comment lines at the start of the file, when a blank line or the end of the file follows
+    // them (comment lines that lead straight into the first header are its comment), each line's comment (see
+    // TASWIniDocumentLine::GetComment()) joined with "\n"; "" when there is none
+    std::string GetFileComment() const;
+
+    // The comment of key 'key' of section 'section' ("" for the keys before the first header): the comment lines
+    // directly above its line (the one FindKey() finds), with no other line between them, joined as GetFileComment()
+    // says; "" when there is none or the key doesn't exist
+    std::string GetKeyComment(std::string_view section, std::string_view key) const;
+
     // The keys of section 'section' ("" for the keys before the first header), each once, in file order, as the first
     // of its lines writes it. Sections of the same name count as one. Empty when the section doesn't exist or has no
     // keys.
@@ -294,6 +323,11 @@ public:
 
     // The options the document was parsed or reset with (the defaults for a new document)
     TASWIniOptions const& GetOptions() const noexcept;
+
+    // The comment of section 'section' (the first of that name): the comment lines directly above its header, with no
+    // other line between them, joined as GetFileComment() says; "" when there is none, the section doesn't exist or
+    // it is the preamble (""), which has no header
+    std::string GetSectionComment(std::string_view section) const;
 
     // The names of the sections that have a header (so not the preamble), each once, in file order, as the first of
     // its headers writes it. With 'prefix', only the names that start with it (compared as Reading.CaseSensitive
@@ -350,6 +384,29 @@ public:
     // TASWIniOptions::Validate()), and then nothing changes. Throws only std::bad_alloc, and then nothing changes
     // either.
     TASWIniResult Reset(TASWIniOptions const& options);
+
+    // Sets the file comment (see GetFileComment()) to 'text': the comment lines are replaced with one line for each
+    // line of 'text' (split at LF, CRLF or CR, a line break at its end starting no empty line, and each line without
+    // the spaces and tabs around it), written as
+    // Writing.CommentPrefix and the line (the prefix without its trailing blanks for an empty line). A new file
+    // comment goes at the start of the file with a blank line under it (unless one follows already); an empty 'text'
+    // removes the file comment and the blank line under it. A text that GetFileComment() already gives (once split
+    // and trimmed) changes nothing. Fails with InvalidArgument, and then nothing changes, when a line wouldn't read
+    // back as that comment (e.g. a line that starts with a longer comment prefix). Throws only std::bad_alloc, and
+    // then nothing changes either.
+    TASWIniResult SetFileComment(std::string_view text);
+
+    // Sets the comment of key 'key' of section 'section' (see GetKeyComment()) to 'text', as SetFileComment() says:
+    // the comment lines go directly above the key's line, with its indentation, and an empty 'text' removes them.
+    // Fails with NotFound when the key doesn't exist, or InvalidArgument; then nothing changes. Throws only
+    // std::bad_alloc, and then nothing changes either.
+    TASWIniResult SetKeyComment(std::string_view section, std::string_view key, std::string_view text);
+
+    // Sets the comment of section 'section' (see GetSectionComment()) to 'text', as SetFileComment() says: the comment
+    // lines go directly above its header, with its indentation, and an empty 'text' removes them. Fails with NotFound
+    // when the section doesn't exist, or InvalidArgument, also for the preamble (""; see SetFileComment()); then
+    // nothing changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult SetSectionComment(std::string_view section, std::string_view text);
 
     // Sets the value of key 'key' of section 'section' ("" for the keys before the first header). Of a key that
     // exists, only the value of the line FindKey() finds changes: its indentation, key, separator, spacing and inline

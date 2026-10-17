@@ -443,6 +443,60 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentComments
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentComments : public TAutoTestGroup<TTest_ASWIni_DocumentComments>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentComments> inherited;
+
+private:
+    // 'text' parsed with 'options', after SetFileComment('comment') (checking that it succeeds, that the modified flag
+    // is set only when the text changed, and that the written text reads back with the same file comment)
+    std::string FileCommentAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string_view comment, std::string const& method, int lineNumber);
+
+    // 'text' parsed with 'options', after SetKeyComment('section', 'key', 'comment'), checked as FileCommentAndWrite()
+    // says
+    std::string KeyCommentAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string_view section, std::string_view key, std::string_view comment, std::string const& method,
+        int lineNumber);
+
+    // 'text' parsed with 'options', checking that it parses
+    ASWIni::TASWIniDocument Parsed(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string const& method, int lineNumber);
+
+    // 'text' parsed with 'options', after SetSectionComment('section', 'comment'), checked as FileCommentAndWrite()
+    // says
+    std::string SectionCommentAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string_view section, std::string_view comment, std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_GetFileComment_IsTheBlockAtTheStartBeforeABlankLine();
+    void Test_GetKeyComment_IsTheBlockDirectlyAboveTheKey();
+    void Test_GetSectionComment_IsTheBlockDirectlyAboveTheHeader();
+    void Test_SetComment_FailsForMissingNamesAndThePreamble();
+    void Test_SetComment_RejectsLinesThatWouldntReadBack();
+    void Test_SetComment_SameTextChangesNothing();
+    void Test_SetComment_UsesTheWritingCommentPrefix();
+    void Test_SetFileComment_AddsItAtTheStartWithABlankLine();
+    void Test_SetFileComment_ReplacesAndRemovesIt();
+    void Test_SetFileComment_StaysAboveNewKeys();
+    void Test_SetKeyComment_GoesDirectlyAboveTheKey();
+    void Test_SetSectionComment_GoesDirectlyAboveTheHeader();
+
+public:
+    TTest_ASWIni_DocumentComments();
+    ~TTest_ASWIni_DocumentComments() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

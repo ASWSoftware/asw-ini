@@ -68,7 +68,9 @@ constexpr std::size_t FuzzEditCount = 25;
 // can't be written so that they read back
 constexpr char const* FuzzSections[] = { "", "A", "a", "B", "Long Name", "C", " A", "a]b", "[x" };
 constexpr char const* FuzzKeys[] = { "k", "K", "key", "x", "Long Key", "", " k", "a=b", ";c" };
-constexpr char const* FuzzValues[] = { "", "v", "1", " v ", "a ; b", "\"q\"", "\"open", "a=b", ";v", "x\ny" };
+constexpr char const* FuzzValues[] = {
+    "", "v", "1", " v ", "a ; b", "\"q\"", "\"open", "a=b", ";v", "x\ny", "a\"\"b", " \"x\" ", "\"a, b\", c",
+};
 constexpr char const* FuzzComments[] = { "", "c", "a\nb", " note ", "a\r\n\r\nb\n", ";x", "#", "//" };
 
 // The edits the edit fuzz tests make, and how many kinds there are
@@ -295,6 +297,7 @@ std::vector<TCorpusText> Corpus()
         { "comments", "; semicolon\n# hash\n  ; indented\n\t# tabbed\n;\n#\n", 6, {} },
         { "inline comment characters", "k = v ; note\nl = a#b\n[S] ; header note\n", 3, {} },
         { "quoted values", "a = \"  spaced  \"\nb = \"\"\nc = \"open\nd = \"x\" ; note\n", 4, {} },
+        { "doubled quotes", "a = \"say \"\"hi\"\"\"\nb = \"\"\"\"\nc = \"a\"\"\nd = \"a\"\" b\" ; note\n", 4, {} },
         { "an unclosed section", "[A]\n[General\nk=1\n", 3, { EIniCode::UnclosedSection } },
         { "a header comment", "[General] ; note\n[Other];x\n", 2, {} },
         { "text after a header", "[General] junk\nk=1\n", 2, { EIniCode::MalformedLine } },
@@ -1379,6 +1382,43 @@ ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_AreOffByDefault)
     AssertEquals(1, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have one line");
     CheckKeyValue(lines[0], "k", "\" spaced \"", __func__, __LINE__, "the quotes should be part of the value");
     CheckFalse(lines[0].IsQuoted(), __func__, __LINE__, "the value shouldn't be quoted");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_DoubledQuoteIsOneQuote)
+{
+    // Arrange
+    TASWIniOptions options;
+    options.Reading.QuotedValues = true;
+    TASWIniOptions withComments = options;
+    withComments.Reading.InlineComments = true;
+    std::string const text = "a = \"say \"\"hi\"\"\"\nb = \"\"\"\"\nc = \"\"\"a, b\"\"\"\nd = \"a\"\" b\" ; note\n"
+        "e = \"a\"\"\nf = \"a\" \"b\"\ng = \"a\"\"b\" junk\n";
+
+    // Act
+    TASWIniDocument const document = ParseValid(text, options, __func__, __LINE__);
+    std::vector<TASWIniDocumentLine> const lines = AllLines(document);
+    std::vector<TASWIniDocumentLine> const commented = AllLines(ParseValid(text, withComments, __func__, __LINE__));
+
+    // Assert
+    AssertEquals(7, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have seven lines");
+    CheckKeyValue(lines[0], "a", "say \"hi\"", __func__, __LINE__, "\"\" inside the quotes is one '\"'");
+    CheckTrue(lines[0].IsQuoted(), __func__, __LINE__, "a value with doubled quotes should be quoted");
+    CheckKeyValue(lines[1], "b", "\"", __func__, __LINE__, "a value of only a doubled quote");
+    CheckKeyValue(lines[2], "c", "\"a, b\"", __func__, __LINE__, "a value that starts and ends with a quote");
+    CheckKeyValue(lines[3], "d", "\"a\"\" b\" ; note", __func__, __LINE__,
+        "a comment after doubled quotes without InlineComments is text after the quote");
+    CheckFalse(lines[3].IsQuoted(), __func__, __LINE__, "a value with text after its closing quote isn't quoted");
+    CheckKeyValue(lines[4], "e", "\"a\"\"", __func__, __LINE__, "a doubled quote doesn't close the value");
+    CheckFalse(lines[4].IsQuoted(), __func__, __LINE__, "a value with no closing quote isn't quoted");
+    CheckKeyValue(lines[5], "f", "\"a\" \"b\"", __func__, __LINE__, "a quote after a blank isn't a doubled quote");
+    CheckFalse(lines[5].IsQuoted(), __func__, __LINE__, "two quoted parts aren't a quoted value");
+    CheckKeyValue(lines[6], "g", "\"a\"\"b\" junk", __func__, __LINE__, "text after the closing quote");
+    CheckEquals(text, document.ToText(), __func__, __LINE__, "the text should be written back as it was");
+
+    AssertEquals(7, static_cast<int>(commented.size()), __func__, __LINE__, "the text should have seven lines");
+    CheckKeyValue(commented[3], "d", "a\" b", __func__, __LINE__, "doubled quotes with InlineComments");
+    CheckEquals(std::string("note"), std::string(commented[3].GetComment()), __func__, __LINE__,
+        "the comment after doubled quotes");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_LoseTheirQuotes)
@@ -2961,6 +3001,8 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_IsQuotedWhenItNeedsIt)
         __func__, __LINE__), __func__, __LINE__, "a comment prefix after a blank, with InlineComments");
     CheckEquals(std::string("[A]\nk = a\n"), SetAndWrite("[A]\n", quoted, "A", "k", "a", __func__, __LINE__),
         __func__, __LINE__, "a value that doesn't need quotes");
+    CheckEquals(std::string("[A]\nk = \"\"\"x\"\"\"\n"), SetAndWrite("[A]\n", quoted, "A", "k", "\"x\"", __func__,
+        __LINE__), __func__, __LINE__, "a value in quotes, with its quotes doubled");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_LineBreaks)
@@ -3146,8 +3188,10 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_QuotedStaysQuoted)
         __func__, __LINE__, "an empty quoted value");
     CheckEquals(std::string("k = \"b\" ; c\n"), SetAndWrite("k = \"a\" ; c\n", quotedWithComments, "", "k", "b",
         __func__, __LINE__), __func__, __LINE__, "a quoted value with a comment");
-    CheckEquals(std::string("k = a\"b\n"), SetAndWrite("k = \"old\"\n", quoted, "", "k", "a\"b", __func__,
-        __LINE__), __func__, __LINE__, "a value with a '\"' loses the quotes, which it doesn't need");
+    CheckEquals(std::string("k = \"a\"\"b\"\n"), SetAndWrite("k = \"old\"\n", quoted, "", "k", "a\"b", __func__,
+        __LINE__), __func__, __LINE__, "a value with a '\"' stays quoted, with the '\"' doubled");
+    CheckEquals(std::string("k = \"new\"\n"), SetAndWrite("k = \"a\"\"b\"\n", quoted, "", "k", "new", __func__,
+        __LINE__), __func__, __LINE__, "a value with doubled quotes is replaced as a whole");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_QuotedWhenItNeedsIt)
@@ -3169,6 +3213,18 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_QuotedWhenItNeedsIt)
         __LINE__), __func__, __LINE__, "a leading comment prefix, after the separator's blank");
     CheckEquals(std::string("k = a;b\n"), SetAndWrite("k = v\n", quotedWithComments, "", "k", "a;b", __func__,
         __LINE__), __func__, __LINE__, "a comment prefix with no blank before it doesn't need quotes");
+    CheckEquals(std::string("k = \"\"\"x\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"x\"", __func__,
+        __LINE__), __func__, __LINE__, "a value in quotes, with its quotes doubled");
+    CheckEquals(std::string("k = \" a\"\"b \"\n"), SetAndWrite("k = v\n", quoted, "", "k", " a\"b ", __func__,
+        __LINE__), __func__, __LINE__, "a value that needs quotes and holds one");
+    CheckEquals(std::string("k = \"\"\"\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"\"", __func__,
+        __LINE__), __func__, __LINE__, "a value of two quotes");
+    CheckEquals(std::string("k = \"\"\"a, b\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\"", __func__,
+        __LINE__), __func__, __LINE__, "a list of one quoted item");
+    CheckEquals(std::string("k = \"a, b\", c\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\", c", __func__,
+        __LINE__), __func__, __LINE__, "a leading quoted part that doesn't make the value quoted needs no quotes");
+    CheckEquals(std::string("k = \"a\"\" ; b\" ; c\n"), SetAndWrite("k = v ; c\n", quotedWithComments, "", "k",
+        "a\" ; b", __func__, __LINE__), __func__, __LINE__, "a quote and a comment prefix, with InlineComments");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_RejectedWhenItWouldntReadBack)
@@ -3188,8 +3244,6 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_RejectedWhenItWouldntReadBack)
     CheckRejected(text, options, "", "k", "a\rb", __func__, __LINE__, "a CR");
     CheckRejected(text, withComments, "", "k", "a ; b", __func__, __LINE__,
         "a comment prefix after a blank, with InlineComments and without QuotedValues");
-    CheckRejected(text, quoted, "", "k", "\"x\"", __func__, __LINE__, "a value in quotes, with QuotedValues");
-    CheckRejected(text, quoted, "", "k", " a\"b ", __func__, __LINE__, "a value that needs quotes and holds one");
     CheckRejected(text, quoted, "", "k", "a\r\nb", __func__, __LINE__, "a CRLF, with QuotedValues");
 }
 //---------------------------------------------------------------------------

@@ -94,7 +94,8 @@ struct TASWIniReadingOptions
     bool InlineComments = false;
 
     // Whether a value in double quotes ("  spaced value  ") keeps its spaces and loses its quotes when read, and is
-    // written in quotes when it needs them (leading or trailing spaces, or a comment prefix with InlineComments).
+    // written in quotes when it needs them (leading or trailing spaces, a leading '"', or a comment prefix with
+    // InlineComments). Inside the quotes, "" stands for one '"' ("say ""hi""" is the value say "hi").
     bool QuotedValues = false;
 
     // Whether section and key names are case-sensitive. When not (the default), they compare with the ASCII letters'

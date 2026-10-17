@@ -62,8 +62,9 @@ enum class ELineKind : int
 //
 // One line of an INI text: its text (without its line break), its line break, its kind and the parts the parser found
 // in it. The parts are kept as positions in the text, so a line is written back byte for byte, and a line whose value
-// changes keeps its indentation, separator, spacing and comment. The std::string_view results point into the line's
-// text: they are valid until the line is changed or destroyed.
+// changes keeps its indentation, separator, spacing and comment. The std::string_view results point into the line
+// (its text, or the value with its doubled quotes made single): they are valid until the line is changed, moved or
+// destroyed.
 /////////////////////////////////////////////////////////////////////////////
 class TASWIniDocumentLine
 {
@@ -94,6 +95,7 @@ private:
     std::size_t m_Separator = 0; // KeyValue: the separator's position
     TPart m_Value; // KeyValue: the value, without the spaces and tabs around it, and without its quotes when quoted
     bool m_Quoted = false; // KeyValue: whether the value is in double quotes (with QuotedValues)
+    std::string m_UnquotedValue; // KeyValue: a quoted value that holds "", with each "" as one '"'; else empty
     bool m_HasComment = false; // Comment, Section, KeyValue: whether the line has a comment
     TPart m_Comment; // The comment's text, after its prefix, without the spaces and tabs around it
 
@@ -145,8 +147,9 @@ public:
     // The line's text as it was read, without its line break
     std::string const& GetText() const noexcept;
 
-    // The value, without the spaces and tabs around it, without its inline comment (with InlineComments) and without
-    // its double quotes when it is quoted (with QuotedValues); empty unless the line is a KeyValue
+    // The value, without the spaces and tabs around it, without its inline comment (with InlineComments) and, when it
+    // is quoted (with QuotedValues), without its double quotes and with each "" inside them as one '"'; empty unless
+    // the line is a KeyValue
     std::string_view GetValue() const noexcept;
 
     // Whether the line has a comment: it is a Comment line, or a Section or KeyValue line followed by a comment
@@ -274,8 +277,9 @@ private:
         std::vector<TASWIniDocumentLine>& lines);
 
     // Whether 'before', 'value' and 'after', as a line, read back as key line 'line' with the value 'value' (the same
-    // key and comment); if they do, that line replaces 'line'. 'value' is tried in double quotes when 'quotedFirst',
-    // else without them, and then, with QuotedValues, the other way. A value with a line break never reads back.
+    // key and comment); if they do, that line replaces 'line'. 'value' is tried in double quotes (each '"' in it as
+    // "") when 'quotedFirst', else without them, and then, with QuotedValues, the other way. A value with a line break
+    // never reads back.
     bool TryValueLine(std::string_view before, std::string_view value, std::string_view after, bool quotedFirst,
         TASWIniDocumentLine& line) const;
 
@@ -421,11 +425,11 @@ public:
     // right after the header, or in a preamble with no keys after the file comment and the blank lines under it), as
     // indentation, key, Writing.Separator and value; a missing section is added first, as AddSection() does. With
     // QuotedValues, a value is written in double quotes when it needs them to read back (blanks at either end, a
-    // leading '"', or with InlineComments a comment prefix after a blank). Setting the value a key has changes
-    // nothing. Fails with InvalidArgument, and then nothing changes, when a name or the value wouldn't read back as
-    // it is: e.g. a line break, a key that is empty, holds a separator or starts with a comment prefix or '[', blanks
-    // around a name, or a value that needs quotes without QuotedValues (or holds a '"' that would end them). Throws
-    // only std::bad_alloc, and then nothing changes either.
+    // leading '"', or with InlineComments a comment prefix after a blank), with each '"' in it written as "". Setting
+    // the value a key has changes nothing. Fails with InvalidArgument, and then nothing changes, when a name or the
+    // value wouldn't read back as it is: e.g. a line break, a key that is empty, holds a separator or starts with a
+    // comment prefix or '[', blanks around a name, or a value that needs quotes without QuotedValues. Throws only
+    // std::bad_alloc, and then nothing changes either.
     TASWIniResult SetValue(std::string_view section, std::string_view key, std::string_view value);
 
     // The document as text, as its writing options say: a UTF-8 byte order mark (with EBomMode::Auto, when the text

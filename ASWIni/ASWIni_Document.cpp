@@ -58,7 +58,9 @@ struct TNameLess
 //---------------------------------------------------------------------------
 
 std::size_t CommentBlockBegin(std::vector<TASWIniDocumentLine> const& lines, std::size_t end) noexcept;
+std::string DoubledQuotes(std::string_view text);
 TASWIniResult Failure(EIniCode code, std::string const& message);
+std::size_t FindClosingQuote(std::string_view text, std::size_t from) noexcept;
 std::size_t FindInlineComment(std::string_view text, std::size_t from, std::vector<std::string> const& prefixes,
     std::size_t& prefixSize) noexcept;
 bool HasLineBreak(std::string_view text) noexcept;
@@ -76,6 +78,7 @@ void RemoveMarked(std::vector<T>& items, std::vector<bool> const& marks);
 bool SameName(std::string_view left, std::string_view right, bool caseSensitive) noexcept;
 std::size_t SkipBlanks(std::string_view text, std::size_t pos) noexcept;
 std::size_t TrimBlanksBefore(std::string_view text, std::size_t begin, std::size_t end) noexcept;
+std::string UndoubledQuotes(std::string_view text);
 TASWIniMessage Warning(EIniCode code, std::string const& text, std::size_t line, std::string_view section,
     std::string_view key);
 ELineBreak WrittenLineBreak(ELineBreak lineBreak, ELineEnding lineEnding) noexcept;
@@ -97,6 +100,25 @@ std::size_t CommentBlockBegin(std::vector<TASWIniDocumentLine> const& lines, std
 }
 //---------------------------------------------------------------------------
 /*
+    DoubledQuotes
+
+    'text' with each '"' in it written as "", as it goes between the double quotes of a quoted value.
+*/
+std::string DoubledQuotes(std::string_view text)
+{
+    std::string doubled;
+    doubled.reserve(text.size());
+    for (char const c : text)
+    {
+        if (c == '"')
+            doubled += '"';
+        doubled += c;
+    }
+
+    return doubled;
+}
+//---------------------------------------------------------------------------
+/*
     Failure
 
     A failed result with 'code' and 'message'.
@@ -108,6 +130,21 @@ TASWIniResult Failure(EIniCode code, std::string const& message)
     result.Message = message;
 
     return result;
+}
+//---------------------------------------------------------------------------
+/*
+    FindClosingQuote
+
+    The position of the '"' that closes a quoted value whose text starts at 'from' in 'text': the first '"' that isn't
+    one of a pair ("" stands for one '"'); std::string_view::npos when there is none.
+*/
+std::size_t FindClosingQuote(std::string_view text, std::size_t from) noexcept
+{
+    std::size_t quote = text.find('"', from);
+    while (quote != std::string_view::npos && quote + 1 < text.size() && text[quote + 1] == '"')
+        quote = text.find('"', quote + 2);
+
+    return quote;
 }
 //---------------------------------------------------------------------------
 /*
@@ -192,8 +229,7 @@ TASWIniResult InvalidValue(std::string_view section, std::string_view key, std::
         return Failure(EIniCode::InvalidArgument, what + " holds a line break; a value must be one line.");
 
     return Failure(EIniCode::InvalidArgument, what + " can't be written so that it reads back as it is: blanks at "
-        "either end, a leading '\"' and, with InlineComments, a comment prefix after a blank need QuotedValues, and a "
-        "quoted value can't hold a '\"'.");
+        "either end, a leading '\"' and, with InlineComments, a comment prefix after a blank need QuotedValues.");
 }
 //---------------------------------------------------------------------------
 /*
@@ -347,6 +383,25 @@ std::size_t TrimBlanksBefore(std::string_view text, std::size_t begin, std::size
         --end;
 
     return end;
+}
+//---------------------------------------------------------------------------
+/*
+    UndoubledQuotes
+
+    'text', the text between the double quotes of a quoted value, with each "" in it as one '"'.
+*/
+std::string UndoubledQuotes(std::string_view text)
+{
+    std::string undoubled;
+    undoubled.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i)
+    {
+        undoubled += text[i];
+        if (text[i] == '"')
+            ++i;
+    }
+
+    return undoubled;
 }
 //---------------------------------------------------------------------------
 /*
@@ -531,6 +586,9 @@ std::string_view TASWIniDocumentLine::GetValue() const noexcept
     if (m_Kind != ELineKind::KeyValue)
         return std::string_view();
 
+    if (!m_UnquotedValue.empty())
+        return m_UnquotedValue;
+
     return GetPart(m_Value);
 }
 //---------------------------------------------------------------------------
@@ -603,7 +661,7 @@ bool TASWIniDocumentLine::ParseQuotedValue(std::size_t valueBegin, TASWIniReadin
     if (valueBegin >= m_Text.size() || m_Text[valueBegin] != '"')
         return false;
 
-    std::size_t const closingQuote = m_Text.find('"', valueBegin + 1);
+    std::size_t const closingQuote = FindClosingQuote(m_Text, valueBegin + 1);
     if (closingQuote == std::string::npos)
         return false;
 
@@ -624,6 +682,11 @@ bool TASWIniDocumentLine::ParseQuotedValue(std::size_t valueBegin, TASWIniReadin
     m_Value.Begin = valueBegin + 1;
     m_Value.End = closingQuote;
     m_Quoted = true;
+
+    // Doubled quotes are made single once, so GetValue() can return a view
+    std::string_view const value = GetPart(m_Value);
+    if (value.find('"') != std::string_view::npos)
+        m_UnquotedValue = UndoubledQuotes(value);
 
     return true;
 }
@@ -1684,10 +1747,9 @@ bool TASWIniDocument::TryValueLine(std::string_view before, std::string_view val
 
         std::string text(before);
         if (quoted)
-            text += '"';
-        text += value;
-        if (quoted)
-            text += '"';
+            text += '"' + DoubledQuotes(value) + '"';
+        else
+            text += value;
         text += after;
 
         TASWIniDocumentLine changed = MakeLine(text, line.m_LineBreak);

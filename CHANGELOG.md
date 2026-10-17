@@ -52,10 +52,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CR line breaks) as the options' `Reading` group says, keeping every line, and keeps the options.
   Lines that can't be parsed are kept as `Raw` lines and reported as warnings (`MalformedLine`,
   `UnclosedSection`), as are duplicate sections and keys and the first line that isn't valid UTF-8;
-  each warning has its line number and section. It fails with `InvalidOptions` (any group, see
-  `TASWIniOptions::Validate()`), `UnsupportedEncoding` (a UTF-16 or UTF-32 byte order mark) or,
-  with `StrictParsing`, `ParseFailed` for the first malformed line, and then leaves the document
-  and the messages unchanged.
+  each warning has its line number and section. With `Reading.QuotedValues`, a value in double
+  quotes keeps its blanks and loses its quotes, and `""` inside them is one `"` (`"say ""hi"""` is
+  `say "hi"`). It fails with `InvalidOptions` (any group, see `TASWIniOptions::Validate()`),
+  `UnsupportedEncoding` (a UTF-16 or UTF-32 byte order mark) or, with `StrictParsing`,
+  `ParseFailed` for the first malformed line, and then leaves the document and the messages
+  unchanged.
 - `TASWIniDocument::ToText()` writes the document back as text, as its `Writing` options say. With
   the defaults, a parsed text comes back byte for byte. `ELineEnding::Auto` keeps each line's own
   line break, while `LF`, `CRLF` and `Native` give every line that one. A last line without a line
@@ -72,10 +74,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   part before the first header under the file comment) as `key = value` with `Writing.Separator`,
   and a new section goes at the end of the file, after a blank line
   (`Writing.BlankLineBeforeNewSection`). New lines get the file's line break. A value is quoted
-  when it needs it to read back (with `Reading.QuotedValues`); a name or value that wouldn't read
-  back as it is (e.g. a line break, a key with a separator, a section name with `]`) fails with
-  `InvalidArgument` and changes nothing. Setting the value a key already has changes nothing, and
-  doesn't set `IsModified()`.
+  when it needs it to read back (with `Reading.QuotedValues`, each `"` in it written as `""`); a
+  name or value that wouldn't read back as it is (e.g. a line break, a key with a separator, a
+  section name with `]`) fails with `InvalidArgument` and changes nothing. Setting the value a key
+  already has changes nothing, and doesn't set `IsModified()`.
 - `TASWIniDocument::RemoveKey()`, `RemoveSection()`, `RenameKey()` and `RenameSection()`. A
   removal takes every line of the key, or every section of the name, with the comment lines
   directly above it (a removed section's lines that are the next section's comment stay), and

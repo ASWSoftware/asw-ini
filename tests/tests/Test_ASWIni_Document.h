@@ -100,6 +100,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Parse_KeepsTheOptions();
     void Test_Parse_ReplacesPreviousContents();
     void Test_QuotedValues_AreOffByDefault();
+    void Test_QuotedValues_DoubledQuoteIsOneQuote();
     void Test_QuotedValues_LoseTheirQuotes();
     void Test_Sections_DuplicatesAreSeparate();
     void Test_Sections_HoldTheLinesAfterTheirHeader();

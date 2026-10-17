@@ -6,8 +6,12 @@ and Linux, which keeps the file's comments and layout.
 ## Status
 
 ASWIni is in development toward 1.0.0; the `develop` branch carries `1.0.0-dev.N` versions. So far
-it has the project structure, the version (`ASWIni_Version.h`), the CMake target and package, and
-the unit-test projects. [CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may
+it has the project structure, the version (`ASWIni_Version.h`), the CMake target and package, the
+unit-test projects, the options (`ASWIni_Options.h`), and the document model
+(`ASWIni_Document.h`): `TASWIniDocument` reads INI text and writes it back byte for byte, keeping
+comments, blank lines, line breaks and lines it doesn't understand, and reports malformed lines and
+duplicates as warnings. Loading and saving files, editing values, typed values and the settings
+classes come next. [CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may
 change in any way until 1.0.0.
 
 ## Design

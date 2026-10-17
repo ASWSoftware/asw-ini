@@ -188,6 +188,10 @@
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\..\..\ASWIni\ASWIni_File.cpp">
+            <DependentOn>..\..\..\..\ASWIni\ASWIni_File.h</DependentOn>
+            <BuildOrder>53</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Options.cpp">
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Options.h</DependentOn>
             <BuildOrder>51</BuildOrder>
@@ -204,6 +208,10 @@
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Version.h</DependentOn>
             <BuildOrder>2</BuildOrder>
         </CppCompile>
+        <CppCompile Include="..\..\..\tests\Test_ASWIni_File.cpp">
+            <DependentOn>..\..\..\tests\Test_ASWIni_File.h</DependentOn>
+            <BuildOrder>54</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Options.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Options.h</DependentOn>
             <BuildOrder>52</BuildOrder>
@@ -219,6 +227,10 @@
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Version.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Version.h</DependentOn>
             <BuildOrder>3</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\tests\UT_Helper_TempDir.cpp">
+            <DependentOn>..\..\..\tests\UT_Helper_TempDir.h</DependentOn>
+            <BuildOrder>55</BuildOrder>
         </CppCompile>
         <CppCompile Include="ASWIniTests_VCL_GUI.cpp">
             <BuildOrder>0</BuildOrder>

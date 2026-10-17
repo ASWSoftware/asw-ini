@@ -28,5 +28,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (on), backups (off) and creating missing folders (on). `Validate()` returns
   `EIniCode::InvalidOptions` for options that would write a file that can't be read back. New
   source: `ASWIni_Options.cpp`.
+- The file layer that loading and saving will use (`ASWIni_File.cpp`, internal): whole files read
+  and written in binary mode with the operating system's own file APIs, a size limit on reads, and
+  saves that replace the file atomically (keeping its attributes on Windows, and its permissions
+  and symbolic link elsewhere), with an optional backup and missing folders created. File paths
+  are UTF-8.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

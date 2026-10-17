@@ -150,6 +150,10 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\ASWIni\ASWIni_File.cpp">
+            <DependentOn>..\..\ASWIni\ASWIni_File.h</DependentOn>
+            <BuildOrder>21</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\ASWIni\ASWIni_Options.cpp">
             <DependentOn>..\..\ASWIni\ASWIni_Options.h</DependentOn>
             <BuildOrder>19</BuildOrder>
@@ -170,6 +174,10 @@
             <BuildOrder>0</BuildOrder>
             <PCH>true</PCH>
         </PCHCompile>
+        <CppCompile Include="..\tests\Test_ASWIni_File.cpp">
+            <DependentOn>..\tests\Test_ASWIni_File.h</DependentOn>
+            <BuildOrder>22</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\tests\Test_ASWIni_Options.cpp">
             <DependentOn>..\tests\Test_ASWIni_Options.h</DependentOn>
             <BuildOrder>20</BuildOrder>
@@ -185,6 +193,10 @@
         <CppCompile Include="..\tests\Test_ASWIni_Version.cpp">
             <DependentOn>..\tests\Test_ASWIni_Version.h</DependentOn>
             <BuildOrder>2</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\tests\UT_Helper_TempDir.cpp">
+            <DependentOn>..\tests\UT_Helper_TempDir.h</DependentOn>
+            <BuildOrder>23</BuildOrder>
         </CppCompile>
         <CppCompile Include="..\..\third_party\asw-unit-tests\src\ASWUnitTests_CLI.cpp">
             <DependentOn>..\..\third_party\asw-unit-tests\src\ASWUnitTests_CLI.h</DependentOn>

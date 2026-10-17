@@ -1,0 +1,9 @@
+# The CMake package file of an installed ASWIni (see the root CMakeLists.txt). After
+#     find_package(ASWIni CONFIG REQUIRED)
+# link to the ASWIni::ASWIni target.
+
+@PACKAGE_INIT@
+
+include("${CMAKE_CURRENT_LIST_DIR}/ASWIniTargets.cmake")
+
+check_required_components(ASWIni)

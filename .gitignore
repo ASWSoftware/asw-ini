@@ -87,6 +87,8 @@ Obj/
 cmake-build-*/
 out/
 build/
+# Extra CMake build folders, e.g. tests/cmake/build-cpp17 or tests/cmake/build-tsan
+build-*/
 .Xil/
 MSVC.Suo/
 *.Visual studio/

@@ -8,7 +8,7 @@ TASWIniDocument, the lossless model of an INI text: its sections in file
 order (TASWIniDocumentSection), each with its lines (TASWIniDocumentLine),
 each line with its original text, its line break and the parts the parser
 found in it, so a text that is read and written back without changes is the
-same byte for byte. Not thread-safe; copyable.
+same byte for byte. Parse() reads a text into it. Not thread-safe; copyable.
 
 Requires C++ 17 or higher.
 
@@ -38,6 +38,7 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 //---------------------------------------------------------------------------
+#include "ASWIni_Options.h"
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
 
@@ -75,6 +76,14 @@ private:
         std::size_t End = 0;
     };
 
+    // What is wrong with a line that was parsed: MalformedLine or UnclosedSection, and what the problem is (e.g. "The
+    // line has an empty key"); Ok when nothing is
+    struct TProblem
+    {
+        EIniCode Code = EIniCode::Ok;
+        char const* Text = "";
+    };
+
     std::string m_Text;
     ELineBreak m_LineBreak = ELineBreak::None;
     ELineKind m_Kind = ELineKind::Blank;
@@ -88,7 +97,25 @@ private:
     TPart m_Comment; // The comment's text, after its prefix, without the spaces and tabs around it
 
 private:
+    // Parses 'text', a line of an INI text that ended with 'lineBreak', as 'options' say. A line that can't be parsed
+    // is kept as a Raw line, and 'problem' says why; so does a section header followed by other text than a comment,
+    // which is still a Section line.
+    TASWIniDocumentLine(std::string_view text, ELineBreak lineBreak, TASWIniReadingOptions const& options,
+        TProblem& problem);
+
     std::string_view GetPart(TPart part) const noexcept;
+
+    // Sets the comment, whose text (after its prefix) starts at 'textBegin'
+    void ParseComment(std::size_t textBegin);
+
+    // Parses the line as a key and its value, whose key starts at 'begin' (after the indentation)
+    void ParseKeyValue(std::size_t begin, TASWIniReadingOptions const& options, TProblem& problem);
+
+    // Whether the value, which starts at 'valueBegin', is a quoted value (with QuotedValues); if it is, sets it
+    bool ParseQuotedValue(std::size_t valueBegin, TASWIniReadingOptions const& options);
+
+    // Parses the line as a section header, whose '[' is at 'begin'
+    void ParseSection(std::size_t begin, TASWIniReadingOptions const& options, TProblem& problem);
 
 public:
     // A blank line with no line break
@@ -188,6 +215,16 @@ public:
 
     // Whether the text that was read started with a UTF-8 byte order mark (it isn't part of any line)
     bool HasBom() const noexcept;
+
+    // Reads 'text' (UTF-8, with or without a byte order mark; lines end with LF, CRLF or CR) into this document,
+    // replacing what it held, as 'options' say. Every line is kept as it is. The warnings (MalformedLine and
+    // UnclosedSection for a line that can't be parsed, DuplicateSection, DuplicateKey, and one InvalidUtf8 for the
+    // first line that isn't valid UTF-8) are added to 'messages', each with its line number (1-based) and section.
+    // Fails with InvalidOptions (see TASWIniReadingOptions::Validate()), UnsupportedEncoding (a UTF-16 or UTF-32 byte
+    // order mark) or, with StrictParsing, ParseFailed for the first line that can't be parsed (its number in Line);
+    // then neither the document nor 'messages' changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult Parse(std::string_view text, TASWIniReadingOptions const& options,
+        std::vector<TASWIniMessage>& messages);
 };
 
 //---------------------------------------------------------------------------

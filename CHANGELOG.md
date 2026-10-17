@@ -46,5 +46,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `Comment`, `Section`, `KeyValue` or `Raw`) and its key, value, separator, section name and
   comment), plus whether the text had a UTF-8 byte order mark and the line break new lines get. It
   is copyable and not thread-safe. New source: `ASWIni_Document.cpp`.
+- `TASWIniDocument::Parse()` reads UTF-8 text (with or without a byte order mark, with LF, CRLF or
+  CR line breaks) as the reading options say, keeping every line. Lines that can't be parsed are
+  kept as `Raw` lines and reported as warnings (`MalformedLine`, `UnclosedSection`), as are
+  duplicate sections and keys and the first line that isn't valid UTF-8; each warning has its line
+  number and section. It fails with `InvalidOptions`, `UnsupportedEncoding` (a UTF-16 or UTF-32
+  byte order mark) or, with `StrictParsing`, `ParseFailed` for the first malformed line, and then
+  leaves the document and the messages unchanged.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

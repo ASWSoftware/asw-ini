@@ -103,6 +103,26 @@ char const* ToString(EIniCode code) noexcept
     return "Unknown";
 }
 //---------------------------------------------------------------------------
+char const* ToString(ELineBreak lineBreak) noexcept
+{
+    switch (lineBreak)
+    {
+        case ELineBreak::None:
+            return "None";
+
+        case ELineBreak::LF:
+            return "LF";
+
+        case ELineBreak::CR:
+            return "CR";
+
+        case ELineBreak::CRLF:
+            return "CRLF";
+    }
+
+    return "Unknown";
+}
+//---------------------------------------------------------------------------
 char const* ToString(ESeverity severity) noexcept
 {
     switch (severity)

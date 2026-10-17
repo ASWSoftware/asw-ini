@@ -5,9 +5,9 @@ Author: Anthony S. West - ASW Software
 An INI file reader/writer library.
 
 The types every part of the library shares: EIniCode (what happened),
-ESeverity, TASWIniMessage (a warning or error reported to the application's
-log callback) and TASWIniResult (the outcome of an operation such as a load
-or a save).
+ELineBreak, ESeverity, TASWIniMessage (a warning or error reported to the
+application's log callback) and TASWIniResult (the outcome of an operation
+such as a load or a save).
 
 Requires C++ 17 or higher.
 
@@ -73,6 +73,15 @@ enum class EIniCode : int
     TempFileCleanupFailed = 21, // A temporary file of a failed save couldn't be deleted
 };
 
+// The line break that ends a line of an INI text
+enum class ELineBreak : int
+{
+    None = 0, // The last line of a text that doesn't end with a line break
+    LF = 1, // "\n" (Linux, and most files)
+    CR = 2, // "\r" (classic Mac OS)
+    CRLF = 3, // "\r\n" (Windows)
+};
+
 // How serious a TASWIniMessage is
 enum class ESeverity : int
 {
@@ -128,6 +137,9 @@ struct [[nodiscard]] TASWIniResult
 
 // The code's name, e.g. "FileNotFound"; "Unknown" for a value that isn't an EIniCode
 char const* ToString(EIniCode code) noexcept;
+
+// The line break's name: "None", "LF", "CR" or "CRLF"; "Unknown" for a value that isn't an ELineBreak
+char const* ToString(ELineBreak lineBreak) noexcept;
 
 // The severity's name: "Info", "Warning" or "Error"; "Unknown" for a value that isn't an ESeverity
 char const* ToString(ESeverity severity) noexcept;

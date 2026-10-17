@@ -31,6 +31,7 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 //---------------------------------------------------------------------------
+#include "ASWIni_Types.h"
 #include "ASWIni_Utils.h"
 //---------------------------------------------------------------------------
 
@@ -41,8 +42,8 @@ namespace
 {
 
 using ASWIni::Detail::EBom;
-using ASWIni::Detail::ELineBreak;
 using ASWIni::Detail::TLineSpan;
+using ASWIni::ELineBreak;
 
 std::string Bytes(char const* bytes, std::size_t size);
 std::string Join(std::vector<TLineSpan> const& lines);

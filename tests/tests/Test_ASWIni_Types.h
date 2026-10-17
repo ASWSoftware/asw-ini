@@ -42,6 +42,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Result_DefaultsToOk();
     void Test_Result_FailsForAnyOtherCode();
     void Test_ToString_IniCodeNamesAreUnique();
+    void Test_ToString_LineBreakNames();
     void Test_ToString_MessageWithAllParts();
     void Test_ToString_MessageWithTextOnly();
     void Test_ToString_SeverityNames();

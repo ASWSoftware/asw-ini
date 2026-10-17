@@ -36,6 +36,8 @@ limitations under the License.
 #include <string_view>
 #include <vector>
 //---------------------------------------------------------------------------
+#include "ASWIni_Types.h"
+//---------------------------------------------------------------------------
 
 namespace ASWIni
 {
@@ -55,15 +57,6 @@ enum class EBom
     Utf16BE, // FE FF
     Utf32LE, // FF FE 00 00
     Utf32BE, // 00 00 FE FF
-};
-
-// The line break that ends a line
-enum class ELineBreak
-{
-    None, // The last line of a text that doesn't end with a line break
-    LF, // "\n" (Linux, and most files)
-    CR, // "\r" (classic Mac OS)
-    CRLF, // "\r\n" (Windows)
 };
 
 // One line of a text: its characters, without the line break, and the line break that ended it. The views point into

@@ -40,6 +40,7 @@ endif()
 
 add_executable(ASWIniTests
     ${ASWUNITTESTS_SOURCES}
+    "${ASWINI_TESTS_DIR}/Test_ASWIni_Document.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_File.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Options.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Types.cpp"

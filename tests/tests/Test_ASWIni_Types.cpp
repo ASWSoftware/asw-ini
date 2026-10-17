@@ -189,6 +189,18 @@ ASW_TEST(TTest_ASWIni_Types, ToString_IniCodeNamesAreUnique)
         __LINE__, "the name should be the enumerator's");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_Types, ToString_LineBreakNames)
+{
+    CheckEquals(std::string("None"), std::string(ASWIni::ToString(ASWIni::ELineBreak::None)), __func__, __LINE__,
+        "None's name");
+    CheckEquals(std::string("LF"), std::string(ASWIni::ToString(ASWIni::ELineBreak::LF)), __func__, __LINE__,
+        "LF's name");
+    CheckEquals(std::string("CR"), std::string(ASWIni::ToString(ASWIni::ELineBreak::CR)), __func__, __LINE__,
+        "CR's name");
+    CheckEquals(std::string("CRLF"), std::string(ASWIni::ToString(ASWIni::ELineBreak::CRLF)), __func__, __LINE__,
+        "CRLF's name");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Types, ToString_MessageWithAllParts)
 {
     // Arrange
@@ -242,11 +254,14 @@ ASW_TEST(TTest_ASWIni_Types, ToString_UnknownValues)
     // Arrange
     // Values that aren't enumerators, e.g. read from a newer version or cast from a corrupt number
     ASWIni::EIniCode const code = static_cast<ASWIni::EIniCode>(9999);
+    ASWIni::ELineBreak const lineBreak = static_cast<ASWIni::ELineBreak>(4);
     ASWIni::ESeverity const severity = static_cast<ASWIni::ESeverity>(-1);
 
     // Act & Assert
     CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(code)), __func__, __LINE__,
         "an unknown code should be \"Unknown\"");
+    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(lineBreak)), __func__, __LINE__,
+        "an unknown line break should be \"Unknown\"");
     CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(severity)), __func__, __LINE__,
         "an unknown severity should be \"Unknown\"");
 }

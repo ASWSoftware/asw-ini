@@ -150,6 +150,10 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\ASWIni\ASWIni_Document.cpp">
+            <DependentOn>..\..\ASWIni\ASWIni_Document.h</DependentOn>
+            <BuildOrder>24</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\ASWIni\ASWIni_File.cpp">
             <DependentOn>..\..\ASWIni\ASWIni_File.h</DependentOn>
             <BuildOrder>21</BuildOrder>
@@ -174,6 +178,10 @@
             <BuildOrder>0</BuildOrder>
             <PCH>true</PCH>
         </PCHCompile>
+        <CppCompile Include="..\tests\Test_ASWIni_Document.cpp">
+            <DependentOn>..\tests\Test_ASWIni_Document.h</DependentOn>
+            <BuildOrder>25</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\tests\Test_ASWIni_File.cpp">
             <DependentOn>..\tests\Test_ASWIni_File.h</DependentOn>
             <BuildOrder>22</BuildOrder>

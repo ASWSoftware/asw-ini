@@ -16,9 +16,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   CMake package, so `find_package(ASWIni CONFIG)` finds an installed copy.
 - `Deploy.bat`, which copies the library sources, build files and docs to a folder.
 - The shared types in `ASWIni_Types.h`: `EIniCode` (what happened, with values that never change),
-  `ESeverity`, `TASWIniMessage` (a warning or error for the application's log callback, with the
-  file, line, section, key and system error it is about) and `TASWIniResult` (an operation's
-  outcome, which converts to `true` when it succeeded). `ToString()` names a code or a severity, and
+  `ELineBreak` (`None`, `LF`, `CR` or `CRLF`: the line break that ends a line), `ESeverity`,
+  `TASWIniMessage` (a warning or error for the application's log callback, with the file, line,
+  section, key and system error it is about) and `TASWIniResult` (an operation's outcome, which
+  converts to `true` when it succeeded). `ToString()` names a code, a line break or a severity, and
   writes a message as one line of text. New sources: `ASWIni_Types.cpp` and `ASWIni_Utils.cpp`.
 - `TASWIniOptions` (`ASWIni_Options.h`), the settings for INI files in three groups:
   - `Reading` (`TASWIniReadingOptions`): the separators (`=` and `:`) and comment prefixes (`;`
@@ -39,5 +40,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   saves that replace the file atomically (keeping its attributes on Windows, and its permissions
   and symbolic link elsewhere), with an optional backup and missing folders created. File paths
   are UTF-8.
+- `TASWIniDocument` (`ASWIni_Document.h`), the lossless model of an INI text: its sections in file
+  order (`TASWIniDocumentSection`, the preamble before the first header first), each with its lines
+  (`TASWIniDocumentLine`: the text as read, its line break, its kind (`ELineKind`: `Blank`,
+  `Comment`, `Section`, `KeyValue` or `Raw`) and its key, value, separator, section name and
+  comment), plus whether the text had a UTF-8 byte order mark and the line break new lines get. It
+  is copyable and not thread-safe. New source: `ASWIni_Document.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

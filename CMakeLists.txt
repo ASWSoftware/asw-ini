@@ -35,6 +35,8 @@ set(ASWINI_SANITIZE "" CACHE STRING
 set_property(CACHE ASWINI_SANITIZE PROPERTY STRINGS "" thread address)
 
 add_library(ASWIni STATIC
+    ASWIni/ASWIni_Converters.cpp
+    ASWIni/ASWIni_Converters.h
     ASWIni/ASWIni_Document.cpp
     ASWIni/ASWIni_Document.h
     ASWIni/ASWIni_File.cpp

@@ -39,6 +39,9 @@ namespace ASWIni
 namespace
 {
 
+// The UTF-8 byte order mark
+constexpr std::string_view Utf8Bom("\xEF\xBB\xBF", 3);
+
 /////////////////////////////////////////////////////////////////////////////
 // TNameLess
 //
@@ -63,6 +66,7 @@ std::size_t SkipBlanks(std::string_view text, std::size_t pos) noexcept;
 std::size_t TrimBlanksBefore(std::string_view text, std::size_t begin, std::size_t end) noexcept;
 TASWIniMessage Warning(EIniCode code, std::string const& text, std::size_t line, std::string_view section,
     std::string_view key);
+ELineBreak WrittenLineBreak(ELineBreak lineBreak, ELineEnding lineEnding) noexcept;
 
 //---------------------------------------------------------------------------
 /*
@@ -203,6 +207,35 @@ TASWIniMessage Warning(EIniCode code, std::string const& text, std::size_t line,
     message.Key = std::string(key);
 
     return message;
+}
+//---------------------------------------------------------------------------
+/*
+    WrittenLineBreak
+
+    The line break a line that ended with 'lineBreak' is written with: its own with ELineEnding::Auto (or a value
+    that isn't an ELineEnding), else the one 'lineEnding' names. A line with no line break keeps having none.
+*/
+ELineBreak WrittenLineBreak(ELineBreak lineBreak, ELineEnding lineEnding) noexcept
+{
+    if (lineBreak == ELineBreak::None)
+        return ELineBreak::None;
+
+    switch (lineEnding)
+    {
+        case ELineEnding::Auto:
+            return lineBreak;
+
+        case ELineEnding::Native:
+            return Detail::NativeLineBreak();
+
+        case ELineEnding::LF:
+            return ELineBreak::LF;
+
+        case ELineEnding::CRLF:
+            return ELineBreak::CRLF;
+    }
+
+    return lineBreak;
 }
 //---------------------------------------------------------------------------
 
@@ -648,6 +681,40 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
         std::make_move_iterator(warnings.end()));
 
     return result;
+}
+//---------------------------------------------------------------------------
+std::string TASWIniDocument::ToText(TASWIniWritingOptions const& options) const
+{
+    bool writeBom = m_HasBom;
+    if (options.Bom == EBomMode::Always)
+        writeBom = true;
+    else if (options.Bom == EBomMode::Never)
+        writeBom = false;
+
+    // Room for the mark and every line with a two-character line break, so the text is allocated once
+    std::size_t size = Utf8Bom.size();
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        for (TASWIniDocumentLine const& line : section.m_Lines)
+            size += line.m_Text.size() + 2;
+    }
+
+    std::string text;
+    text.reserve(size);
+
+    if (writeBom)
+        text += Utf8Bom;
+
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        for (TASWIniDocumentLine const& line : section.m_Lines)
+        {
+            text += line.m_Text;
+            text += Detail::LineBreakText(WrittenLineBreak(line.m_LineBreak, options.LineEnding));
+        }
+    }
+
+    return text;
 }
 //---------------------------------------------------------------------------
 

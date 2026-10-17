@@ -225,6 +225,14 @@ public:
     // then neither the document nor 'messages' changes. Throws only std::bad_alloc, and then nothing changes either.
     TASWIniResult Parse(std::string_view text, TASWIniReadingOptions const& options,
         std::vector<TASWIniMessage>& messages);
+
+    // The document as text, as 'options' say: a UTF-8 byte order mark (with EBomMode::Auto, when the text that was
+    // read had one), then every line followed by its line break. With ELineEnding::Auto each line keeps its own line
+    // break; LF, CRLF and Native write every line's with that one instead. A last line that has no line break never
+    // gets one. With the default options, a parsed text is written back byte for byte. A LineEnding or Bom value that
+    // isn't one of the enumerators acts as Auto (TASWIniWritingOptions::Validate() rejects it). Throws only
+    // std::bad_alloc.
+    std::string ToText(TASWIniWritingOptions const& options) const;
 };
 
 //---------------------------------------------------------------------------

@@ -53,5 +53,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   number and section. It fails with `InvalidOptions`, `UnsupportedEncoding` (a UTF-16 or UTF-32
   byte order mark) or, with `StrictParsing`, `ParseFailed` for the first malformed line, and then
   leaves the document and the messages unchanged.
+- `TASWIniDocument::ToText()` writes the document back as text, as the writing options say. With
+  the defaults, a parsed text comes back byte for byte. `ELineEnding::Auto` keeps each line's own
+  line break, while `LF`, `CRLF` and `Native` give every line that one. A last line without a line
+  break never gets one. The UTF-8 byte order mark follows `Writing.Bom` (`Auto`: as the parsed text
+  had it).
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

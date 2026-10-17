@@ -155,6 +155,39 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentToText
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentToText : public TAutoTestGroup<TTest_ASWIni_DocumentToText>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentToText> inherited;
+
+private:
+    // 'text' parsed with the default reading options (checking that it parses), then written with 'options'
+    std::string WriteBack(std::string_view text, ASWIni::TASWIniWritingOptions const& options,
+        std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Bom_FollowsTheMode();
+    void Test_DefaultOptions_WriteTheParsedTextBack();
+    void Test_EmptyDocument_IsEmptyText();
+    void Test_LineEnding_AutoKeepsEachLinesBreak();
+    void Test_LineEnding_ConvertsEveryLine();
+    void Test_LineEnding_NeverAddsAFinalLineBreak();
+    void Test_UnknownEnumValues_ActAsAuto();
+
+public:
+    TTest_ASWIni_DocumentToText();
+    ~TTest_ASWIni_DocumentToText() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

@@ -47,10 +47,10 @@ namespace ASWIni
 // The line ending lines are written with
 enum class ELineEnding : int
 {
-    Auto = 0, // The loaded file's (its most common one); the platform's for a new file
-    Native = 1, // The platform's: CRLF on Windows, LF elsewhere
-    LF = 2, // "\n"
-    CRLF = 3, // "\r\n"
+    Auto = 0, // Each line keeps its own; new lines get the file's most common one (the platform's for a new file)
+    Native = 1, // Every line gets the platform's: CRLF on Windows, LF elsewhere
+    LF = 2, // Every line gets "\n"
+    CRLF = 3, // Every line gets "\r\n"
 };
 
 // Whether a saved file starts with a UTF-8 byte order mark

@@ -50,6 +50,7 @@ using ASWIni::TASWIniDocumentLine;
 using ASWIni::TASWIniMessage;
 using ASWIni::TASWIniReadingOptions;
 using ASWIni::TASWIniResult;
+using ASWIni::TASWIniWritingOptions;
 
 std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
 TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& options, TASWIniResult& result,
@@ -1008,9 +1009,191 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, Warnings_AreAppended)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentToText
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentToText::TTest_ASWIni_DocumentToText()
+    : inherited("ASWIni_DocumentToText_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentToText::~TTest_ASWIni_DocumentToText()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentToText::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentToText::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentToText::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentToText::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentToText::WriteBack(std::string_view text, TASWIniWritingOptions const& options,
+    std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument const document = ParseText(text, TASWIniReadingOptions(), result, messages);
+
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+
+    return document.ToText(options);
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, Bom_FollowsTheMode)
+{
+    // Arrange
+    std::string const bom = "\xEF\xBB\xBF";
+    std::string const text = "[S]\nk=v\n";
+    TASWIniWritingOptions always;
+    always.Bom = ASWIni::EBomMode::Always;
+    TASWIniWritingOptions never;
+    never.Bom = ASWIni::EBomMode::Never;
+
+    // Act & Assert
+    CheckEquals(bom + text, WriteBack(bom + text, TASWIniWritingOptions(), __func__, __LINE__), __func__, __LINE__,
+        "Auto should keep the mark of a text that had one");
+    CheckEquals(text, WriteBack(text, TASWIniWritingOptions(), __func__, __LINE__), __func__, __LINE__,
+        "Auto should write no mark for a text that had none");
+    CheckEquals(bom + text, WriteBack(text, always, __func__, __LINE__), __func__, __LINE__,
+        "Always should add the mark");
+    CheckEquals(bom + text, WriteBack(bom + text, always, __func__, __LINE__), __func__, __LINE__,
+        "Always should write the mark once");
+    CheckEquals(text, WriteBack(bom + text, never, __func__, __LINE__), __func__, __LINE__,
+        "Never should drop the mark");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, DefaultOptions_WriteTheParsedTextBack)
+{
+    // Arrange
+    // Texts with something that a careless writer would change: breaks, blanks, malformed lines, odd bytes
+    std::vector<std::string> const texts = {
+        "; comment\r\n\r\n[General]\r\nWidth = 640\r\n",
+        "a=1\nb=2\r\nc=3\rd=4",
+        "\xEF\xBB\xBF[S]\n\tk \t=\t v \t\n  \t\n",
+        "[General] junk\nskip-networking\n[open\n = v\n[]\n",
+        "k=1\nk=2\n[S]\n[s]\n",
+        "a=\xFF\xFE\nb=\xC0\x80\n",
+        std::string("k = a\0b\n\0\n", 10),
+        "\n\n\r\n\r\r",
+        "url = http://x ; not a comment\n[General] ; note\n",
+    };
+
+    // Act & Assert
+    for (std::size_t i = 0; i < texts.size(); ++i)
+    {
+        CheckEquals(texts[i], WriteBack(texts[i], TASWIniWritingOptions(), __func__, __LINE__), __func__, __LINE__,
+            "text " + std::to_string(i) + " should be written back byte for byte");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, EmptyDocument_IsEmptyText)
+{
+    // Arrange
+    TASWIniWritingOptions always;
+    always.Bom = ASWIni::EBomMode::Always;
+
+    // Act & Assert
+    CheckEquals(std::string(), TASWIniDocument().ToText(TASWIniWritingOptions()), __func__, __LINE__,
+        "a new document should be an empty text");
+    CheckEquals(std::string("\xEF\xBB\xBF"), TASWIniDocument().ToText(always), __func__, __LINE__,
+        "a new document with Always should be only the mark");
+    CheckEquals(std::string("\xEF\xBB\xBF"), WriteBack("\xEF\xBB\xBF", TASWIniWritingOptions(), __func__,
+        __LINE__), __func__, __LINE__, "a text of only the mark should be written back as it was");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_AutoKeepsEachLinesBreak)
+{
+    // Arrange
+    // Mostly CRLF, so a writer that used the most common break for every line would change the others
+    std::string const text = "a=1\r\nb=2\r\nc=3\nd=4\re=5\r\n";
+    TASWIniWritingOptions options;
+    options.LineEnding = ASWIni::ELineEnding::Auto;
+
+    // Act
+    std::string const written = WriteBack(text, options, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(text, written, __func__, __LINE__, "each line should keep its own line break");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_ConvertsEveryLine)
+{
+    // Arrange
+    std::string const text = "a=1\nb=2\r\nc=3\rd=4\n";
+    TASWIniWritingOptions lf;
+    lf.LineEnding = ASWIni::ELineEnding::LF;
+    TASWIniWritingOptions crlf;
+    crlf.LineEnding = ASWIni::ELineEnding::CRLF;
+    TASWIniWritingOptions native;
+    native.LineEnding = ASWIni::ELineEnding::Native;
+#if defined(_WIN32)
+    std::string const nativeText = "a=1\r\nb=2\r\nc=3\r\nd=4\r\n";
+#else
+    std::string const nativeText = "a=1\nb=2\nc=3\nd=4\n";
+#endif
+
+    // Act & Assert
+    CheckEquals(std::string("a=1\nb=2\nc=3\nd=4\n"), WriteBack(text, lf, __func__, __LINE__), __func__, __LINE__,
+        "LF should end every line with LF");
+    CheckEquals(std::string("a=1\r\nb=2\r\nc=3\r\nd=4\r\n"), WriteBack(text, crlf, __func__, __LINE__), __func__,
+        __LINE__, "CRLF should end every line with CRLF");
+    CheckEquals(nativeText, WriteBack(text, native, __func__, __LINE__), __func__, __LINE__,
+        "Native should end every line with the platform's line break");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_NeverAddsAFinalLineBreak)
+{
+    // Arrange
+    TASWIniWritingOptions crlf;
+    crlf.LineEnding = ASWIni::ELineEnding::CRLF;
+    TASWIniWritingOptions lf;
+    lf.LineEnding = ASWIni::ELineEnding::LF;
+
+    // Act & Assert
+    CheckEquals(std::string("a=1\r\nb=2"), WriteBack("a=1\nb=2", crlf, __func__, __LINE__), __func__, __LINE__,
+        "a last line with no line break should get none with CRLF");
+    CheckEquals(std::string("a=1"), WriteBack("a=1", lf, __func__, __LINE__), __func__, __LINE__,
+        "a single line with no line break should get none with LF");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentToText, UnknownEnumValues_ActAsAuto)
+{
+    // Arrange
+    std::string const text = "\xEF\xBB\xBF" "a=1\nb=2\r\n";
+    TASWIniWritingOptions options;
+    options.LineEnding = static_cast<ASWIni::ELineEnding>(99);
+    options.Bom = static_cast<ASWIni::EBomMode>(99);
+
+    // Act
+    std::string const written = WriteBack(text, options, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(text, written, __func__, __LINE__,
+        "unknown LineEnding and Bom values should keep the line breaks and the mark as Auto does");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentModel, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentParse, "Document")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentToText, "Document")

@@ -20,5 +20,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   file, line, section, key and system error it is about) and `TASWIniResult` (an operation's
   outcome, which converts to `true` when it succeeded). `ToString()` names a code or a severity, and
   writes a message as one line of text. New sources: `ASWIni_Types.cpp` and `ASWIni_Utils.cpp`.
+- `TASWIniOptions` (`ASWIni_Options.h`), the settings for reading, writing and saving INI files:
+  the separators read (`=` and `:`) and written (`" = "`), the comment prefixes read (`;` and `#`)
+  and written (`"; "`), inline comments and quoted values (both off), case-sensitive names (off),
+  which duplicate key wins (the first), strict parsing (off), the largest file loaded (16 MiB), the
+  line ending and byte order mark written (both as the loaded file had them), and atomic saves
+  (on), backups (off) and creating missing folders (on). `Validate()` returns
+  `EIniCode::InvalidOptions` for options that would write a file that can't be read back. New
+  source: `ASWIni_Options.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

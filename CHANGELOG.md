@@ -45,15 +45,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`TASWIniDocumentLine`: the text as read, its line break, its kind (`ELineKind`: `Blank`,
   `Comment`, `Section`, `KeyValue` or `Raw`) and its key, value, separator, section name and
   comment), plus whether the text had a UTF-8 byte order mark and the line break new lines get. It
-  is copyable and not thread-safe. New source: `ASWIni_Document.cpp`.
+  keeps its `TASWIniOptions` (`GetOptions()`), which only change when it is parsed again or reset
+  (`Reset()` empties it and gives it new options), and whether an edit changed it (`IsModified()`,
+  `ClearModified()`). It is copyable and not thread-safe. New source: `ASWIni_Document.cpp`.
 - `TASWIniDocument::Parse()` reads UTF-8 text (with or without a byte order mark, with LF, CRLF or
-  CR line breaks) as the reading options say, keeping every line. Lines that can't be parsed are
-  kept as `Raw` lines and reported as warnings (`MalformedLine`, `UnclosedSection`), as are
-  duplicate sections and keys and the first line that isn't valid UTF-8; each warning has its line
-  number and section. It fails with `InvalidOptions`, `UnsupportedEncoding` (a UTF-16 or UTF-32
-  byte order mark) or, with `StrictParsing`, `ParseFailed` for the first malformed line, and then
-  leaves the document and the messages unchanged.
-- `TASWIniDocument::ToText()` writes the document back as text, as the writing options say. With
+  CR line breaks) as the options' `Reading` group says, keeping every line, and keeps the options.
+  Lines that can't be parsed are kept as `Raw` lines and reported as warnings (`MalformedLine`,
+  `UnclosedSection`), as are duplicate sections and keys and the first line that isn't valid UTF-8;
+  each warning has its line number and section. It fails with `InvalidOptions` (any group, see
+  `TASWIniOptions::Validate()`), `UnsupportedEncoding` (a UTF-16 or UTF-32 byte order mark) or,
+  with `StrictParsing`, `ParseFailed` for the first malformed line, and then leaves the document
+  and the messages unchanged.
+- `TASWIniDocument::ToText()` writes the document back as text, as its `Writing` options say. With
   the defaults, a parsed text comes back byte for byte. `ELineEnding::Auto` keeps each line's own
   line break, while `LF`, `CRLF` and `Native` give every line that one. A last line without a line
   break never gets one. The UTF-8 byte order mark follows `Writing.Bom` (`Auto`: as the parsed text

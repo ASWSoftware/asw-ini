@@ -8,7 +8,8 @@ TASWIniDocument, the lossless model of an INI text: its sections in file
 order (TASWIniDocumentSection), each with its lines (TASWIniDocumentLine),
 each line with its original text, its line break and the parts the parser
 found in it, so a text that is read and written back without changes is the
-same byte for byte. Parse() reads a text into it. Not thread-safe; copyable.
+same byte for byte. Parse() reads a text into it and keeps the options it was
+read with, which ToText() writes it back with. Not thread-safe; copyable.
 
 Requires C++ 17 or higher.
 
@@ -189,19 +190,26 @@ public:
 // TASWIniDocument
 //
 // An INI text as sections of lines, in file order, keeping every line as it was read: comments, blank lines,
-// malformed lines, duplicate keys and sections, and each line's own line break. Not thread-safe (TASWBaseIni wraps one
-// with a lock); copyable.
+// malformed lines, duplicate keys and sections, and each line's own line break. It keeps its options: the lines'
+// parts depend on the reading options, so they only change when the document is parsed again or reset. Not
+// thread-safe (TASWBaseIni wraps one with a lock); copyable.
 /////////////////////////////////////////////////////////////////////////////
 class TASWIniDocument
 {
 private:
     std::vector<TASWIniDocumentSection> m_Sections; // Never empty: the preamble first
+    TASWIniOptions m_Options; // Valid (TASWIniOptions::Validate() accepts them)
     ELineBreak m_LineBreak;
     bool m_HasBom = false;
+    bool m_Modified = false;
 
 public:
-    // An empty document: an empty preamble, no byte order mark, and the platform's line break
+    // An empty document with the default options: an empty preamble, no byte order mark, and the platform's line
+    // break
     TASWIniDocument();
+
+    // Clears the modified flag (see IsModified()), e.g. after the document was saved
+    void ClearModified() noexcept;
 
     // The line break new lines get with ELineEnding::Auto: the most common one of the text that was read (the one
     // found first in a tie), or the platform's (CRLF on Windows, LF elsewhere) when there was none
@@ -210,29 +218,41 @@ public:
     // The number of lines in all the sections, headers included
     std::size_t GetLineCount() const noexcept;
 
+    // The options the document was parsed or reset with (the defaults for a new document)
+    TASWIniOptions const& GetOptions() const noexcept;
+
     // The sections in file order: the preamble (with no header and the name "") first, then one for each header
     std::vector<TASWIniDocumentSection> const& GetSections() const noexcept;
 
     // Whether the text that was read started with a UTF-8 byte order mark (it isn't part of any line)
     bool HasBom() const noexcept;
 
-    // Reads 'text' (UTF-8, with or without a byte order mark; lines end with LF, CRLF or CR) into this document,
-    // replacing what it held, as 'options' say. Every line is kept as it is. The warnings (MalformedLine and
-    // UnclosedSection for a line that can't be parsed, DuplicateSection, DuplicateKey, and one InvalidUtf8 for the
-    // first line that isn't valid UTF-8) are added to 'messages', each with its line number (1-based) and section.
-    // Fails with InvalidOptions (see TASWIniReadingOptions::Validate()), UnsupportedEncoding (a UTF-16 or UTF-32 byte
-    // order mark) or, with StrictParsing, ParseFailed for the first line that can't be parsed (its number in Line);
-    // then neither the document nor 'messages' changes. Throws only std::bad_alloc, and then nothing changes either.
-    TASWIniResult Parse(std::string_view text, TASWIniReadingOptions const& options,
-        std::vector<TASWIniMessage>& messages);
+    // Whether an edit changed the document's text since it was created, parsed or reset, or since ClearModified().
+    // An edit that leaves the text as it was doesn't set it.
+    bool IsModified() const noexcept;
 
-    // The document as text, as 'options' say: a UTF-8 byte order mark (with EBomMode::Auto, when the text that was
-    // read had one), then every line followed by its line break. With ELineEnding::Auto each line keeps its own line
-    // break; LF, CRLF and Native write every line's with that one instead. A last line that has no line break never
-    // gets one. With the default options, a parsed text is written back byte for byte. A LineEnding or Bom value that
-    // isn't one of the enumerators acts as Auto (TASWIniWritingOptions::Validate() rejects it). Throws only
+    // Reads 'text' (UTF-8, with or without a byte order mark; lines end with LF, CRLF or CR) into this document,
+    // replacing what it held, as 'options' say (their Reading group), and keeps 'options' for ToText() and the edits.
+    // Every line is kept as it is. The warnings (MalformedLine and UnclosedSection for a line that can't be parsed,
+    // DuplicateSection, DuplicateKey, and one InvalidUtf8 for the first line that isn't valid UTF-8) are added to
+    // 'messages', each with its line number (1-based) and section. Clears the modified flag. Fails with
+    // InvalidOptions (see TASWIniOptions::Validate()), UnsupportedEncoding (a UTF-16 or UTF-32 byte order mark) or,
+    // with StrictParsing, ParseFailed for the first line that can't be parsed (its number in Line); then neither the
+    // document nor 'messages' changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult Parse(std::string_view text, TASWIniOptions const& options, std::vector<TASWIniMessage>& messages);
+
+    // Empties this document, as a new one is (see TASWIniDocument()), and gives it 'options', which may be its own
+    // (Reset(GetOptions()) only empties it). Clears the modified flag. Fails with InvalidOptions (see
+    // TASWIniOptions::Validate()), and then nothing changes. Throws only std::bad_alloc, and then nothing changes
+    // either.
+    TASWIniResult Reset(TASWIniOptions const& options);
+
+    // The document as text, as its writing options say: a UTF-8 byte order mark (with EBomMode::Auto, when the text
+    // that was read had one), then every line followed by its line break. With ELineEnding::Auto each line keeps its
+    // own line break; LF, CRLF and Native write every line's with that one instead. A last line that has no line break
+    // never gets one. With the default options, a parsed text is written back byte for byte. Throws only
     // std::bad_alloc.
-    std::string ToText(TASWIniWritingOptions const& options) const;
+    std::string ToText() const;
 };
 
 //---------------------------------------------------------------------------

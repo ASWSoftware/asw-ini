@@ -548,6 +548,11 @@ TASWIniDocument::TASWIniDocument()
 {
 }
 //---------------------------------------------------------------------------
+void TASWIniDocument::ClearModified() noexcept
+{
+    m_Modified = false;
+}
+//---------------------------------------------------------------------------
 ELineBreak TASWIniDocument::GetLineBreak() const noexcept
 {
     return m_LineBreak;
@@ -562,6 +567,11 @@ std::size_t TASWIniDocument::GetLineCount() const noexcept
     return count;
 }
 //---------------------------------------------------------------------------
+TASWIniOptions const& TASWIniDocument::GetOptions() const noexcept
+{
+    return m_Options;
+}
+//---------------------------------------------------------------------------
 std::vector<TASWIniDocumentSection> const& TASWIniDocument::GetSections() const noexcept
 {
     return m_Sections;
@@ -572,12 +582,19 @@ bool TASWIniDocument::HasBom() const noexcept
     return m_HasBom;
 }
 //---------------------------------------------------------------------------
-TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOptions const& options,
+bool TASWIniDocument::IsModified() const noexcept
+{
+    return m_Modified;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniOptions const& options,
     std::vector<TASWIniMessage>& messages)
 {
     TASWIniResult result = options.Validate();
     if (!result)
         return result;
+
+    TASWIniReadingOptions const& reading = options.Reading;
 
     Detail::EBom const bom = Detail::DetectBom(text);
     if (bom != Detail::EBom::None && bom != Detail::EBom::Utf8)
@@ -589,13 +606,14 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
 
     // Parsed into a new document, which replaces this one only when the whole text is parsed
     TASWIniDocument document;
+    document.m_Options = options;
     document.m_HasBom = bom == Detail::EBom::Utf8;
 
     std::vector<Detail::TLineSpan> const lines = Detail::SplitLines(text.substr(Detail::BomSize(bom)));
     std::vector<TASWIniMessage> warnings;
 
     // The line each section and each key of the current section is first on. The names are views of 'text'.
-    TNameLess const nameLess{ options.CaseSensitive };
+    TNameLess const nameLess{ reading.CaseSensitive };
     std::map<std::string_view, std::size_t, TNameLess> sectionLines(nameLess);
     std::map<std::string_view, std::size_t, TNameLess> keyLines(nameLess);
     std::string_view sectionName;
@@ -607,7 +625,7 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
         std::size_t const lineNumber = i + 1;
 
         TASWIniDocumentLine::TProblem problem;
-        TASWIniDocumentLine line(span.Text, span.Break, options, problem);
+        TASWIniDocumentLine line(span.Text, span.Break, reading, problem);
 
         if (!invalidUtf8Found && !Detail::IsValidUtf8(span.Text))
         {
@@ -635,7 +653,7 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
 
         if (problem.Code != EIniCode::Ok)
         {
-            if (options.StrictParsing)
+            if (reading.StrictParsing)
             {
                 result.Code = EIniCode::ParseFailed;
                 result.Message = std::string(problem.Text) + " (line " + std::to_string(lineNumber) +
@@ -659,7 +677,7 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
             auto const inserted = keyLines.emplace(key, lineNumber);
             if (!inserted.second)
             {
-                char const* const winner = options.DuplicateKeys == EDuplicateKeys::LastWins ? "last" : "first";
+                char const* const winner = reading.DuplicateKeys == EDuplicateKeys::LastWins ? "last" : "first";
                 warnings.push_back(Warning(EIniCode::DuplicateKey, "The key " + Quoted(key) +
                     " appears more than once in its section (first on line " +
                     std::to_string(inserted.first->second) + "); the " + winner + " one's value is used.",
@@ -683,8 +701,24 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
     return result;
 }
 //---------------------------------------------------------------------------
-std::string TASWIniDocument::ToText(TASWIniWritingOptions const& options) const
+TASWIniResult TASWIniDocument::Reset(TASWIniOptions const& options)
 {
+    TASWIniResult result = options.Validate();
+    if (!result)
+        return result;
+
+    // Made before this document changes, since 'options' may be its own
+    TASWIniDocument document;
+    document.m_Options = options;
+    *this = std::move(document);
+
+    return result;
+}
+//---------------------------------------------------------------------------
+std::string TASWIniDocument::ToText() const
+{
+    TASWIniWritingOptions const& options = m_Options.Writing;
+
     bool writeBom = m_HasBom;
     if (options.Bom == EBomMode::Always)
         writeBom = true;

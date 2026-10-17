@@ -67,6 +67,8 @@ std::vector<ASWIni::EIniCode> AllIniCodes()
     codes.push_back(EIniCode::InvalidUtf8);
     codes.push_back(EIniCode::BackupFailed);
     codes.push_back(EIniCode::TempFileCleanupFailed);
+    codes.push_back(EIniCode::NotFound);
+    codes.push_back(EIniCode::AlreadyExists);
     return codes;
 }
 

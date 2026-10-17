@@ -51,7 +51,7 @@ using ASWIni::ELineKind;
 using ASWIni::TASWIniDocument;
 using ASWIni::TASWIniDocumentLine;
 using ASWIni::TASWIniMessage;
-using ASWIni::TASWIniReadingOptions;
+using ASWIni::TASWIniOptions;
 using ASWIni::TASWIniResult;
 using ASWIni::TASWIniWritingOptions;
 
@@ -92,10 +92,10 @@ std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
 std::string CodeNames(std::vector<EIniCode> const& codes);
 std::vector<TCorpusText> Corpus();
 std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
-TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& options, TASWIniResult& result,
+TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
 std::string RandomText(std::uint32_t seed);
-std::vector<TASWIniReadingOptions> ReadingOptionSets();
+std::vector<TASWIniOptions> ReadingOptionSets();
 
 //---------------------------------------------------------------------------
 /*
@@ -199,7 +199,7 @@ std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages)
 
     'text' parsed with 'options' into a new document, with Parse()'s result in 'result' and its messages in 'messages'.
 */
-TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& options, TASWIniResult& result,
+TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages)
 {
     TASWIniDocument document;
@@ -258,21 +258,22 @@ std::string RandomText(std::uint32_t seed)
 /*
     ReadingOptionSets
 
-    Reading options that parse the same text into different parts (the defaults first), none of them strict: the
-    text written back must not depend on how it was read.
+    Options whose reading options parse the same text into different parts (the defaults first), none of them
+    strict: the text written back must not depend on how it was read.
 */
-std::vector<TASWIniReadingOptions> ReadingOptionSets()
+std::vector<TASWIniOptions> ReadingOptionSets()
 {
-    std::vector<TASWIniReadingOptions> sets(4);
+    std::vector<TASWIniOptions> sets(4);
 
-    sets[1].InlineComments = true;
-    sets[1].QuotedValues = true;
+    sets[1].Reading.InlineComments = true;
+    sets[1].Reading.QuotedValues = true;
 
-    sets[2].CaseSensitive = true;
-    sets[2].DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+    sets[2].Reading.CaseSensitive = true;
+    sets[2].Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
 
-    sets[3].Separators = ":";
-    sets[3].CommentPrefixes = { ";", "#", "//" };
+    sets[3].Reading.Separators = ":";
+    sets[3].Reading.CommentPrefixes = { ";", "#", "//" };
+    sets[3].Writing.Separator = ": ";
 
     return sets;
 }
@@ -318,7 +319,8 @@ void TTest_ASWIni_DocumentModel::TearDown_Test(ITestCase& /*testCase*/)
 ASW_TEST(TTest_ASWIni_DocumentModel, Document_CopyIsIndependent)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions options;
+    options.Reading.CaseSensitive = true;
     std::vector<TASWIniMessage> messages;
     TASWIniDocument original;
     AssertTrue(original.Parse("[General]\nWidth = 640\n", options, messages).IsOk(), __func__, __LINE__,
@@ -326,7 +328,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Document_CopyIsIndependent)
 
     // Act
     TASWIniDocument const copy = original;
-    AssertTrue(original.Parse("[Other]\n", options, messages).IsOk(), __func__, __LINE__,
+    AssertTrue(original.Parse("[Other]\n", TASWIniOptions(), messages).IsOk(), __func__, __LINE__,
         "the original should parse again");
 
     // Assert
@@ -336,12 +338,18 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Document_CopyIsIndependent)
         "the copy should keep its section's name");
     CheckEquals(std::string("640"), std::string(copy.GetSections()[1].GetLines()[1].GetValue()), __func__, __LINE__,
         "the copy should keep its value");
+    CheckTrue(copy.GetOptions().Reading.CaseSensitive, __func__, __LINE__, "the copy should keep its options");
     CheckEquals(std::string("Other"), std::string(original.GetSections()[1].GetName()), __func__, __LINE__,
         "the original should hold what it parsed last");
+    CheckFalse(original.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
+        "the original should have the options it parsed with last");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentModel, Document_DefaultIsEmpty)
 {
+    // Arrange
+    TASWIniOptions const defaults;
+
     // Act
     TASWIniDocument const document;
 
@@ -352,6 +360,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Document_DefaultIsEmpty)
     CheckEquals(0, static_cast<int>(document.GetLineCount()), __func__, __LINE__,
         "a new document should have no lines");
     CheckFalse(document.HasBom(), __func__, __LINE__, "a new document should have no byte order mark");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "a new document shouldn't be modified");
 #if defined(_WIN32)
     CheckEquals(ELineBreak::CRLF, document.GetLineBreak(), __func__, __LINE__,
         "new lines should get the platform's line break, CRLF on Windows");
@@ -359,6 +368,11 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Document_DefaultIsEmpty)
     CheckEquals(ELineBreak::LF, document.GetLineBreak(), __func__, __LINE__,
         "new lines should get the platform's line break, LF on other platforms");
 #endif
+    CheckEquals(defaults.Reading.Separators, document.GetOptions().Reading.Separators, __func__, __LINE__,
+        "a new document should have the default reading options");
+    CheckEquals(defaults.Writing.Separator, document.GetOptions().Writing.Separator, __func__, __LINE__,
+        "a new document should have the default writing options");
+    CheckTrue(document.GetOptions().Validate().IsOk(), __func__, __LINE__, "a new document's options should be valid");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentModel, Line_DefaultIsBlank)
@@ -380,6 +394,102 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Line_DefaultIsBlank)
     CheckEquals(std::string(), std::string(line.GetComment()), __func__, __LINE__,
         "a blank line's comment should be empty");
     CheckFalse(line.IsQuoted(), __func__, __LINE__, "a blank line should have no quoted value");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, Modified_ParseAndResetLeaveItClear)
+{
+    // Arrange
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+
+    // Act & Assert
+    AssertTrue(document.Parse("[A]\nk=1\n", TASWIniOptions(), messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "a parsed document shouldn't be modified");
+    AssertTrue(document.Reset(TASWIniOptions()).IsOk(), __func__, __LINE__, "the document should reset");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "a reset document shouldn't be modified");
+    document.ClearModified();
+    CheckFalse(document.IsModified(), __func__, __LINE__, "ClearModified() should leave the flag clear");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, Reset_EmptiesTheDocumentWithNewOptions)
+{
+    // Arrange
+    TASWIniOptions options;
+    options.Reading.CaseSensitive = true;
+    options.Writing.Separator = "=";
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("\xEF\xBB\xBF[A]\rk=1\r", TASWIniOptions(), messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+    AssertTrue(document.GetLineBreak() == ELineBreak::CR, __func__, __LINE__, "the text's line break should be CR");
+
+    // Act
+    TASWIniResult const result = document.Reset(options);
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the document should reset: " + result.Message);
+    AssertEquals(1, static_cast<int>(document.GetSections().size()), __func__, __LINE__,
+        "a reset document should have only its preamble");
+    CheckFalse(document.GetSections().front().HasHeader(), __func__, __LINE__, "the preamble should have no header");
+    CheckEquals(0, static_cast<int>(document.GetLineCount()), __func__, __LINE__,
+        "a reset document should have no lines");
+    CheckFalse(document.HasBom(), __func__, __LINE__, "a reset document should have no byte order mark");
+    CheckEquals(TASWIniDocument().GetLineBreak(), document.GetLineBreak(), __func__, __LINE__,
+        "a reset document should get the platform's line break");
+    CheckTrue(document.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
+        "a reset document should have the new reading options");
+    CheckEquals(std::string("="), document.GetOptions().Writing.Separator, __func__, __LINE__,
+        "a reset document should have the new writing options");
+    CheckEquals(std::string(), document.ToText(), __func__, __LINE__, "a reset document should be an empty text");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, Reset_InvalidOptionsChangeNothing)
+{
+    // Arrange
+    // Each group is valid on its own, but a "=" separator wouldn't read back with only ':' read
+    TASWIniOptions invalid;
+    invalid.Reading.Separators = ":";
+    invalid.Writing.Separator = "=";
+    TASWIniOptions options;
+    options.Reading.CaseSensitive = true;
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("[A]\nk=1\n", options, messages).IsOk(), __func__, __LINE__, "the text should parse");
+
+    // Act
+    TASWIniResult const result = document.Reset(invalid);
+
+    // Assert
+    CheckEquals(EIniCode::InvalidOptions, result.Code, __func__, __LINE__, "the options should be rejected");
+    CheckFalse(result.Message.empty(), __func__, __LINE__, "the result should describe the problem");
+    CheckEquals(2, static_cast<int>(document.GetLineCount()), __func__, __LINE__, "the document should keep its lines");
+    CheckTrue(document.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
+        "the document should keep its options");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, Reset_WithItsOwnOptionsOnlyEmptiesIt)
+{
+    // Arrange
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { "//" };
+    options.Writing.CommentPrefix = "// ";
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("[A]\nk=1\n", options, messages).IsOk(), __func__, __LINE__, "the text should parse");
+
+    // Act
+    TASWIniResult const result = document.Reset(document.GetOptions());
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the document should reset: " + result.Message);
+    CheckEquals(0, static_cast<int>(document.GetLineCount()), __func__, __LINE__, "the document should be empty");
+    AssertEquals(1, static_cast<int>(document.GetOptions().Reading.CommentPrefixes.size()), __func__, __LINE__,
+        "the document should keep its comment prefixes");
+    CheckEquals(std::string("//"), document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
+        "the document should keep its comment prefix");
+    CheckEquals(std::string("// "), document.GetOptions().Writing.CommentPrefix, __func__, __LINE__,
+        "the document should keep its written comment prefix");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentModel, Section_DefaultIsEmptyPreamble)
@@ -435,7 +545,7 @@ void TTest_ASWIni_DocumentParse::CheckKeyValue(TASWIniDocumentLine const& line, 
     CheckEquals(value, std::string(line.GetValue()), method, lineNumber, msg + ": the value");
 }
 //---------------------------------------------------------------------------
-TASWIniDocument TTest_ASWIni_DocumentParse::ParseValid(std::string_view text, TASWIniReadingOptions const& options,
+TASWIniDocument TTest_ASWIni_DocumentParse::ParseValid(std::string_view text, TASWIniOptions const& options,
     std::string const& method, int lineNumber)
 {
     TASWIniResult result;
@@ -472,7 +582,7 @@ void TTest_ASWIni_DocumentParse::TearDown_Test(ITestCase& /*testCase*/)
 ASW_TEST(TTest_ASWIni_DocumentParse, Bom_IsDetectedAndNotPartOfALine)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions const options;
 
     // Act
     TASWIniDocument const withContent = ParseValid("\xEF\xBB\xBF[S]\r\nk=v", options, __func__, __LINE__);
@@ -496,8 +606,8 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Bom_IsDetectedAndNotPartOfALine)
 ASW_TEST(TTest_ASWIni_DocumentParse, CommentPrefixes_AreConfigurable)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.CommentPrefixes = { ";", ";;", "//" };
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { ";", ";;", "//" };
 
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("// note\n//x=1\n#x=1\n;; double\n", options,
@@ -518,7 +628,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, CommentPrefixes_AreConfigurable)
 ASW_TEST(TTest_ASWIni_DocumentParse, Comments_KeepTheirText)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions const options;
 
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("; first\n# second \n  \t;indented\n;\n",
@@ -545,7 +655,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Comments_KeepTheirText)
 ASW_TEST(TTest_ASWIni_DocumentParse, EmptyText_HasNoLines)
 {
     // Act
-    TASWIniDocument const document = ParseValid("", TASWIniReadingOptions(), __func__, __LINE__);
+    TASWIniDocument const document = ParseValid("", TASWIniOptions(), __func__, __LINE__);
 
     // Assert
     CheckEquals(1, static_cast<int>(document.GetSections().size()), __func__, __LINE__,
@@ -558,7 +668,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, EmptyText_HasNoLines)
 ASW_TEST(TTest_ASWIni_DocumentParse, InlineComments_AreOffByDefault)
 {
     // Act
-    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("k = v ; note\n", TASWIniReadingOptions(),
+    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("k = v ; note\n", TASWIniOptions(),
         __func__, __LINE__));
 
     // Assert
@@ -570,8 +680,8 @@ ASW_TEST(TTest_ASWIni_DocumentParse, InlineComments_AreOffByDefault)
 ASW_TEST(TTest_ASWIni_DocumentParse, InlineComments_NeedABlankBeforeThePrefix)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.InlineComments = true;
+    TASWIniOptions options;
+    options.Reading.InlineComments = true;
 
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid(
@@ -596,7 +706,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, KeyValue_FirstSeparatorEndsTheKey)
 {
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid(
-        "url = http://x\na:b=c\nk = v=w\ncolon: value\n", TASWIniReadingOptions(), __func__, __LINE__));
+        "url = http://x\na:b=c\nk = v=w\ncolon: value\n", TASWIniOptions(), __func__, __LINE__));
 
     // Assert
     AssertEquals(4, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have four lines");
@@ -617,10 +727,10 @@ ASW_TEST(TTest_ASWIni_DocumentParse, KeyValue_KeepsNulAndLongValues)
     std::string const longValue(100 * 1024, 'x');
 
     // Act
-    std::vector<TASWIniDocumentLine> const nulLines = AllLines(ParseValid(nul, TASWIniReadingOptions(), __func__,
+    std::vector<TASWIniDocumentLine> const nulLines = AllLines(ParseValid(nul, TASWIniOptions(), __func__,
         __LINE__));
     std::vector<TASWIniDocumentLine> const longLines = AllLines(ParseValid("long = " + longValue + "\n",
-        TASWIniReadingOptions(), __func__, __LINE__));
+        TASWIniOptions(), __func__, __LINE__));
 
     // Assert
     AssertEquals(1, static_cast<int>(nulLines.size()), __func__, __LINE__, "the NUL text should have one line");
@@ -633,7 +743,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, KeyValue_KeyAndValueAreTrimmed)
 {
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid(
-        "\tMy Key \t=\t value with spaces \t\nempty =\nk=v\n", TASWIniReadingOptions(), __func__, __LINE__));
+        "\tMy Key \t=\t value with spaces \t\nempty =\nk=v\n", TASWIniOptions(), __func__, __LINE__));
 
     // Assert
     AssertEquals(3, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have three lines");
@@ -647,7 +757,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, KeyValue_KeyAndValueAreTrimmed)
 ASW_TEST(TTest_ASWIni_DocumentParse, LineBreak_IsTheMostCommonOne)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions const options;
     ELineBreak const native = TASWIniDocument().GetLineBreak();
 
     // Act & Assert
@@ -666,7 +776,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, LineBreak_IsTheMostCommonOne)
 ASW_TEST(TTest_ASWIni_DocumentParse, LineBreaks_AreKeptForEachLine)
 {
     // Act
-    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("a=1\nb=2\r\nc=3\rd=4", TASWIniReadingOptions(),
+    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("a=1\nb=2\r\nc=3\rd=4", TASWIniOptions(),
         __func__, __LINE__));
 
     // Assert
@@ -679,10 +789,31 @@ ASW_TEST(TTest_ASWIni_DocumentParse, LineBreaks_AreKeptForEachLine)
         "a line's text shouldn't hold its line break");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentParse, Parse_KeepsTheOptions)
+{
+    // Arrange
+    TASWIniOptions options;
+    options.Reading.InlineComments = true;
+    options.Writing.LineEnding = ASWIni::ELineEnding::LF;
+
+    // Act
+    TASWIniDocument const document = ParseValid("a = 1 ; note\r\nb=2\r\n", options, __func__, __LINE__);
+
+    // Assert
+    CheckTrue(document.GetOptions().Reading.InlineComments, __func__, __LINE__,
+        "the document should keep the reading options");
+    CheckEquals(ASWIni::ELineEnding::LF, document.GetOptions().Writing.LineEnding, __func__, __LINE__,
+        "the document should keep the writing options");
+    CheckEquals(std::string("note"), std::string(AllLines(document)[0].GetComment()), __func__, __LINE__,
+        "the text should be read with the reading options");
+    CheckEquals(std::string("a = 1 ; note\nb=2\n"), document.ToText(), __func__, __LINE__,
+        "the text should be written with the writing options");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentParse, Parse_ReplacesPreviousContents)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions const options;
     std::vector<TASWIniMessage> messages;
     TASWIniDocument document;
     AssertTrue(document.Parse("\xEF\xBB\xBF[A]\na=1\n[B]\n", options, messages).IsOk(), __func__, __LINE__,
@@ -703,7 +834,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Parse_ReplacesPreviousContents)
 ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_AreOffByDefault)
 {
     // Act
-    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("k = \" spaced \"\n", TASWIniReadingOptions(),
+    std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("k = \" spaced \"\n", TASWIniOptions(),
         __func__, __LINE__));
 
     // Assert
@@ -715,10 +846,10 @@ ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_AreOffByDefault)
 ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_LoseTheirQuotes)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.QuotedValues = true;
-    TASWIniReadingOptions withComments = options;
-    withComments.InlineComments = true;
+    TASWIniOptions options;
+    options.Reading.QuotedValues = true;
+    TASWIniOptions withComments = options;
+    withComments.Reading.InlineComments = true;
     std::string const text = "a = \"  spaced  \"  \nb = \"\"\nc = \"x\" junk\nd = \"open\ne = \"x\" ; note\n"
         "f = \"a ; b\" ; note\ng = \"x\";note\n";
 
@@ -760,7 +891,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_DuplicatesAreSeparate)
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[A]\nk=1\nk=2\n[A]\nk=3\n", TASWIniReadingOptions(), result,
+    TASWIniDocument const document = ParseText("[A]\nk=1\nk=2\n[A]\nk=3\n", TASWIniOptions(), result,
         messages);
 
     // Assert
@@ -776,7 +907,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_DuplicatesAreSeparate)
 ASW_TEST(TTest_ASWIni_DocumentParse, Sections_HoldTheLinesAfterTheirHeader)
 {
     // Act
-    TASWIniDocument const document = ParseValid("; top\na=1\n\n[S]\nb=2\n; c\n[T]\n", TASWIniReadingOptions(),
+    TASWIniDocument const document = ParseValid("; top\na=1\n\n[S]\nb=2\n; c\n[T]\n", TASWIniOptions(),
         __func__, __LINE__);
 
     // Assert
@@ -801,7 +932,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_KeepATrailingComment)
 {
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid("[General] ; note\n[Other];x\n[Plain]  \n",
-        TASWIniReadingOptions(), __func__, __LINE__));
+        TASWIniOptions(), __func__, __LINE__));
 
     // Assert
     AssertEquals(3, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have three lines");
@@ -818,7 +949,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_NamesAreTrimmedAndFlat)
 {
     // Act
     std::vector<TASWIniDocumentLine> const lines = AllLines(ParseValid(
-        "[ General ]\n  [Indented]\n[a.b]\n[remote \"origin\"]\n[*.md]\n", TASWIniReadingOptions(), __func__,
+        "[ General ]\n  [Indented]\n[a.b]\n[remote \"origin\"]\n[*.md]\n", TASWIniOptions(), __func__,
         __LINE__));
 
     // Assert
@@ -851,12 +982,12 @@ TTest_ASWIni_DocumentMessages::~TTest_ASWIni_DocumentMessages()
 {
 }
 //---------------------------------------------------------------------------
-void TTest_ASWIni_DocumentMessages::CheckParseFails(std::string_view text, TASWIniReadingOptions const& options,
+void TTest_ASWIni_DocumentMessages::CheckParseFails(std::string_view text, TASWIniOptions const& options,
     EIniCode code, std::string const& method, int lineNumber, std::string const& msg)
 {
     TASWIniDocument document;
     std::vector<TASWIniMessage> messages;
-    AssertTrue(document.Parse("[Old]\nk=1\nk=2\n", TASWIniReadingOptions(), messages).IsOk(), method, lineNumber,
+    AssertTrue(document.Parse("[Old]\nk=1\nk=2\n", TASWIniOptions(), messages).IsOk(), method, lineNumber,
         msg + ": the first text should parse");
     AssertEquals(1, static_cast<int>(messages.size()), method, lineNumber, msg + ": the first text's duplicate");
 
@@ -910,7 +1041,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_IsReportedWithTheFirstLine)
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[S]\nWidth=1\nheight=2\nWIDTH=3\n", TASWIniReadingOptions(), result,
+    TASWIniDocument const document = ParseText("[S]\nWidth=1\nheight=2\nWIDTH=3\n", TASWIniOptions(), result,
         messages);
 
     // Assert
@@ -927,10 +1058,10 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_IsReportedWithTheFirstLine)
 ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_MatchesCaseSensitiveAndNamesTheWinner)
 {
     // Arrange
-    TASWIniReadingOptions caseSensitive;
-    caseSensitive.CaseSensitive = true;
-    TASWIniReadingOptions lastWins;
-    lastWins.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
+    TASWIniOptions lastWins;
+    lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
     TASWIniResult result;
     std::vector<TASWIniMessage> caseMessages;
     std::vector<TASWIniMessage> lastMessages;
@@ -939,7 +1070,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_MatchesCaseSensitiveAndName
     // Act
     ParseText("k=1\nK=2\n", caseSensitive, result, caseMessages);
     ParseText("k=1\nk=2\n", lastWins, result, lastMessages);
-    ParseText("[A]\nk=1\n[B]\nk=2\n", TASWIniReadingOptions(), result, otherSectionMessages);
+    ParseText("[A]\nk=1\n[B]\nk=2\n", TASWIniOptions(), result, otherSectionMessages);
 
     // Assert
     CheckEquals(0, static_cast<int>(caseMessages.size()), __func__, __LINE__,
@@ -954,14 +1085,14 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_MatchesCaseSensitiveAndName
 ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateSection_IsReportedWithTheFirstLine)
 {
     // Arrange
-    TASWIniReadingOptions caseSensitive;
-    caseSensitive.CaseSensitive = true;
+    TASWIniOptions caseSensitive;
+    caseSensitive.Reading.CaseSensitive = true;
     TASWIniResult result;
     std::vector<TASWIniMessage> messages;
     std::vector<TASWIniMessage> caseMessages;
 
     // Act
-    ParseText("[General]\nk=1\n[general]\nk=2\n", TASWIniReadingOptions(), result, messages);
+    ParseText("[General]\nk=1\n[general]\nk=2\n", TASWIniOptions(), result, messages);
     ParseText("[General]\n[general]\n", caseSensitive, result, caseMessages);
 
     // Assert
@@ -980,7 +1111,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, EmptyKey_IsMalformed)
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[S]\n = value\n", TASWIniReadingOptions(), result, messages);
+    TASWIniDocument const document = ParseText("[S]\n = value\n", TASWIniOptions(), result, messages);
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "an empty key shouldn't fail the parse: " + result.Message);
@@ -997,7 +1128,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, EmptySectionName_IsMalformed)
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[]\n[  ]\nk=1\n", TASWIniReadingOptions(), result, messages);
+    TASWIniDocument const document = ParseText("[]\n[  ]\nk=1\n", TASWIniOptions(), result, messages);
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "an empty section name shouldn't fail the parse: " + result.Message);
@@ -1013,11 +1144,23 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, EmptySectionName_IsMalformed)
 ASW_TEST(TTest_ASWIni_DocumentMessages, InvalidOptions_Fail)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.Separators.clear();
+    TASWIniOptions reading;
+    reading.Reading.Separators.clear();
+    TASWIniOptions writing;
+    writing.Writing.LineEnding = static_cast<ASWIni::ELineEnding>(99);
+    TASWIniOptions saving;
+    saving.Saving.Backup = true;
+    saving.Saving.BackupSuffix.clear();
+    TASWIniOptions crossGroup;
+    crossGroup.Reading.Separators = ":";
+    crossGroup.Writing.Separator = "=";
 
     // Act & Assert
-    CheckParseFails("k=1\n", options, EIniCode::InvalidOptions, __func__, __LINE__, "empty Separators");
+    CheckParseFails("k=1\n", reading, EIniCode::InvalidOptions, __func__, __LINE__, "empty Reading.Separators");
+    CheckParseFails("k=1\n", writing, EIniCode::InvalidOptions, __func__, __LINE__, "an unknown LineEnding");
+    CheckParseFails("k=1\n", saving, EIniCode::InvalidOptions, __func__, __LINE__, "an empty BackupSuffix");
+    CheckParseFails("k:1\n", crossGroup, EIniCode::InvalidOptions, __func__, __LINE__,
+        "a Writing.Separator that isn't one of the Reading.Separators");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentMessages, InvalidUtf8_IsReportedOnce)
@@ -1028,7 +1171,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, InvalidUtf8_IsReportedOnce)
     std::string const text = "ok=1\n[S]\na=\xFF\nb=\xC0\x80\n";
 
     // Act
-    TASWIniDocument const document = ParseText(text, TASWIniReadingOptions(), result, messages);
+    TASWIniDocument const document = ParseText(text, TASWIniOptions(), result, messages);
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "invalid UTF-8 shouldn't fail the parse: " + result.Message);
@@ -1048,7 +1191,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, NoSeparator_IsMalformed)
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[mysqld]\nskip-networking\n", TASWIniReadingOptions(), result,
+    TASWIniDocument const document = ParseText("[mysqld]\nskip-networking\n", TASWIniOptions(), result,
         messages);
 
     // Assert
@@ -1065,8 +1208,8 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, NoSeparator_IsMalformed)
 ASW_TEST(TTest_ASWIni_DocumentMessages, StrictParsing_FailsAtTheFirstMalformedLine)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.StrictParsing = true;
+    TASWIniOptions options;
+    options.Reading.StrictParsing = true;
     TASWIniResult result;
     std::vector<TASWIniMessage> messages;
 
@@ -1084,8 +1227,8 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, StrictParsing_FailsAtTheFirstMalformedLi
 ASW_TEST(TTest_ASWIni_DocumentMessages, StrictParsing_KeepsOtherWarnings)
 {
     // Arrange
-    TASWIniReadingOptions options;
-    options.StrictParsing = true;
+    TASWIniOptions options;
+    options.Reading.StrictParsing = true;
     TASWIniResult result;
     std::vector<TASWIniMessage> messages;
 
@@ -1107,7 +1250,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, TextAfterSectionHeader_IsMalformedButUse
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[General] junk\nk=1\n[a]b]\n", TASWIniReadingOptions(), result,
+    TASWIniDocument const document = ParseText("[General] junk\nk=1\n[a]b]\n", TASWIniOptions(), result,
         messages);
 
     // Assert
@@ -1132,7 +1275,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, UnclosedSection_IsRawAndKeysStayInThePre
     std::vector<TASWIniMessage> messages;
 
     // Act
-    TASWIniDocument const document = ParseText("[A]\n[General\nk=1\n[a=b\n", TASWIniReadingOptions(), result,
+    TASWIniDocument const document = ParseText("[A]\n[General\nk=1\n[a=b\n", TASWIniOptions(), result,
         messages);
 
     // Assert
@@ -1153,7 +1296,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, UnclosedSection_IsRawAndKeysStayInThePre
 ASW_TEST(TTest_ASWIni_DocumentMessages, UnsupportedEncoding_Fails)
 {
     // Arrange
-    TASWIniReadingOptions const options;
+    TASWIniOptions const options;
 
     // Act & Assert
     CheckParseFails(std::string("\xFF\xFE[\x00", 4), options, EIniCode::UnsupportedEncoding, __func__, __LINE__,
@@ -1175,7 +1318,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, ValidText_HasNoMessages)
         "  # indented\r\n[Other]\r\n";
 
     // Act
-    ParseText(text, TASWIniReadingOptions(), result, messages);
+    ParseText(text, TASWIniOptions(), result, messages);
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the text should parse: " + result.Message);
@@ -1191,7 +1334,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, Warnings_AreAppended)
     messages[0].Text = "earlier";
 
     // Act
-    TASWIniResult const result = document.Parse("bad\n", TASWIniReadingOptions(), messages);
+    TASWIniResult const result = document.Parse("bad\n", TASWIniOptions(), messages);
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "the text should parse: " + result.Message);
@@ -1232,16 +1375,18 @@ void TTest_ASWIni_DocumentToText::TearDown_Test(ITestCase& /*testCase*/)
 {
 }
 //---------------------------------------------------------------------------
-std::string TTest_ASWIni_DocumentToText::WriteBack(std::string_view text, TASWIniWritingOptions const& options,
+std::string TTest_ASWIni_DocumentToText::WriteBack(std::string_view text, TASWIniWritingOptions const& writing,
     std::string const& method, int lineNumber)
 {
+    TASWIniOptions options;
+    options.Writing = writing;
     TASWIniResult result;
     std::vector<TASWIniMessage> messages;
-    TASWIniDocument const document = ParseText(text, TASWIniReadingOptions(), result, messages);
+    TASWIniDocument const document = ParseText(text, options, result, messages);
 
     AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
 
-    return document.ToText(options);
+    return document.ToText();
 }
 //---------------------------------------------------------------------------
 
@@ -1298,14 +1443,16 @@ ASW_TEST(TTest_ASWIni_DocumentToText, DefaultOptions_WriteTheParsedTextBack)
 ASW_TEST(TTest_ASWIni_DocumentToText, EmptyDocument_IsEmptyText)
 {
     // Arrange
-    TASWIniWritingOptions always;
-    always.Bom = ASWIni::EBomMode::Always;
+    TASWIniOptions always;
+    always.Writing.Bom = ASWIni::EBomMode::Always;
+    TASWIniDocument alwaysDocument;
+    AssertTrue(alwaysDocument.Reset(always).IsOk(), __func__, __LINE__, "the document should reset");
 
     // Act & Assert
-    CheckEquals(std::string(), TASWIniDocument().ToText(TASWIniWritingOptions()), __func__, __LINE__,
+    CheckEquals(std::string(), TASWIniDocument().ToText(), __func__, __LINE__,
         "a new document should be an empty text");
-    CheckEquals(std::string("\xEF\xBB\xBF"), TASWIniDocument().ToText(always), __func__, __LINE__,
-        "a new document with Always should be only the mark");
+    CheckEquals(std::string("\xEF\xBB\xBF"), alwaysDocument.ToText(), __func__, __LINE__,
+        "an empty document with Always should be only the mark");
     CheckEquals(std::string("\xEF\xBB\xBF"), WriteBack("\xEF\xBB\xBF", TASWIniWritingOptions(), __func__,
         __LINE__), __func__, __LINE__, "a text of only the mark should be written back as it was");
 }
@@ -1363,22 +1510,6 @@ ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_NeverAddsAFinalLineBreak)
         "a last line with no line break should get none with CRLF");
     CheckEquals(std::string("a=1"), WriteBack("a=1", lf, __func__, __LINE__), __func__, __LINE__,
         "a single line with no line break should get none with LF");
-}
-//---------------------------------------------------------------------------
-ASW_TEST(TTest_ASWIni_DocumentToText, UnknownEnumValues_ActAsAuto)
-{
-    // Arrange
-    std::string const text = "\xEF\xBB\xBF" "a=1\nb=2\r\n";
-    TASWIniWritingOptions options;
-    options.LineEnding = static_cast<ASWIni::ELineEnding>(99);
-    options.Bom = static_cast<ASWIni::EBomMode>(99);
-
-    // Act
-    std::string const written = WriteBack(text, options, __func__, __LINE__);
-
-    // Assert
-    CheckEquals(text, written, __func__, __LINE__,
-        "unknown LineEnding and Bom values should keep the line breaks and the mark as Auto does");
 }
 //---------------------------------------------------------------------------
 
@@ -1443,20 +1574,21 @@ ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_ConvertedLineEndingsKeepEachLine
 
     for (ELineBreak const lineBreak : { ELineBreak::LF, ELineBreak::CRLF })
     {
-        TASWIniWritingOptions options;
-        options.LineEnding = lineBreak == ELineBreak::LF ? ASWIni::ELineEnding::LF : ASWIni::ELineEnding::CRLF;
+        TASWIniOptions options;
+        options.Writing.LineEnding = lineBreak == ELineBreak::LF ? ASWIni::ELineEnding::LF :
+                ASWIni::ELineEnding::CRLF;
 
         for (TCorpusText const& corpusText : corpus)
         {
             std::string const name = corpusText.Name + " with " + ASWIni::ToString(lineBreak);
             TASWIniResult result;
             std::vector<TASWIniMessage> messages;
-            TASWIniDocument const original = ParseText(corpusText.Text, TASWIniReadingOptions(), result, messages);
+            TASWIniDocument const original = ParseText(corpusText.Text, options, result, messages);
             AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
 
             // Act
             std::vector<TASWIniMessage> convertedMessages;
-            TASWIniDocument const converted = ParseText(original.ToText(options), TASWIniReadingOptions(), result,
+            TASWIniDocument const converted = ParseText(original.ToText(), TASWIniOptions(), result,
                 convertedMessages);
 
             // Assert
@@ -1491,7 +1623,7 @@ ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_ParsesWithTheExpectedLinesAndWar
         std::vector<TASWIniMessage> messages;
 
         // Act
-        TASWIniDocument const document = ParseText(corpusText.Text, TASWIniReadingOptions(), result, messages);
+        TASWIniDocument const document = ParseText(corpusText.Text, TASWIniOptions(), result, messages);
 
         // Assert
         AssertTrue(result.IsOk(), __func__, __LINE__, corpusText.Name + ": the text should parse: " +
@@ -1507,7 +1639,7 @@ ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_WritesBackByteForByte)
 {
     // Arrange
     std::vector<TCorpusText> const corpus = Corpus();
-    std::vector<TASWIniReadingOptions> const optionSets = ReadingOptionSets();
+    std::vector<TASWIniOptions> const optionSets = ReadingOptionSets();
 
     for (std::size_t set = 0; set < optionSets.size(); ++set)
     {
@@ -1519,7 +1651,7 @@ ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_WritesBackByteForByte)
 
             // Act
             TASWIniDocument const document = ParseText(corpusText.Text, optionSets[set], result, messages);
-            std::string const written = document.ToText(TASWIniWritingOptions());
+            std::string const written = document.ToText();
 
             // Assert
             AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
@@ -1588,8 +1720,8 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomText_IsTheSameEverywhere)
 ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ConvertedLineEndingsKeepTheLines)
 {
     // Arrange
-    TASWIniWritingOptions options;
-    options.LineEnding = ASWIni::ELineEnding::LF;
+    TASWIniOptions options;
+    options.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     for (std::size_t i = 0; i < FuzzTextCount; ++i)
     {
@@ -1597,12 +1729,11 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ConvertedLineEndingsKeepTheLines
         std::string const name = "seed " + std::to_string(seed);
         TASWIniResult result;
         std::vector<TASWIniMessage> messages;
-        TASWIniDocument const original = ParseText(RandomText(seed), TASWIniReadingOptions(), result, messages);
+        TASWIniDocument const original = ParseText(RandomText(seed), options, result, messages);
         AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
 
         // Act
-        TASWIniDocument const converted = ParseText(original.ToText(options), TASWIniReadingOptions(), result,
-            messages);
+        TASWIniDocument const converted = ParseText(original.ToText(), TASWIniOptions(), result, messages);
 
         // Assert
         AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the converted text should parse: " + result.Message);
@@ -1625,7 +1756,7 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ConvertedLineEndingsKeepTheLines
 ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ParseAndWriteBack)
 {
     // Arrange
-    std::vector<TASWIniReadingOptions> const optionSets = ReadingOptionSets();
+    std::vector<TASWIniOptions> const optionSets = ReadingOptionSets();
 
     for (std::size_t i = 0; i < FuzzTextCount; ++i)
     {
@@ -1644,7 +1775,7 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ParseAndWriteBack)
 
             // Assert
             AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
-            CheckTrue(document.ToText(TASWIniWritingOptions()) == text, __func__, __LINE__,
+            CheckTrue(document.ToText() == text, __func__, __LINE__,
                 name + ": the text should be written back byte for byte");
         }
     }
@@ -1653,8 +1784,8 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ParseAndWriteBack)
 ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_StrictParsingFailsCleanly)
 {
     // Arrange
-    TASWIniReadingOptions strict;
-    strict.StrictParsing = true;
+    TASWIniOptions strict;
+    strict.Reading.StrictParsing = true;
     std::size_t failures = 0;
 
     for (std::size_t i = 0; i < FuzzTextCount; ++i)
@@ -1664,7 +1795,7 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_StrictParsingFailsCleanly)
         std::string const text = RandomText(seed);
         TASWIniResult lenientResult;
         std::vector<TASWIniMessage> lenientMessages;
-        TASWIniDocument const lenient = ParseText(text, TASWIniReadingOptions(), lenientResult, lenientMessages);
+        TASWIniDocument const lenient = ParseText(text, TASWIniOptions(), lenientResult, lenientMessages);
         TASWIniDocument document;
         std::vector<TASWIniMessage> messages;
 
@@ -1674,7 +1805,7 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_StrictParsingFailsCleanly)
         // Assert
         if (result.IsOk())
         {
-            CheckTrue(document.ToText(TASWIniWritingOptions()) == text, __func__, __LINE__,
+            CheckTrue(document.ToText() == text, __func__, __LINE__,
                 name + ": a text that parses strictly should be written back byte for byte");
             continue;
         }

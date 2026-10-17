@@ -48,6 +48,10 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Document_CopyIsIndependent();
     void Test_Document_DefaultIsEmpty();
     void Test_Line_DefaultIsBlank();
+    void Test_Modified_ParseAndResetLeaveItClear();
+    void Test_Reset_EmptiesTheDocumentWithNewOptions();
+    void Test_Reset_InvalidOptionsChangeNothing();
+    void Test_Reset_WithItsOwnOptionsOnlyEmptiesIt();
     void Test_Section_DefaultIsEmptyPreamble();
     void Test_ToString_LineKindNames();
 
@@ -76,7 +80,7 @@ private:
         std::string const& method, int lineNumber, std::string const& msg);
 
     // 'text' parsed with 'options', checking that it parses with no messages
-    ASWIni::TASWIniDocument ParseValid(std::string_view text, ASWIni::TASWIniReadingOptions const& options,
+    ASWIni::TASWIniDocument ParseValid(std::string_view text, ASWIni::TASWIniOptions const& options,
         std::string const& method, int lineNumber);
 
 public: // Test methods, each defined with ASW_TEST
@@ -91,6 +95,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_KeyValue_KeyAndValueAreTrimmed();
     void Test_LineBreak_IsTheMostCommonOne();
     void Test_LineBreaks_AreKeptForEachLine();
+    void Test_Parse_KeepsTheOptions();
     void Test_Parse_ReplacesPreviousContents();
     void Test_QuotedValues_AreOffByDefault();
     void Test_QuotedValues_LoseTheirQuotes();
@@ -121,7 +126,7 @@ private:
 private:
     // Checks that parsing 'text' with 'options' fails with 'code', leaving a parsed document and its messages as they
     // were
-    void CheckParseFails(std::string_view text, ASWIni::TASWIniReadingOptions const& options, ASWIni::EIniCode code,
+    void CheckParseFails(std::string_view text, ASWIni::TASWIniOptions const& options, ASWIni::EIniCode code,
         std::string const& method, int lineNumber, std::string const& msg);
 
     // Checks that 'message' is a warning with 'code' about line 'line' of section 'section'
@@ -165,8 +170,8 @@ private:
     typedef TAutoTestGroup<TTest_ASWIni_DocumentToText> inherited;
 
 private:
-    // 'text' parsed with the default reading options (checking that it parses), then written with 'options'
-    std::string WriteBack(std::string_view text, ASWIni::TASWIniWritingOptions const& options,
+    // 'text' parsed with the default reading options and 'writing' (checking that it parses), then written back
+    std::string WriteBack(std::string_view text, ASWIni::TASWIniWritingOptions const& writing,
         std::string const& method, int lineNumber);
 
 public: // Test methods, each defined with ASW_TEST
@@ -176,7 +181,6 @@ public: // Test methods, each defined with ASW_TEST
     void Test_LineEnding_AutoKeepsEachLinesBreak();
     void Test_LineEnding_ConvertsEveryLine();
     void Test_LineEnding_NeverAddsAFinalLineBreak();
-    void Test_UnknownEnumValues_ActAsAuto();
 
 public:
     TTest_ASWIni_DocumentToText();

@@ -98,6 +98,12 @@ char const* ToString(EIniCode code) noexcept
 
         case EIniCode::TempFileCleanupFailed:
             return "TempFileCleanupFailed";
+
+        case EIniCode::NotFound:
+            return "NotFound";
+
+        case EIniCode::AlreadyExists:
+            return "AlreadyExists";
     }
 
     return "Unknown";

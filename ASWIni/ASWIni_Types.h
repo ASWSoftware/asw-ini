@@ -71,6 +71,10 @@ enum class EIniCode : int
     InvalidUtf8 = 19, // The text isn't valid UTF-8; it is kept byte for byte
     BackupFailed = 20, // The backup copy couldn't be made; the file was saved anyway
     TempFileCleanupFailed = 21, // A temporary file of a failed save couldn't be deleted
+
+    // Errors added after the warnings: an edit of a TASWIniDocument failed
+    NotFound = 22, // The section or key to rename doesn't exist
+    AlreadyExists = 23, // A section or key can't be renamed to the name of another one that exists
 };
 
 // The line break that ends a line of an INI text

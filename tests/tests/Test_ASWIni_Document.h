@@ -188,6 +188,35 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRoundTrip
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentRoundTrip : public TAutoTestGroup<TTest_ASWIni_DocumentRoundTrip>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentRoundTrip> inherited;
+
+private:
+    // Checks that 'actual' is 'expected' with only its line break changed to 'lineBreak' (when it has one)
+    void CheckSameLine(ASWIni::TASWIniDocumentLine const& expected, ASWIni::TASWIniDocumentLine const& actual,
+        ASWIni::ELineBreak lineBreak, std::string const& method, int lineNumber, std::string const& msg);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Corpus_ConvertedLineEndingsKeepEachLine();
+    void Test_Corpus_ParsesWithTheExpectedLinesAndWarnings();
+    void Test_Corpus_WritesBackByteForByte();
+
+public:
+    TTest_ASWIni_DocumentRoundTrip();
+    ~TTest_ASWIni_DocumentRoundTrip() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

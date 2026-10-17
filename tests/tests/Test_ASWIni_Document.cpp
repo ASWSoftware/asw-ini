@@ -27,6 +27,7 @@ limitations under the License.
 #include "ASWUnitTests_Registry.h"
 //---------------------------------------------------------------------------
 #include <cstddef>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -52,9 +53,29 @@ using ASWIni::TASWIniReadingOptions;
 using ASWIni::TASWIniResult;
 using ASWIni::TASWIniWritingOptions;
 
+/////////////////////////////////////////////////////////////////////////////
+// TCorpusText
+//
+// A text of the round-trip corpus: what it shows, the text, how many lines it has, and the codes of the warnings it
+// gets with the default reading options, in order
+/////////////////////////////////////////////////////////////////////////////
+struct TCorpusText
+{
+    std::string Name;
+    std::string Text;
+    std::size_t LineCount;
+    std::vector<EIniCode> Warnings;
+};
+
+//---------------------------------------------------------------------------
+
 std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
+std::string CodeNames(std::vector<EIniCode> const& codes);
+std::vector<TCorpusText> Corpus();
+std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
 TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
+std::vector<TASWIniReadingOptions> ReadingOptionSets();
 
 //---------------------------------------------------------------------------
 /*
@@ -72,6 +93,88 @@ std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document)
 }
 //---------------------------------------------------------------------------
 /*
+    CodeNames
+
+    The names of 'codes', separated by commas, e.g. "MalformedLine, DuplicateKey"; "(none)" when there are none.
+*/
+std::string CodeNames(std::vector<EIniCode> const& codes)
+{
+    if (codes.empty())
+        return "(none)";
+
+    std::string names;
+    for (EIniCode const code : codes)
+    {
+        if (!names.empty())
+            names += ", ";
+        names += ASWIni::ToString(code);
+    }
+
+    return names;
+}
+//---------------------------------------------------------------------------
+/*
+    Corpus
+
+    The round-trip corpus: texts with what a careless parser or writer would change or lose (byte order marks, line
+    breaks, blanks, comments, malformed lines, duplicates, odd bytes), each of which parses and must be written back
+    byte for byte.
+*/
+std::vector<TCorpusText> Corpus()
+{
+    std::string const bom = "\xEF\xBB\xBF";
+
+    return {
+        { "an empty text", "", 0, {} },
+        { "only a byte order mark", bom, 0, {} },
+        { "a byte order mark and content", bom + "[General]\r\nWidth = 640\r\n", 2, {} },
+        { "LF line breaks", "[A]\nk=1\n", 2, {} },
+        { "CRLF line breaks", "[A]\r\nk=1\r\n", 2, {} },
+        { "CR line breaks", "[A]\rk=1\r", 2, {} },
+        { "mixed line breaks", "[A]\nk=1\r\nl=2\rm=3\n\r\n", 5, {} },
+        { "no final line break", "[A]\nk=1", 2, {} },
+        { "blank and whitespace-only lines", "\n  \n\t\n \t \r\n[A]\n\n", 6, {} },
+        { "tabs", "\t[A]\t\n\tk\t=\tv\t\n", 2, {} },
+        { "keys before any section", "top=1\nnext = 2\n[A]\nk=1\n", 4, {} },
+        { "keys with spaces", "[A]\nMy Key = My Value\n  Other Key=x\n", 3, {} },
+        { "'=' in a value", "[A]\nformula = a=b+c\n", 2, {} },
+        { "the first separator wins", "url = http://example.com:8080/x\na:b=c\n", 2, {} },
+        { "comments", "; semicolon\n# hash\n  ; indented\n\t# tabbed\n;\n#\n", 6, {} },
+        { "inline comment characters", "k = v ; note\nl = a#b\n[S] ; header note\n", 3, {} },
+        { "quoted values", "a = \"  spaced  \"\nb = \"\"\nc = \"open\nd = \"x\" ; note\n", 4, {} },
+        { "an unclosed section", "[A]\n[General\nk=1\n", 3, { EIniCode::UnclosedSection } },
+        { "a header comment", "[General] ; note\n[Other];x\n", 2, {} },
+        { "text after a header", "[General] junk\nk=1\n", 2, { EIniCode::MalformedLine } },
+        { "empty section names", "[]\n[ ]\n", 2, { EIniCode::MalformedLine, EIniCode::MalformedLine } },
+        { "an empty key", "= value\n", 1, { EIniCode::MalformedLine } },
+        { "a line without a separator", "[mysqld]\nskip-networking\n", 2, { EIniCode::MalformedLine } },
+        { "duplicate keys", "[A]\nk=1\nK=2\n", 3, { EIniCode::DuplicateKey } },
+        { "duplicate sections", "[A]\n[a]\n", 2, { EIniCode::DuplicateSection } },
+        { "invalid UTF-8", "k=\xFF\nl=\xC0\x80\nm=\xED\xA0\x80\n", 3, { EIniCode::InvalidUtf8 } },
+        { "valid UTF-8", "name = \xC3\xA9t\xC3\xA9 \xE2\x82\xAC \xF0\x9F\x98\x80\n", 1, {} },
+        { "NUL bytes", std::string("k = a\0b\n\0\n", 10), 2, { EIniCode::MalformedLine } },
+        { "a 100 KiB line", "long = " + std::string(100 * 1024, 'x') + "\n", 1, {} },
+        { "a section name with blanks around it", "[ General ]\n", 1, {} },
+        { "git's subsection syntax", "[remote \"origin\"]\n\turl = https://x\n", 2, {} },
+        { "an .editorconfig glob", "[*.md]\nindent_size = 2\n", 2, {} },
+    };
+}
+//---------------------------------------------------------------------------
+/*
+    MessageCodes
+
+    The codes of 'messages', in order.
+*/
+std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages)
+{
+    std::vector<EIniCode> codes;
+    for (TASWIniMessage const& message : messages)
+        codes.push_back(message.Code);
+
+    return codes;
+}
+//---------------------------------------------------------------------------
+/*
     ParseText
 
     'text' parsed with 'options' into a new document, with Parse()'s result in 'result' and its messages in 'messages'.
@@ -83,6 +186,28 @@ TASWIniDocument ParseText(std::string_view text, TASWIniReadingOptions const& op
     result = document.Parse(text, options, messages);
 
     return document;
+}
+//---------------------------------------------------------------------------
+/*
+    ReadingOptionSets
+
+    Reading options that parse the same text into different parts (the defaults first), none of them strict: the
+    text written back must not depend on how it was read.
+*/
+std::vector<TASWIniReadingOptions> ReadingOptionSets()
+{
+    std::vector<TASWIniReadingOptions> sets(4);
+
+    sets[1].InlineComments = true;
+    sets[1].QuotedValues = true;
+
+    sets[2].CaseSensitive = true;
+    sets[2].DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
+
+    sets[3].Separators = ":";
+    sets[3].CommentPrefixes = { ";", "#", "//" };
+
+    return sets;
 }
 //---------------------------------------------------------------------------
 
@@ -1190,10 +1315,159 @@ ASW_TEST(TTest_ASWIni_DocumentToText, UnknownEnumValues_ActAsAuto)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRoundTrip
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRoundTrip::TTest_ASWIni_DocumentRoundTrip()
+    : inherited("ASWIni_DocumentRoundTrip_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRoundTrip::~TTest_ASWIni_DocumentRoundTrip()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRoundTrip::CheckSameLine(TASWIniDocumentLine const& expected,
+    TASWIniDocumentLine const& actual, ELineBreak lineBreak, std::string const& method, int lineNumber,
+    std::string const& msg)
+{
+    ELineBreak const expectedBreak = expected.GetLineBreak() == ELineBreak::None ? ELineBreak::None : lineBreak;
+
+    CheckEquals(expected.GetKind(), actual.GetKind(), method, lineNumber, msg + ": the kind");
+    CheckEquals(expected.GetText(), actual.GetText(), method, lineNumber, msg + ": the text");
+    CheckEquals(expectedBreak, actual.GetLineBreak(), method, lineNumber, msg + ": the line break");
+    CheckEquals(std::string(expected.GetKey()), std::string(actual.GetKey()), method, lineNumber, msg + ": the key");
+    CheckEquals(std::string(expected.GetValue()), std::string(actual.GetValue()), method, lineNumber,
+        msg + ": the value");
+    CheckEquals(std::string(expected.GetSectionName()), std::string(actual.GetSectionName()), method, lineNumber,
+        msg + ": the section name");
+    CheckEquals(expected.HasComment(), actual.HasComment(), method, lineNumber, msg + ": whether it has a comment");
+    CheckEquals(std::string(expected.GetComment()), std::string(actual.GetComment()), method, lineNumber,
+        msg + ": the comment");
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRoundTrip::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRoundTrip::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRoundTrip::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRoundTrip::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_ConvertedLineEndingsKeepEachLine)
+{
+    // Arrange
+    std::vector<TCorpusText> const corpus = Corpus();
+
+    for (ELineBreak const lineBreak : { ELineBreak::LF, ELineBreak::CRLF })
+    {
+        TASWIniWritingOptions options;
+        options.LineEnding = lineBreak == ELineBreak::LF ? ASWIni::ELineEnding::LF : ASWIni::ELineEnding::CRLF;
+
+        for (TCorpusText const& corpusText : corpus)
+        {
+            std::string const name = corpusText.Name + " with " + ASWIni::ToString(lineBreak);
+            TASWIniResult result;
+            std::vector<TASWIniMessage> messages;
+            TASWIniDocument const original = ParseText(corpusText.Text, TASWIniReadingOptions(), result, messages);
+            AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+
+            // Act
+            std::vector<TASWIniMessage> convertedMessages;
+            TASWIniDocument const converted = ParseText(original.ToText(options), TASWIniReadingOptions(), result,
+                convertedMessages);
+
+            // Assert
+            AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the converted text should parse: " +
+                result.Message);
+            CheckEquals(original.HasBom(), converted.HasBom(), __func__, __LINE__,
+                name + ": the byte order mark should be kept");
+            CheckEquals(CodeNames(MessageCodes(messages)), CodeNames(MessageCodes(convertedMessages)), __func__,
+                __LINE__, name + ": the converted text should get the same warnings");
+
+            std::vector<TASWIniDocumentLine> const originalLines = AllLines(original);
+            std::vector<TASWIniDocumentLine> const convertedLines = AllLines(converted);
+            AssertEquals(static_cast<int>(originalLines.size()), static_cast<int>(convertedLines.size()), __func__,
+                __LINE__, name + ": the converted text should have as many lines");
+            for (std::size_t i = 0; i < originalLines.size(); ++i)
+            {
+                CheckSameLine(originalLines[i], convertedLines[i], lineBreak, __func__, __LINE__,
+                    name + ", line " + std::to_string(i + 1));
+            }
+        }
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_ParsesWithTheExpectedLinesAndWarnings)
+{
+    // Arrange
+    std::vector<TCorpusText> const corpus = Corpus();
+
+    for (TCorpusText const& corpusText : corpus)
+    {
+        TASWIniResult result;
+        std::vector<TASWIniMessage> messages;
+
+        // Act
+        TASWIniDocument const document = ParseText(corpusText.Text, TASWIniReadingOptions(), result, messages);
+
+        // Assert
+        AssertTrue(result.IsOk(), __func__, __LINE__, corpusText.Name + ": the text should parse: " +
+            result.Message);
+        CheckEquals(static_cast<int>(corpusText.LineCount), static_cast<int>(document.GetLineCount()), __func__,
+            __LINE__, corpusText.Name + ": the number of lines");
+        CheckEquals(CodeNames(corpusText.Warnings), CodeNames(MessageCodes(messages)), __func__, __LINE__,
+            corpusText.Name + ": the warnings");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRoundTrip, Corpus_WritesBackByteForByte)
+{
+    // Arrange
+    std::vector<TCorpusText> const corpus = Corpus();
+    std::vector<TASWIniReadingOptions> const optionSets = ReadingOptionSets();
+
+    for (std::size_t set = 0; set < optionSets.size(); ++set)
+    {
+        for (TCorpusText const& corpusText : corpus)
+        {
+            std::string const name = corpusText.Name + " (reading options " + std::to_string(set) + ")";
+            TASWIniResult result;
+            std::vector<TASWIniMessage> messages;
+
+            // Act
+            TASWIniDocument const document = ParseText(corpusText.Text, optionSets[set], result, messages);
+            std::string const written = document.ToText(TASWIniWritingOptions());
+
+            // Assert
+            AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+            CheckTrue(written == corpusText.Text, __func__, __LINE__,
+                name + ": the text should be written back byte for byte");
+        }
+    }
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentModel, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentParse, "Document")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentRoundTrip, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentToText, "Document")

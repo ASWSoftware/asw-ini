@@ -216,6 +216,11 @@ private:
     // there is none
     std::size_t FileCommentSize() const noexcept;
 
+    // Gives each line that ends with CR a CRLF line break instead when the line after it is empty and ends with LF:
+    // the text would have "\r\n" there, which reads back as one line break, so the two lines would read back as one.
+    // Parsing never makes such lines, but an edit can put them next to each other.
+    void FixMergingLineBreaks() noexcept;
+
     // Whether key 'key' of section 'section' exists, and if it does, where its line (the one FindKey() finds) is
     bool FindKeyLine(std::string_view section, std::string_view key, std::size_t& sectionIndex,
         std::size_t& lineIndex) const noexcept;
@@ -390,7 +395,8 @@ public:
     // the spaces and tabs around it), written as
     // Writing.CommentPrefix and the line (the prefix without its trailing blanks for an empty line). A new file
     // comment goes at the start of the file with a blank line under it (unless one follows already); an empty 'text'
-    // removes the file comment and the blank line under it. A text that GetFileComment() already gives (once split
+    // removes the file comment and the blank line under it (unless the comment lines after that blank line would
+    // then be read as the file comment). A text that GetFileComment() already gives (once split
     // and trimmed) changes nothing. Fails with InvalidArgument, and then nothing changes, when a line wouldn't read
     // back as that comment (e.g. a line that starts with a longer comment prefix). Throws only std::bad_alloc, and
     // then nothing changes either.
@@ -425,7 +431,9 @@ public:
     // The document as text, as its writing options say: a UTF-8 byte order mark (with EBomMode::Auto, when the text
     // that was read had one), then every line followed by its line break. With ELineEnding::Auto each line keeps its
     // own line break; LF, CRLF and Native write every line's with that one instead. A last line that has no line break
-    // never gets one. With the default options, a parsed text is written back byte for byte. Throws only
+    // never gets one. With the default options, a parsed text is written back byte for byte. One limit of the format:
+    // a line that starts with the bytes of a UTF-8 byte order mark, and that an edit made the first line, reads back
+    // without them (as a byte order mark) when the text is written without a byte order mark. Throws only
     // std::bad_alloc.
     std::string ToText() const;
 };

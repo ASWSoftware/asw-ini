@@ -10,9 +10,11 @@ it has the project structure, the version (`ASWIni_Version.h`), the CMake target
 unit-test projects, the options (`ASWIni_Options.h`), and the document model
 (`ASWIni_Document.h`): `TASWIniDocument` reads INI text and writes it back byte for byte, keeping
 comments, blank lines, line breaks and lines it doesn't understand, and reports malformed lines and
-duplicates as warnings. Loading and saving files, editing values, typed values and the settings
-classes come next. [CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may
-change in any way until 1.0.0.
+duplicates as warnings. It looks up sections and keys, sets values, adds, removes and renames
+sections and keys, and gets and sets comments, changing only the lines an edit is about. Typed
+values, loading and saving files, and the settings classes come next.
+[CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may change in any way until
+1.0.0.
 
 ## Design
 

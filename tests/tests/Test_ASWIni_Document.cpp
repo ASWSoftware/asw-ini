@@ -60,6 +60,33 @@ constexpr std::size_t FuzzTextCount = 2000;
 constexpr std::uint32_t FuzzFirstSeed = 20261017;
 constexpr std::size_t FuzzMaxTextSize = 300;
 
+// The edit fuzz tests: how many texts get random edits, and how many edits each one gets
+constexpr std::size_t FuzzEditTextCount = 300;
+constexpr std::size_t FuzzEditCount = 25;
+
+// The names, values and comments the edit fuzz tests pick from: ones their texts have, ones they don't, and ones that
+// can't be written so that they read back
+constexpr char const* FuzzSections[] = { "", "A", "a", "B", "Long Name", "C", " A", "a]b", "[x" };
+constexpr char const* FuzzKeys[] = { "k", "K", "key", "x", "Long Key", "", " k", "a=b", ";c" };
+constexpr char const* FuzzValues[] = { "", "v", "1", " v ", "a ; b", "\"q\"", "\"open", "a=b", ";v", "x\ny" };
+constexpr char const* FuzzComments[] = { "", "c", "a\nb", " note ", "a\r\n\r\nb\n", ";x", "#", "//" };
+
+// The edits the edit fuzz tests make, and how many kinds there are
+enum class EFuzzEdit : int
+{
+    SetValue = 0,
+    AddSection = 1,
+    RemoveKey = 2,
+    RemoveSection = 3,
+    RenameKey = 4,
+    RenameSection = 5,
+    SetFileComment = 6,
+    SetKeyComment = 7,
+    SetSectionComment = 8,
+};
+
+constexpr std::size_t FuzzEditKindCount = 9;
+
 /////////////////////////////////////////////////////////////////////////////
 // TCorpusText
 //
@@ -72,6 +99,20 @@ struct TCorpusText
     std::string Text;
     std::size_t LineCount;
     std::vector<EIniCode> Warnings;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TFuzzEdit
+//
+// An edit of the edit fuzz tests: what it does, to which section and key, and its value, new name or comment
+/////////////////////////////////////////////////////////////////////////////
+struct TFuzzEdit
+{
+    EFuzzEdit Kind = EFuzzEdit::SetValue;
+    std::string Section;
+    std::string Key;
+    std::string Text;
 };
 
 
@@ -89,14 +130,30 @@ struct TFuzzToken
 //---------------------------------------------------------------------------
 
 std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document);
+bool ApplyEdit(TASWIniDocument& document, TFuzzEdit const& edit);
+bool ChangedLinesAreComments(std::vector<TASWIniDocumentLine> const& before,
+    std::vector<TASWIniDocumentLine> const& after);
 std::string CodeNames(std::vector<EIniCode> const& codes);
 std::vector<TCorpusText> Corpus();
+std::string DocumentDifference(TASWIniDocument const& expected, TASWIniDocument const& actual);
+std::string EditDescription(TFuzzEdit const& edit);
+char const* EditName(EFuzzEdit kind);
+std::string EditProblem(TFuzzEdit const& edit, bool succeeded, std::vector<TASWIniDocumentLine> const& before,
+    std::vector<TASWIniDocumentLine> const& after, TASWIniDocument const& document);
+bool IsSubsequence(std::vector<TASWIniDocumentLine> const& part, std::vector<TASWIniDocumentLine> const& whole);
 std::string JoinedNames(std::vector<std::string> const& names);
+std::string LineDifference(TASWIniDocumentLine const& expected, TASWIniDocumentLine const& actual);
 std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
+std::string NormalizedComment(std::string_view text);
 TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
+TFuzzEdit RandomEdit(std::mt19937& generator);
+std::string RandomIniText(std::uint32_t seed);
+template <std::size_t Size>
+std::string RandomItem(std::mt19937& generator, char const* const (&items)[Size]);
 std::string RandomText(std::uint32_t seed);
 std::vector<TASWIniOptions> ReadingOptionSets();
+std::string Shown(std::string_view text);
 
 //---------------------------------------------------------------------------
 /*
@@ -111,6 +168,81 @@ std::vector<TASWIniDocumentLine> AllLines(TASWIniDocument const& document)
         lines.insert(lines.end(), section.GetLines().begin(), section.GetLines().end());
 
     return lines;
+}
+//---------------------------------------------------------------------------
+/*
+    ApplyEdit
+
+    Makes 'edit' to 'document'; whether it succeeded (for a removal, whether it removed anything).
+*/
+bool ApplyEdit(TASWIniDocument& document, TFuzzEdit const& edit)
+{
+    switch (edit.Kind)
+    {
+        case EFuzzEdit::SetValue:
+            return document.SetValue(edit.Section, edit.Key, edit.Text).IsOk();
+
+        case EFuzzEdit::AddSection:
+            return document.AddSection(edit.Section).IsOk();
+
+        case EFuzzEdit::RemoveKey:
+            return document.RemoveKey(edit.Section, edit.Key);
+
+        case EFuzzEdit::RemoveSection:
+            return document.RemoveSection(edit.Section);
+
+        case EFuzzEdit::RenameKey:
+            return document.RenameKey(edit.Section, edit.Key, edit.Text).IsOk();
+
+        case EFuzzEdit::RenameSection:
+            return document.RenameSection(edit.Section, edit.Text).IsOk();
+
+        case EFuzzEdit::SetFileComment:
+            return document.SetFileComment(edit.Text).IsOk();
+
+        case EFuzzEdit::SetKeyComment:
+            return document.SetKeyComment(edit.Section, edit.Key, edit.Text).IsOk();
+
+        case EFuzzEdit::SetSectionComment:
+            return document.SetSectionComment(edit.Section, edit.Text).IsOk();
+    }
+
+    return false;
+}
+//---------------------------------------------------------------------------
+/*
+    ChangedLinesAreComments
+
+    Whether the lines of 'before' that aren't in 'after' and the lines of 'after' that aren't in 'before' are one run
+    of comment and blank lines: the lines before the first one that differs and after the last one are the same.
+*/
+bool ChangedLinesAreComments(std::vector<TASWIniDocumentLine> const& before,
+    std::vector<TASWIniDocumentLine> const& after)
+{
+    std::size_t first = 0;
+    while (first < before.size() && first < after.size() && before[first].GetText() == after[first].GetText())
+        ++first;
+
+    std::size_t last = 0;
+    while (last < before.size() - first && last < after.size() - first)
+    {
+        if (before[before.size() - 1 - last].GetText() != after[after.size() - 1 - last].GetText())
+            break;
+
+        ++last;
+    }
+
+    for (std::vector<TASWIniDocumentLine> const* const lines : { &before, &after })
+    {
+        for (std::size_t i = first; i < lines->size() - last; ++i)
+        {
+            ELineKind const kind = (*lines)[i].GetKind();
+            if (kind != ELineKind::Comment && kind != ELineKind::Blank)
+                return false;
+        }
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------
 /*
@@ -182,6 +314,207 @@ std::vector<TCorpusText> Corpus()
 }
 //---------------------------------------------------------------------------
 /*
+    DocumentDifference
+
+    The first difference between the sections and lines of 'expected' and those of 'actual', e.g. "section 1, line 2:
+    the value"; "" when there is none.
+*/
+std::string DocumentDifference(TASWIniDocument const& expected, TASWIniDocument const& actual)
+{
+    std::vector<ASWIni::TASWIniDocumentSection> const& expectedSections = expected.GetSections();
+    std::vector<ASWIni::TASWIniDocumentSection> const& actualSections = actual.GetSections();
+    if (expectedSections.size() != actualSections.size())
+        return "the number of sections";
+
+    for (std::size_t s = 0; s < expectedSections.size(); ++s)
+    {
+        std::string const where = "section " + std::to_string(s);
+        std::vector<TASWIniDocumentLine> const& expectedLines = expectedSections[s].GetLines();
+        std::vector<TASWIniDocumentLine> const& actualLines = actualSections[s].GetLines();
+        if (expectedSections[s].GetName() != actualSections[s].GetName())
+            return where + ": the name";
+
+        if (expectedLines.size() != actualLines.size())
+            return where + ": the number of lines";
+
+        for (std::size_t i = 0; i < expectedLines.size(); ++i)
+        {
+            std::string const difference = LineDifference(expectedLines[i], actualLines[i]);
+            if (!difference.empty())
+                return where + ", line " + std::to_string(i) + ": " + difference;
+        }
+    }
+
+    return std::string();
+}
+//---------------------------------------------------------------------------
+/*
+    EditDescription
+
+    'edit' as text for a message, e.g. SetValue("A", "k", "v").
+*/
+std::string EditDescription(TFuzzEdit const& edit)
+{
+    return std::string(EditName(edit.Kind)) + "(" + Shown(edit.Section) + ", " + Shown(edit.Key) + ", " +
+        Shown(edit.Text) + ")";
+}
+//---------------------------------------------------------------------------
+/*
+    EditName
+
+    The name of the document's method that makes an edit of kind 'kind'.
+*/
+char const* EditName(EFuzzEdit kind)
+{
+    switch (kind)
+    {
+        case EFuzzEdit::SetValue:
+            return "SetValue";
+
+        case EFuzzEdit::AddSection:
+            return "AddSection";
+
+        case EFuzzEdit::RemoveKey:
+            return "RemoveKey";
+
+        case EFuzzEdit::RemoveSection:
+            return "RemoveSection";
+
+        case EFuzzEdit::RenameKey:
+            return "RenameKey";
+
+        case EFuzzEdit::RenameSection:
+            return "RenameSection";
+
+        case EFuzzEdit::SetFileComment:
+            return "SetFileComment";
+
+        case EFuzzEdit::SetKeyComment:
+            return "SetKeyComment";
+
+        case EFuzzEdit::SetSectionComment:
+            return "SetSectionComment";
+    }
+
+    return "Unknown";
+}
+//---------------------------------------------------------------------------
+/*
+    EditProblem
+
+    What is wrong with edit 'edit', which made 'document' of the lines 'before' into one of the lines 'after' and
+    returned 'succeeded': what the document's methods say about the edited section, key or comment, and which lines
+    changed (lines are only added for a new value or section, only removed by a removal, and only the lines a rename
+    or a comment is about change); "" when nothing is.
+*/
+std::string EditProblem(TFuzzEdit const& edit, bool succeeded, std::vector<TASWIniDocumentLine> const& before,
+    std::vector<TASWIniDocumentLine> const& after, TASWIniDocument const& document)
+{
+    switch (edit.Kind)
+    {
+        case EFuzzEdit::SetValue:
+        {
+            TASWIniDocumentLine const* const line = document.FindKey(edit.Section, edit.Key);
+            if (succeeded && (line == nullptr || line->GetValue() != edit.Text))
+                return "the key doesn't have the value that was set";
+
+            std::size_t changed = 0;
+            for (std::size_t i = 0; before.size() == after.size() && i < before.size(); ++i)
+            {
+                if (before[i].GetText() != after[i].GetText())
+                    ++changed;
+            }
+
+            if (changed > 1 || (before.size() != after.size() && !IsSubsequence(before, after)))
+                return "other lines than the key's changed";
+
+            return std::string();
+        }
+
+        case EFuzzEdit::AddSection:
+            if (succeeded && document.FindSection(edit.Section) == nullptr)
+                return "the section doesn't exist";
+
+            return IsSubsequence(before, after) ? std::string() : "lines were changed, not only added";
+
+        case EFuzzEdit::RemoveKey:
+            if (document.FindKey(edit.Section, edit.Key) != nullptr)
+                return "the key still exists";
+
+            return IsSubsequence(after, before) ? std::string() : "lines were changed, not only removed";
+
+        case EFuzzEdit::RemoveSection:
+            if (!edit.Section.empty() && document.FindSection(edit.Section) != nullptr)
+                return "the section still exists";
+
+            return IsSubsequence(after, before) ? std::string() : "lines were changed, not only removed";
+
+        case EFuzzEdit::RenameKey:
+        case EFuzzEdit::RenameSection:
+        {
+            bool const key = edit.Kind == EFuzzEdit::RenameKey;
+            ELineKind const kind = key ? ELineKind::KeyValue : ELineKind::Section;
+            TASWIniDocumentLine const* const renamedKey = document.FindKey(edit.Section, edit.Text);
+            ASWIni::TASWIniDocumentSection const* const renamedSection = document.FindSection(edit.Text);
+            if (succeeded && key && (renamedKey == nullptr || renamedKey->GetKey() != edit.Text))
+                return "the key doesn't have the new name";
+
+            if (succeeded && !key && (renamedSection == nullptr || renamedSection->GetName() != edit.Text))
+                return "the section doesn't have the new name";
+
+            if (before.size() != after.size())
+                return "lines were added or removed";
+
+            for (std::size_t i = 0; i < before.size(); ++i)
+            {
+                if (before[i].GetText() != after[i].GetText() &&
+                    (before[i].GetKind() != kind || after[i].GetKind() != kind))
+                {
+                    return "a line that isn't a renamed one changed";
+                }
+            }
+
+            return std::string();
+        }
+
+        case EFuzzEdit::SetFileComment:
+        case EFuzzEdit::SetKeyComment:
+        case EFuzzEdit::SetSectionComment:
+        {
+            std::string comment = document.GetFileComment();
+            if (edit.Kind == EFuzzEdit::SetKeyComment)
+                comment = document.GetKeyComment(edit.Section, edit.Key);
+            else if (edit.Kind == EFuzzEdit::SetSectionComment)
+                comment = document.GetSectionComment(edit.Section);
+
+            if (succeeded && comment != NormalizedComment(edit.Text))
+                return "the comment reads " + Shown(comment);
+
+            return ChangedLinesAreComments(before, after) ? std::string() : "other lines than comments changed";
+        }
+    }
+
+    return "an unknown edit";
+}
+//---------------------------------------------------------------------------
+/*
+    IsSubsequence
+
+    Whether the texts of the lines of 'part' are those of some of the lines of 'whole', in the same order.
+*/
+bool IsSubsequence(std::vector<TASWIniDocumentLine> const& part, std::vector<TASWIniDocumentLine> const& whole)
+{
+    std::size_t found = 0;
+    for (std::size_t i = 0; i < whole.size() && found < part.size(); ++i)
+    {
+        if (whole[i].GetText() == part[found].GetText())
+            ++found;
+    }
+
+    return found == part.size();
+}
+//---------------------------------------------------------------------------
+/*
     JoinedNames
 
     'names' separated by '|', e.g. "General|Window.Main"; "" when there are none.
@@ -200,6 +533,37 @@ std::string JoinedNames(std::vector<std::string> const& names)
 }
 //---------------------------------------------------------------------------
 /*
+    LineDifference
+
+    The first part in which line 'actual' differs from line 'expected', e.g. "the value"; "" when there is none.
+*/
+std::string LineDifference(TASWIniDocumentLine const& expected, TASWIniDocumentLine const& actual)
+{
+    if (expected.GetKind() != actual.GetKind())
+        return "the kind";
+
+    if (expected.GetText() != actual.GetText())
+        return "the text";
+
+    if (expected.GetLineBreak() != actual.GetLineBreak())
+        return "the line break";
+
+    if (expected.GetKey() != actual.GetKey() || expected.GetSeparator() != actual.GetSeparator())
+        return "the key or the separator";
+
+    if (expected.GetValue() != actual.GetValue() || expected.IsQuoted() != actual.IsQuoted())
+        return "the value";
+
+    if (expected.GetSectionName() != actual.GetSectionName())
+        return "the section name";
+
+    if (expected.HasComment() != actual.HasComment() || expected.GetComment() != actual.GetComment())
+        return "the comment";
+
+    return std::string();
+}
+//---------------------------------------------------------------------------
+/*
     MessageCodes
 
     The codes of 'messages', in order.
@@ -214,6 +578,41 @@ std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages)
 }
 //---------------------------------------------------------------------------
 /*
+    NormalizedComment
+
+    'text' as a comment reads back after it was set: its lines (split at LF, CRLF or CR, a line break at its end
+    starting no empty line), each without the spaces and tabs around it, joined with "\n".
+*/
+std::string NormalizedComment(std::string_view text)
+{
+    std::string normalized;
+    std::size_t begin = 0;
+    while (begin < text.size())
+    {
+        std::size_t end = text.find_first_of("\r\n", begin);
+        if (end == std::string_view::npos)
+            end = text.size();
+
+        std::string_view line = text.substr(begin, end - begin);
+        std::size_t const lineBegin = line.find_first_not_of(" \t");
+        if (lineBegin == std::string_view::npos)
+            line = std::string_view();
+        else
+            line = line.substr(lineBegin, line.find_last_not_of(" \t") + 1 - lineBegin);
+
+        if (begin > 0)
+            normalized += '\n';
+        normalized += line;
+
+        if (end + 1 < text.size() && text[end] == '\r' && text[end + 1] == '\n')
+            ++end;
+        begin = end + 1;
+    }
+
+    return normalized;
+}
+//---------------------------------------------------------------------------
+/*
     ParseText
 
     'text' parsed with 'options' into a new document, with Parse()'s result in 'result' and its messages in 'messages'.
@@ -225,6 +624,103 @@ TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, 
     result = document.Parse(text, options, messages);
 
     return document;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomEdit
+
+    An edit of a random kind, with a section, key, value, new name or comment picked from the fuzz tests' lists with
+    'generator'.
+*/
+TFuzzEdit RandomEdit(std::mt19937& generator)
+{
+    TFuzzEdit edit;
+    edit.Kind = static_cast<EFuzzEdit>(generator() % FuzzEditKindCount);
+    edit.Section = RandomItem(generator, FuzzSections);
+    edit.Key = RandomItem(generator, FuzzKeys);
+
+    switch (edit.Kind)
+    {
+        case EFuzzEdit::RenameKey:
+            edit.Text = RandomItem(generator, FuzzKeys);
+            break;
+
+        case EFuzzEdit::RenameSection:
+            edit.Text = RandomItem(generator, FuzzSections);
+            break;
+
+        case EFuzzEdit::SetFileComment:
+        case EFuzzEdit::SetKeyComment:
+        case EFuzzEdit::SetSectionComment:
+            edit.Text = RandomItem(generator, FuzzComments);
+            break;
+
+        default:
+            edit.Text = RandomItem(generator, FuzzValues);
+            break;
+    }
+
+    return edit;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomIniText
+
+    A text of 0 to 15 lines made of headers, key lines (some indented), comment lines and blank lines, with the
+    fuzz tests' names, values and comments, and random line breaks (the last line sometimes has none); the same for
+    the same 'seed' everywhere (see RandomText()).
+*/
+std::string RandomIniText(std::uint32_t seed)
+{
+    char const* const separators[] = { " = ", "=", ": " };
+    char const* const lineBreaks[] = { "\n", "\r\n", "\r" };
+
+    std::mt19937 generator(seed);
+    std::size_t const lineCount = static_cast<std::size_t>(generator() % 16);
+
+    std::string text;
+    for (std::size_t i = 0; i < lineCount; ++i)
+    {
+        switch (generator() % 6)
+        {
+            case 0:
+                text += "[" + RandomItem(generator, FuzzSections) + "]";
+                break;
+
+            case 1:
+            case 2:
+                text += RandomItem(generator, FuzzKeys) + RandomItem(generator, separators) +
+                    RandomItem(generator, FuzzValues);
+                break;
+
+            case 3:
+                text += "; " + RandomItem(generator, FuzzComments);
+                break;
+
+            case 4:
+                text += "  " + RandomItem(generator, FuzzKeys) + "=" + RandomItem(generator, FuzzValues);
+                break;
+
+            default:
+                break;
+        }
+
+        if (i + 1 < lineCount || generator() % 4 != 0)
+            text += RandomItem(generator, lineBreaks);
+    }
+
+    return text;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomItem
+
+    One of 'items', picked with 'generator'.
+*/
+template <std::size_t Size>
+std::string RandomItem(std::mt19937& generator, char const* const (&items)[Size])
+{
+    return items[generator() % Size];
 }
 //---------------------------------------------------------------------------
 /*
@@ -295,6 +791,29 @@ std::vector<TASWIniOptions> ReadingOptionSets()
     sets[3].Writing.Separator = ": ";
 
     return sets;
+}
+//---------------------------------------------------------------------------
+/*
+    Shown
+
+    'text' in double quotes for a message, with its CRs and LFs written as \r and \n.
+*/
+std::string Shown(std::string_view text)
+{
+    std::string shown = "\"";
+    for (char const c : text)
+    {
+        if (c == '\r')
+            shown += "\\r";
+        else if (c == '\n')
+            shown += "\\n";
+        else
+            shown += c;
+    }
+
+    shown += "\"";
+
+    return shown;
 }
 //---------------------------------------------------------------------------
 
@@ -1696,6 +2215,61 @@ TTest_ASWIni_DocumentFuzz::~TTest_ASWIni_DocumentFuzz()
 {
 }
 //---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentFuzz::CheckRandomEdits(std::string_view text, TASWIniOptions const& options,
+    std::uint32_t seed, std::vector<std::size_t>& changes, std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, options, result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "seed " + std::to_string(seed) + ": the text should parse: " +
+        result.Message);
+
+    std::mt19937 generator(seed);
+    for (std::size_t step = 0; step < FuzzEditCount; ++step)
+    {
+        TFuzzEdit const edit = RandomEdit(generator);
+        std::string const name = "seed " + std::to_string(seed) + ", edit " + std::to_string(step + 1) + ", " +
+            EditDescription(edit);
+        std::vector<TASWIniDocumentLine> const before = AllLines(document);
+        std::string const textBefore = document.ToText();
+        document.ClearModified();
+
+        bool const succeeded = ApplyEdit(document, edit);
+        std::vector<TASWIniDocumentLine> const after = AllLines(document);
+        std::string const textAfter = document.ToText();
+
+        // Checked with if, since the checks run hundreds of thousands of times
+        if (document.IsModified() != (textAfter != textBefore))
+            AssertTrue(false, method, lineNumber, name + ": the modified flag should say whether the text changed");
+
+        if (!succeeded && textAfter != textBefore)
+            AssertTrue(false, method, lineNumber, name + ": an edit that failed shouldn't change the text");
+
+        if (textAfter != textBefore)
+            ++changes[static_cast<std::size_t>(edit.Kind)];
+
+        std::vector<TASWIniMessage> rereadMessages;
+        TASWIniDocument const reread = ParseText(textAfter, options, result, rereadMessages);
+        if (!result.IsOk())
+            AssertTrue(false, method, lineNumber, name + ": the text should parse again: " + result.Message);
+
+        // Except when an edit made a line that starts with the bytes of a byte order mark the first line, which reads
+        // back without them (see TASWIniDocument::ToText())
+        bool const bomLineFirst = !document.HasBom() && !after.empty() &&
+            after.front().GetText().compare(0, 3, "\xEF\xBB\xBF") == 0;
+        std::string const difference = bomLineFirst ? std::string() : DocumentDifference(reread, document);
+        if (!difference.empty())
+        {
+            AssertTrue(false, method, lineNumber, name + ": the document should be what its text parses to: " +
+                difference);
+        }
+
+        std::string const problem = EditProblem(edit, succeeded, before, after, document);
+        if (!problem.empty())
+            AssertTrue(false, method, lineNumber, name + ": " + problem);
+    }
+}
+//---------------------------------------------------------------------------
 void TTest_ASWIni_DocumentFuzz::SetUp_Group()
 {
 }
@@ -1716,6 +2290,43 @@ void TTest_ASWIni_DocumentFuzz::TearDown_Test(ITestCase& /*testCase*/)
 // /////// Begin tests after this line ///////////////////////
 
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomEdits_KeepIniTextsConsistent)
+{
+    // Arrange
+    std::vector<TASWIniOptions> const optionSets = ReadingOptionSets();
+    std::vector<std::size_t> changes(FuzzEditKindCount);
+
+    for (std::size_t i = 0; i < FuzzEditTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+
+        // Act & Assert
+        CheckRandomEdits(RandomIniText(seed), optionSets[i % optionSets.size()], seed, changes, __func__, __LINE__);
+    }
+
+    // Each kind of edit changed some texts, so the checks of each of them ran
+    for (std::size_t kind = 0; kind < FuzzEditKindCount; ++kind)
+    {
+        CheckTrue(changes[kind] > 0, __func__, __LINE__, std::string(EditName(static_cast<EFuzzEdit>(kind))) +
+            " should change some texts");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomEdits_KeepRandomTextsConsistent)
+{
+    // Arrange
+    std::vector<TASWIniOptions> const optionSets = ReadingOptionSets();
+    std::vector<std::size_t> changes(FuzzEditKindCount);
+
+    for (std::size_t i = 0; i < FuzzEditTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+
+        // Act & Assert
+        CheckRandomEdits(RandomText(seed), optionSets[i % optionSets.size()], seed, changes, __func__, __LINE__);
+    }
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomText_IsTheSameEverywhere)
 {
     // Arrange
@@ -1734,6 +2345,10 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomText_IsTheSameEverywhere)
         "the same seed should give the same text");
     CheckFalse(RandomText(FuzzFirstSeed) == RandomText(FuzzFirstSeed + 1), __func__, __LINE__,
         "different seeds should give different texts");
+    CheckEquals(RandomIniText(FuzzFirstSeed), RandomIniText(FuzzFirstSeed), __func__, __LINE__,
+        "the same seed should give the same INI text");
+    CheckFalse(RandomIniText(FuzzFirstSeed) == RandomIniText(FuzzFirstSeed + 1), __func__, __LINE__,
+        "different seeds should give different INI texts");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ConvertedLineEndingsKeepTheLines)
@@ -2435,6 +3050,24 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewSection_GoesAtTheEnd)
         __LINE__), __func__, __LINE__, "after a last line without a line break");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentSetValue, NewSection_KeepsALineThatEndsWithCrApart)
+{
+    // Arrange
+    // The new blank line ends with LF, the most common line break; after "l=2\r" it would make "\r\n", one line break
+    std::string const text = "[A]\nk=1\nl=2\r";
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+
+    // Act
+    std::string const written = AddAndWrite(text, TASWIniOptions(), "B", __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("[A]\nk=1\nl=2\r\n\n[B]\n"), written, __func__, __LINE__,
+        "the line that ends with CR should end with CRLF instead");
+    CheckEquals(5, static_cast<int>(ParseText(written, TASWIniOptions(), result, messages).GetLineCount()),
+        __func__, __LINE__, "the text should read back as five lines");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_ChangesTheWinningDuplicate)
 {
     // Arrange
@@ -2674,6 +3307,17 @@ void TTest_ASWIni_DocumentRemove::TearDown_Test(ITestCase& /*testCase*/)
 
 // /////// Begin tests after this line ///////////////////////
 
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_KeepsALineThatEndsWithCrApart)
+{
+    // Act
+    // Without k, "a=1\r" would be followed by the blank line's "\n", one line break
+    std::string const written = RemoveKeyAndWrite("a=1\rk=1\n\nb=2\n", "", "k", true, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("a=1\r\n\nb=2\n"), written, __func__, __LINE__,
+        "the line that ends with CR should end with CRLF instead");
+}
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_KeepsTheLinesAroundIt)
 {
@@ -3297,6 +3941,22 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_AddsItAtTheStartWithABlan
         __LINE__, "an empty document");
     CheckEquals(std::string("; a\n; b\n;\n; c\n\n[A]\n"), FileCommentAndWrite("[A]\n", options, "a\r\nb\n\n c ",
         __func__, __LINE__), __func__, __LINE__, "a line for each line of the text, trimmed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_RemovingItLeavesNoFileComment)
+{
+    // Arrange
+    // Without the blank line under the file comment, "; a" would be the file comment
+    TASWIniOptions const options;
+
+    // Act
+    std::string const written = FileCommentAndWrite("; old\n\n; a\n\n[A]\n", options, "", __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("\n; a\n\n[A]\n"), written, __func__, __LINE__,
+        "the blank line under the file comment should stay");
+    CheckEquals(std::string(), Parsed(written, options, __func__, __LINE__).GetFileComment(), __func__, __LINE__,
+        "the text should have no file comment");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_ReplacesAndRemovesIt)

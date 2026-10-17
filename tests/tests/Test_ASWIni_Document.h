@@ -23,8 +23,10 @@ limitations under the License.
 #define Test_ASWIni_DocumentH
 //---------------------------------------------------------------------------
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_TestBase.h"
 //---------------------------------------------------------------------------
@@ -230,7 +232,17 @@ class TTest_ASWIni_DocumentFuzz : public TAutoTestGroup<TTest_ASWIni_DocumentFuz
 private:
     typedef TAutoTestGroup<TTest_ASWIni_DocumentFuzz> inherited;
 
+private:
+    // Makes FuzzEditCount random edits (picked with 'seed') to 'text' parsed with 'options', and checks after each
+    // one that the modified flag is set only when the text changed, that a failed edit changes nothing, that the
+    // document is what its text parses to, and that the edit did what it should and nothing else. Counts the edits
+    // that changed the text in 'changes', by kind.
+    void CheckRandomEdits(std::string_view text, ASWIni::TASWIniOptions const& options, std::uint32_t seed,
+        std::vector<std::size_t>& changes, std::string const& method, int lineNumber);
+
 public: // Test methods, each defined with ASW_TEST
+    void Test_RandomEdits_KeepIniTextsConsistent();
+    void Test_RandomEdits_KeepRandomTextsConsistent();
     void Test_RandomText_IsTheSameEverywhere();
     void Test_RandomTexts_ConvertedLineEndingsKeepTheLines();
     void Test_RandomTexts_ParseAndWriteBack();
@@ -326,6 +338,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_NewKey_RejectsNamesThatWouldntReadBack();
     void Test_NewKey_UsesTheWritingSeparator();
     void Test_NewSection_GoesAtTheEnd();
+    void Test_NewSection_KeepsALineThatEndsWithCrApart();
     void Test_Value_ChangesTheWinningDuplicate();
     void Test_Value_EmptyGetsTheBlanksBeforeTheSeparator();
     void Test_Value_KeepsTheInlineComment();
@@ -367,6 +380,7 @@ private:
         std::string const& method, int lineNumber);
 
 public: // Test methods, each defined with ASW_TEST
+    void Test_RemoveKey_KeepsALineThatEndsWithCrApart();
     void Test_RemoveKey_KeepsTheLinesAroundIt();
     void Test_RemoveKey_RemovesEveryDuplicate();
     void Test_RemoveKey_RemovesItsComment();
@@ -482,6 +496,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_SetComment_SameTextChangesNothing();
     void Test_SetComment_UsesTheWritingCommentPrefix();
     void Test_SetFileComment_AddsItAtTheStartWithABlankLine();
+    void Test_SetFileComment_RemovingItLeavesNoFileComment();
     void Test_SetFileComment_ReplacesAndRemovesIt();
     void Test_SetFileComment_StaysAboveNewKeys();
     void Test_SetKeyComment_GoesDirectlyAboveTheKey();

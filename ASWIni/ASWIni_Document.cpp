@@ -739,6 +739,7 @@ void TASWIniDocument::AppendSection(TASWIniDocumentSection& section)
     if (blankLineFirst)
         lastLines.push_back(std::move(blankLine));
     m_Sections.push_back(std::move(section));
+    FixMergingLineBreaks();
     m_Modified = true;
 }
 //---------------------------------------------------------------------------
@@ -778,6 +779,24 @@ TASWIniDocumentLine const* TASWIniDocument::FindKey(std::string_view section, st
         return nullptr;
 
     return &m_Sections[sectionIndex].m_Lines[lineIndex];
+}
+//---------------------------------------------------------------------------
+void TASWIniDocument::FixMergingLineBreaks() noexcept
+{
+    TASWIniDocumentLine* previous = nullptr;
+    for (TASWIniDocumentSection& section : m_Sections)
+    {
+        for (TASWIniDocumentLine& line : section.m_Lines)
+        {
+            if (previous != nullptr && previous->m_LineBreak == ELineBreak::CR && line.m_Text.empty() &&
+                line.m_LineBreak == ELineBreak::LF)
+            {
+                previous->m_LineBreak = ELineBreak::CRLF;
+            }
+
+            previous = &line;
+        }
+    }
 }
 //---------------------------------------------------------------------------
 bool TASWIniDocument::FindKeyLine(std::string_view section, std::string_view key, std::size_t& sectionIndex,
@@ -1230,6 +1249,7 @@ bool TASWIniDocument::RemoveKey(std::string_view section, std::string_view key)
             RemoveMarked(m_Sections[sectionIndex].m_Lines, marks[sectionIndex]);
     }
 
+    FixMergingLineBreaks();
     m_Modified = true;
 
     return true;
@@ -1311,6 +1331,7 @@ bool TASWIniDocument::RemoveSection(std::string_view name)
     }
 
     RemoveMarked(m_Sections, removed);
+    FixMergingLineBreaks();
     m_Modified = true;
 
     return true;
@@ -1453,12 +1474,24 @@ TASWIniResult TASWIniDocument::ReplaceComment(std::size_t sectionIndex, std::siz
     if (same)
         return result;
 
-    // A file comment is followed by a blank line, which goes with it
+    // A file comment is followed by a blank line, which goes with it, unless the comment lines after it would then be
+    // read as the file comment
     bool const blankLineFollows = end < current.size() && current[end].m_Kind == ELineKind::Blank;
     if (fileComment && lines.empty() && blankLineFollows)
-        ++end;
+    {
+        std::size_t next = end + 1;
+        while (next < current.size() && current[next].m_Kind == ELineKind::Comment)
+            ++next;
+
+        bool const nextIsFileComment = next > end + 1 &&
+            (next < current.size() ? current[next].m_Kind == ELineKind::Blank : m_Sections.size() == 1);
+        if (!nextIsFileComment)
+            ++end;
+    }
     else if (fileComment && begin == end && !blankLineFollows)
+    {
         lines.push_back(MakeLine(std::string_view(), NewLineBreak()));
+    }
 
     ReplaceLines(sectionIndex, begin, end, lines);
 
@@ -1479,6 +1512,7 @@ void TASWIniDocument::ReplaceLines(std::size_t sectionIndex, std::size_t begin, 
     std::ptrdiff_t const first = static_cast<std::ptrdiff_t>(begin);
     target.erase(target.begin() + first, target.begin() + static_cast<std::ptrdiff_t>(end));
     target.insert(target.begin() + first, std::make_move_iterator(lines.begin()), std::make_move_iterator(lines.end()));
+    FixMergingLineBreaks();
     m_Modified = true;
 }
 //---------------------------------------------------------------------------

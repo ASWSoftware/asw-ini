@@ -92,5 +92,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the old lines; an empty text removes them, and a new file comment gets a blank line under it. A
   text the comment already reads as changes nothing, whatever prefix its lines use. Inline and
   header comments (`k = v ; note`) stay as they are.
+- After every edit, the text a `TASWIniDocument` writes reads back as the lines it holds. When an
+  edit would put an empty line that ends with LF right after a line that ends with CR (which would
+  read back as one CRLF line break), that line gets a CRLF line break instead.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

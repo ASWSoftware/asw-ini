@@ -135,21 +135,21 @@ char const* ToString(ELineEnding lineEnding) noexcept
 
 
 /////////////////////////////////////////////////////////////////////////////
-// TASWIniOptions
+// TASWIniReadingOptions
 /////////////////////////////////////////////////////////////////////////////
 
 //---------------------------------------------------------------------------
-TASWIniResult TASWIniOptions::Validate() const
+TASWIniResult TASWIniReadingOptions::Validate() const
 {
     // Separators: characters that can't also start or end something else on a line
     if (Separators.empty())
-        return Invalid("Separators is empty; it needs at least one character, e.g. \"=\".");
+        return Invalid("Reading.Separators is empty; it needs at least one character, e.g. \"=\".");
 
     for (char const c : Separators)
     {
         if (Detail::IsBlank(c) || c == '\r' || c == '\n' || c == '\0' || c == '[' || c == ']' || c == '"')
         {
-            return Invalid("Separators can't hold spaces, tabs, line breaks, NUL, '[', ']' or '\"'; it holds " +
+            return Invalid("Reading.Separators can't hold spaces, tabs, line breaks, NUL, '[', ']' or '\"'; it holds " +
                 (c == '\0' ? std::string("NUL") : Quoted(c)) + ".");
         }
     }
@@ -157,71 +157,143 @@ TASWIniResult TASWIniOptions::Validate() const
     // CommentPrefixes: each must be recognizable at the start of a line, and not start with a separator (a key line
     // would then be ambiguous)
     if (CommentPrefixes.empty())
-        return Invalid("CommentPrefixes is empty; it needs at least one prefix, e.g. \";\".");
+        return Invalid("Reading.CommentPrefixes is empty; it needs at least one prefix, e.g. \";\".");
 
     for (std::string const& prefix : CommentPrefixes)
     {
         if (prefix.empty())
-            return Invalid("CommentPrefixes holds an empty prefix.");
+            return Invalid("Reading.CommentPrefixes holds an empty prefix.");
 
         if (HasLineBreakOrNul(prefix))
-            return Invalid("The comment prefix \"" + prefix + "\" holds a line break or NUL.");
+        {
+            return Invalid("The comment prefix \"" + prefix +
+                "\" in Reading.CommentPrefixes holds a line break or NUL.");
+        }
 
         if (Detail::IsBlank(prefix[0]) || prefix[0] == '[')
-            return Invalid("The comment prefix \"" + prefix + "\" starts with a space, tab or '['.");
+        {
+            return Invalid("The comment prefix \"" + prefix +
+                "\" in Reading.CommentPrefixes starts with a space, tab or '['.");
+        }
 
         if (Separators.find(prefix[0]) != std::string::npos)
         {
-            return Invalid("The comment prefix \"" + prefix + "\" starts with " + Quoted(prefix[0]) +
-                ", which is also one of the Separators.");
+            return Invalid("The comment prefix \"" + prefix + "\" in Reading.CommentPrefixes starts with " +
+                Quoted(prefix[0]) + ", which is also one of the Reading.Separators.");
         }
     }
 
-    // Separator: one of Separators, with only spaces or tabs around it, so the written line reads back as a key
-    std::string_view const separator = Detail::Trim(Separator);
-    if (separator.size() != 1 || Separators.find(separator[0]) == std::string::npos)
+    if (MaxFileSize == 0)
+        return Invalid("Reading.MaxFileSize is 0; no file could be loaded.");
+
+    // The enumeration, in case it was cast from a number
+    if (std::string_view(ToString(DuplicateKeys)) == "Unknown")
+        return Invalid("Reading.DuplicateKeys isn't one of the EDuplicateKeys values.");
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniWritingOptions
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniWritingOptions::Validate() const
+{
+    // Separator: one character, with only spaces or tabs around it
+    if (HasLineBreakOrNul(Separator) || Detail::Trim(Separator).size() != 1)
     {
-        return Invalid("Separator \"" + Separator + "\" must be one of the Separators (\"" + Separators +
-            "\"), with only spaces or tabs around it.");
+        return Invalid("Writing.Separator \"" + Separator +
+            "\" must be one character, with only spaces or tabs around it.");
     }
 
-    // CommentPrefix: starts with one of CommentPrefixes, so the written line reads back as a comment
-    if (HasLineBreakOrNul(CommentPrefix))
-        return Invalid("CommentPrefix holds a line break or NUL.");
+    if (CommentPrefix.empty())
+        return Invalid("Writing.CommentPrefix is empty; it needs a comment prefix, e.g. \"; \".");
 
-    bool commentPrefixKnown = false;
-    for (std::string const& prefix : CommentPrefixes)
+    if (HasLineBreakOrNul(CommentPrefix))
+        return Invalid("Writing.CommentPrefix holds a line break or NUL.");
+
+    // The enumerations, in case one was cast from a number
+    if (std::string_view(ToString(LineEnding)) == "Unknown")
+        return Invalid("Writing.LineEnding isn't one of the ELineEnding values.");
+
+    if (std::string_view(ToString(Bom)) == "Unknown")
+        return Invalid("Writing.Bom isn't one of the EBomMode values.");
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniSavingOptions
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniSavingOptions::Validate() const
+{
+    if (Backup)
     {
-        if (CommentPrefix.compare(0, prefix.size(), prefix) == 0)
+        if (BackupSuffix.empty())
+            return Invalid("Saving.BackupSuffix is empty, so the backup would replace the file itself.");
+
+        if (HasLineBreakOrNul(BackupSuffix) || BackupSuffix.find_first_of("/\\:") != std::string::npos)
+        {
+            return Invalid("Saving.BackupSuffix \"" + BackupSuffix +
+                "\" can't hold '/', '\\', ':', line breaks or NUL.");
+        }
+    }
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniOptions
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniOptions::Validate() const
+{
+    TASWIniResult result = Reading.Validate();
+    if (!result.IsOk())
+        return result;
+
+    result = Writing.Validate();
+    if (!result.IsOk())
+        return result;
+
+    result = Saving.Validate();
+    if (!result.IsOk())
+        return result;
+
+    // A written key line must read back as a key: its separator must be one the reader looks for
+    char const separator = Detail::Trim(Writing.Separator)[0];
+    if (Reading.Separators.find(separator) == std::string::npos)
+    {
+        return Invalid("Writing.Separator \"" + Writing.Separator + "\" must be one of the Reading.Separators (\"" +
+            Reading.Separators + "\").");
+    }
+
+    // A written comment line must read back as a comment
+    bool commentPrefixKnown = false;
+    for (std::string const& prefix : Reading.CommentPrefixes)
+    {
+        if (Writing.CommentPrefix.compare(0, prefix.size(), prefix) == 0)
         {
             commentPrefixKnown = true;
             break;
         }
     }
+
     if (!commentPrefixKnown)
-        return Invalid("CommentPrefix \"" + CommentPrefix + "\" must start with one of the CommentPrefixes.");
-
-    if (MaxFileSize == 0)
-        return Invalid("MaxFileSize is 0; no file could be loaded.");
-
-    if (Backup)
     {
-        if (BackupSuffix.empty())
-            return Invalid("BackupSuffix is empty, so the backup would replace the file itself.");
-
-        if (HasLineBreakOrNul(BackupSuffix) || BackupSuffix.find_first_of("/\\:") != std::string::npos)
-            return Invalid("BackupSuffix \"" + BackupSuffix + "\" can't hold '/', '\\', ':', line breaks or NUL.");
+        return Invalid("Writing.CommentPrefix \"" + Writing.CommentPrefix +
+            "\" must start with one of the Reading.CommentPrefixes.");
     }
-
-    // The enumerations, in case one was cast from a number
-    if (std::string_view(ToString(DuplicateKeys)) == "Unknown")
-        return Invalid("DuplicateKeys isn't one of the EDuplicateKeys values.");
-
-    if (std::string_view(ToString(LineEnding)) == "Unknown")
-        return Invalid("LineEnding isn't one of the ELineEnding values.");
-
-    if (std::string_view(ToString(Bom)) == "Unknown")
-        return Invalid("Bom isn't one of the EBomMode values.");
 
     return TASWIniResult();
 }

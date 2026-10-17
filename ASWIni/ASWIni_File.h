@@ -67,7 +67,7 @@ TASWIniResult ReadWholeFile(std::filesystem::path const& path, std::size_t maxSi
 // invalid UTF-8 sequence becomes U+FFFD. Elsewhere, the bytes are the path.
 std::filesystem::path Utf8ToPath(std::string_view utf8);
 
-// Writes 'contents' to the file at 'path', in binary mode, as 'options' say:
+// Writes 'contents' to the file at 'path', in binary mode, as the saving options say:
 // - CreateFolders: creates the file's folder (and those above it) when it doesn't exist.
 // - Backup: first copies an existing file to its name followed by BackupSuffix; a failure is added to 'warnings'
 //   (EIniCode::BackupFailed) and the save goes on.
@@ -80,7 +80,7 @@ std::filesystem::path Utf8ToPath(std::string_view utf8);
 // Fails with CreateFolderFailed, FileNotFound (its folder doesn't exist), AccessDenied, OpenFailed, WriteFailed or
 // ReplaceFailed. Never throws.
 TASWIniResult WriteWholeFile(std::filesystem::path const& path, std::string_view contents,
-    TASWIniOptions const& options, std::vector<TASWIniMessage>& warnings) noexcept;
+    TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings) noexcept;
 
 } // namespace Detail
 

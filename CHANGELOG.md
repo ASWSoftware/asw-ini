@@ -20,14 +20,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   file, line, section, key and system error it is about) and `TASWIniResult` (an operation's
   outcome, which converts to `true` when it succeeded). `ToString()` names a code or a severity, and
   writes a message as one line of text. New sources: `ASWIni_Types.cpp` and `ASWIni_Utils.cpp`.
-- `TASWIniOptions` (`ASWIni_Options.h`), the settings for reading, writing and saving INI files:
-  the separators read (`=` and `:`) and written (`" = "`), the comment prefixes read (`;` and `#`)
-  and written (`"; "`), inline comments and quoted values (both off), case-sensitive names (off),
-  which duplicate key wins (the first), strict parsing (off), the largest file loaded (16 MiB), the
-  line ending and byte order mark written (both as the loaded file had them), and atomic saves
-  (on), backups (off) and creating missing folders (on). `Validate()` returns
-  `EIniCode::InvalidOptions` for options that would write a file that can't be read back. New
-  source: `ASWIni_Options.cpp`.
+- `TASWIniOptions` (`ASWIni_Options.h`), the settings for INI files in three groups:
+  - `Reading` (`TASWIniReadingOptions`): the separators (`=` and `:`) and comment prefixes (`;`
+    and `#`) read, inline comments and quoted values (both off), case-sensitive names (off), which
+    duplicate key wins (the first), strict parsing (off) and the largest file loaded (16 MiB).
+  - `Writing` (`TASWIniWritingOptions`): the separator (`" = "`) and comment prefix (`"; "`) of new
+    lines, the line ending and byte order mark (both as the loaded file had them), and a blank line
+    before a new section (on).
+  - `Saving` (`TASWIniSavingOptions`): atomic saves (on), backups (off, `.bak`) and creating
+    missing folders (on).
+
+  Each group's `Validate()` checks its own settings, and `TASWIniOptions::Validate()` also checks
+  that a file written with them can be read back (e.g. `Writing.Separator` must be one of
+  `Reading.Separators`); a problem is `EIniCode::InvalidOptions` with a message naming the setting.
+  New source: `ASWIni_Options.cpp`.
 - The file layer that loading and saving will use (`ASWIni_File.cpp`, internal): whole files read
   and written in binary mode with the operating system's own file APIs, a size limit on reads, and
   saves that replace the file atomically (keeping its attributes on Windows, and its permissions

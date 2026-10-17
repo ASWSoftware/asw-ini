@@ -4,10 +4,12 @@ Author: Anthony S. West - ASW Software
 
 An INI file reader/writer library.
 
-TASWIniOptions: how INI text is read (separators, comments, duplicates),
-written (separator, comment prefix, line ending, byte order mark) and saved
-(atomically, with a backup, creating the folder), with Validate() to check
-that the options describe a file that can be read back.
+TASWIniOptions and its three groups: how INI text is read
+(TASWIniReadingOptions: separators, comments, duplicates), written
+(TASWIniWritingOptions: separator, comment prefix, line ending, byte order
+mark) and saved (TASWIniSavingOptions: atomically, with a backup, creating
+the folder), each with Validate() to check that the options describe a file
+that can be read back.
 
 Requires C++ 17 or higher.
 
@@ -69,19 +71,16 @@ enum class EDuplicateKeys : int
 
 
 /////////////////////////////////////////////////////////////////////////////
-// TASWIniOptions
+// TASWIniReadingOptions
 //
-// How INI text is read, written and saved. The defaults read the common INI dialects (Windows, Python's configparser,
-// most Linux tools) and write "key = value" lines and "; comment" lines. Options only affect what is read and what is
-// newly written: a line read from a file is written back as it was, unless its value changes, and then it keeps its
-// own separator and spacing.
+// How INI text is read: what separates a key from its value, what starts a comment, and how names and duplicates are
+// matched. The defaults read the common INI dialects (Windows, Python's configparser, most Linux tools).
+// InlineComments and QuotedValues also decide how values are written, so a written value reads back the same.
 /////////////////////////////////////////////////////////////////////////////
-struct TASWIniOptions
+struct TASWIniReadingOptions
 {
     // The default MaxFileSize: 16 MiB, far more than a settings file needs
     static constexpr std::size_t DefaultMaxFileSize = 16 * 1024 * 1024;
-
-    // ----- Reading -----
 
     // The characters that can separate a key from its value. The first of them on a line ends the key, so with the
     // default "=:", "url = http://x" is the key "url" and the value "http://x".
@@ -112,14 +111,27 @@ struct TASWIniOptions
     // The largest file a load reads, in bytes; a larger one fails with EIniCode::FileTooLarge
     std::size_t MaxFileSize = DefaultMaxFileSize;
 
-    // ----- Writing -----
+    // Ok if these options can be used, else EIniCode::InvalidOptions with the first problem found, e.g. an empty
+    // Separators
+    TASWIniResult Validate() const;
+};
 
-    // Written between the key and the value of a new line. Must be one of Separators, with optional spaces or tabs
-    // around it (e.g. "=", " = " or ": ").
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniWritingOptions
+//
+// How new lines are written: the separator and comment prefix of lines that are added, and the line ending and byte
+// order mark of the whole text. A line read from a file is written back as it was, unless its value changes, and then
+// it keeps its own separator and spacing.
+/////////////////////////////////////////////////////////////////////////////
+struct TASWIniWritingOptions
+{
+    // Written between the key and the value of a new line: one of the reading options' Separators, with optional spaces
+    // or tabs around it (e.g. "=", " = " or ": ")
     std::string Separator = " = ";
 
     // Written before the text of a new comment line, so a comment "Valid range: 0-4" is "; Valid range: 0-4". Must
-    // start with one of CommentPrefixes.
+    // start with one of the reading options' CommentPrefixes.
     std::string CommentPrefix = "; ";
 
     // The line ending lines are written with
@@ -131,8 +143,20 @@ struct TASWIniOptions
     // Whether a new section is written after a blank line (unless it is the first thing in the file)
     bool BlankLineBeforeNewSection = true;
 
-    // ----- Saving -----
+    // Ok if these options can be used on their own, else EIniCode::InvalidOptions with the first problem found, e.g. a
+    // Separator of two characters. Whether Separator and CommentPrefix match the reading options is checked by
+    // TASWIniOptions::Validate().
+    TASWIniResult Validate() const;
+};
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniSavingOptions
+//
+// How a file is saved: atomically or in place, with or without a backup, and whether a missing folder is created
+/////////////////////////////////////////////////////////////////////////////
+struct TASWIniSavingOptions
+{
     // Whether a save writes a temporary file in the same folder and then replaces the file with it, so a failure or a
     // crash while saving leaves the previous file whole. Turn it off only when the folder can't be written to (the file
     // itself is then overwritten in place).
@@ -149,8 +173,27 @@ struct TASWIniOptions
     // Whether a save creates the file's folder (and the folders above it) when it doesn't exist
     bool CreateFolders = true;
 
-    // Ok if these options can be used, else EIniCode::InvalidOptions with the first problem found, e.g. a Separator
-    // that isn't one of the Separators (a file written with it couldn't be read back).
+    // Ok if these options can be used, else EIniCode::InvalidOptions with the first problem found, e.g. an empty
+    // BackupSuffix with Backup on
+    TASWIniResult Validate() const;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniOptions
+//
+// How INI text is read, written and saved, e.g. options.Writing.Separator = "=". The defaults read the common INI
+// dialects and write "key = value" lines and "; comment" lines.
+/////////////////////////////////////////////////////////////////////////////
+struct TASWIniOptions
+{
+    TASWIniReadingOptions Reading;
+    TASWIniWritingOptions Writing;
+    TASWIniSavingOptions Saving;
+
+    // Ok if these options can be used, else EIniCode::InvalidOptions with the first problem found: each group's own
+    // (see their Validate()), then whether a file written with them could be read back (Writing.Separator must be one
+    // of Reading.Separators, and Writing.CommentPrefix must start with one of Reading.CommentPrefixes).
     TASWIniResult Validate() const;
 };
 

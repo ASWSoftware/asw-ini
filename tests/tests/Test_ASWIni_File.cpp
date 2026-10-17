@@ -291,7 +291,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_CopiesPreviousFile)
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
     std::filesystem::path const path = folder.Path() / "app.ini";
     AssertTrue(WriteTestFile(path, "old"), __func__, __LINE__, "the test file should be written");
-    ASWIni::TASWIniOptions options;
+    ASWIni::TASWIniSavingOptions options;
     options.Backup = true;
     std::vector<ASWIni::TASWIniMessage> warnings;
 
@@ -322,7 +322,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_SkippedForNewFile)
     // Arrange
     TTempDir const folder;
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
-    ASWIni::TASWIniOptions options;
+    ASWIni::TASWIniSavingOptions options;
     options.Backup = true;
     std::vector<ASWIni::TASWIniMessage> warnings;
 
@@ -346,8 +346,8 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_CreatesFile)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, TrickyBytes(), ASWIni::TASWIniOptions(),
-        warnings);
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, TrickyBytes(),
+        ASWIni::TASWIniSavingOptions(), warnings);
 
     // Assert
     std::string contents;
@@ -368,7 +368,8 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_CreatesMissingFolders)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniOptions(), warnings);
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniSavingOptions(),
+        warnings);
 
     // Assert
     std::string contents;
@@ -384,7 +385,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_EmptyPath)
 
     // Act
     ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(std::filesystem::path(), "x",
-        ASWIni::TASWIniOptions(), warnings);
+        ASWIni::TASWIniSavingOptions(), warnings);
 
     // Assert
     CheckEquals(ASWIni::EIniCode::InvalidArgument, result.Code, __func__, __LINE__,
@@ -403,7 +404,8 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_FailedReplace_KeepsTargetAndRemovesTe
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniOptions(), warnings);
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniSavingOptions(),
+        warnings);
 
     // Assert
     std::string inside;
@@ -424,7 +426,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_InPlace_OverwritesAndTruncates)
     std::filesystem::path const path = folder.Path() / "app.ini";
     AssertTrue(WriteTestFile(path, "a much longer previous content"), __func__, __LINE__,
         "the test file should be written");
-    ASWIni::TASWIniOptions options;
+    ASWIni::TASWIniSavingOptions options;
     options.AtomicSave = false;
     std::vector<ASWIni::TASWIniMessage> warnings;
 
@@ -453,10 +455,10 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_KeepsHiddenAttribute)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act: atomically, then in place
-    ASWIni::TASWIniResult const atomic = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const atomic = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniSavingOptions(),
         warnings);
     DWORD const attributesAfterAtomic = ::GetFileAttributesW(path.c_str());
-    ASWIni::TASWIniOptions inPlaceOptions;
+    ASWIni::TASWIniSavingOptions inPlaceOptions;
     inPlaceOptions.AtomicSave = false;
     ASWIni::TASWIniResult const inPlace = ASWIni::Detail::WriteWholeFile(path, "newer", inPlaceOptions, warnings);
     DWORD const attributesAfterInPlace = ::GetFileAttributesW(path.c_str());
@@ -486,7 +488,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_KeepsPermissions)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniSavingOptions(),
         warnings);
 
     // Assert
@@ -511,7 +513,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_KeepsSymbolicLink)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(link, "new", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(link, "new", ASWIni::TASWIniSavingOptions(),
         warnings);
 
     // Assert
@@ -534,7 +536,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_NonAsciiPath)
     std::string contents;
 
     // Act
-    ASWIni::TASWIniResult const written = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const written = ASWIni::Detail::WriteWholeFile(path, "x", ASWIni::TASWIniSavingOptions(),
         warnings);
     ASWIni::TASWIniResult const read = ASWIni::Detail::ReadWholeFile(path, 100, contents);
 
@@ -562,7 +564,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_ReadOnlyFile_Fails)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniSavingOptions(),
         warnings);
 
     // Assert
@@ -590,7 +592,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_ReplacesFile)
     std::vector<ASWIni::TASWIniMessage> warnings;
 
     // Act
-    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniOptions(),
+    ASWIni::TASWIniResult const result = ASWIni::Detail::WriteWholeFile(path, "new", ASWIni::TASWIniSavingOptions(),
         warnings);
 
     // Assert
@@ -608,7 +610,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_WithoutCreateFolders_FailsForMissingF
     // Arrange
     TTempDir const folder;
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
-    ASWIni::TASWIniOptions options;
+    ASWIni::TASWIniSavingOptions options;
     options.CreateFolders = false;
     std::vector<ASWIni::TASWIniMessage> warnings;
 

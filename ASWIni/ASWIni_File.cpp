@@ -89,7 +89,7 @@ std::string WideToUtf8(std::wstring const& wide);
 #endif
 TASWIniResult WriteAtomically(std::filesystem::path const& target, std::string_view contents, bool targetExists,
     std::vector<TASWIniMessage>& warnings);
-void WriteBackup(std::filesystem::path const& target, TASWIniOptions const& options,
+void WriteBackup(std::filesystem::path const& target, TASWIniSavingOptions const& options,
     std::vector<TASWIniMessage>& warnings);
 TASWIniResult WriteInPlace(std::filesystem::path const& target, std::string_view contents);
 
@@ -823,7 +823,7 @@ TASWIniResult WriteAtomically(std::filesystem::path const& target, std::string_v
 
     Copies 'target' to its backup name, adding a warning to 'warnings' if that fails
 */
-void WriteBackup(std::filesystem::path const& target, TASWIniOptions const& options,
+void WriteBackup(std::filesystem::path const& target, TASWIniSavingOptions const& options,
     std::vector<TASWIniMessage>& warnings)
 {
     std::filesystem::path const backup = Utf8ToPath(PathToUtf8(target) + options.BackupSuffix);
@@ -975,7 +975,7 @@ std::filesystem::path Utf8ToPath(std::string_view utf8)
 }
 //---------------------------------------------------------------------------
 TASWIniResult WriteWholeFile(std::filesystem::path const& path, std::string_view contents,
-    TASWIniOptions const& options, std::vector<TASWIniMessage>& warnings) noexcept
+    TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings) noexcept
 {
     try
     {

@@ -66,5 +66,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (optionally only the names that start with a prefix, e.g. `"Window."`) and `GetKeyNames()`.
   Names compare as `Reading.CaseSensitive` says, sections of the same name count as one, and of a
   key that appears more than once, `Reading.DuplicateKeys` picks the first or the last line.
+- `TASWIniDocument::SetValue()` and `AddSection()`. Changing a key's value replaces only the value
+  of the line `FindKey()` finds, so its indentation, separator, spacing, quotes and inline comment
+  stay. A new key goes after the last key of its section (or right after the header, or in the
+  part before the first header under the file comment) as `key = value` with `Writing.Separator`,
+  and a new section goes at the end of the file, after a blank line
+  (`Writing.BlankLineBeforeNewSection`). New lines get the file's line break. A value is quoted
+  when it needs it to read back (with `Reading.QuotedValues`); a name or value that wouldn't read
+  back as it is (e.g. a line break, a key with a separator, a section name with `]`) fails with
+  `InvalidArgument` and changes nothing. Setting the value a key already has changes nothing, and
+  doesn't set `IsModified()`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

@@ -286,6 +286,66 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentSetValue
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentSetValue : public TAutoTestGroup<TTest_ASWIni_DocumentSetValue>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentSetValue> inherited;
+
+private:
+    // 'text' parsed with 'options', after AddSection('name') (checking that it succeeds, that the modified flag is set
+    // only when the text changed, and that the written text reads back with that section)
+    std::string AddAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options, std::string_view name,
+        std::string const& method, int lineNumber);
+
+    // Checks that SetValue('section', 'key', 'value') on 'text' parsed with 'options' fails with InvalidArgument and
+    // leaves the document as it was
+    void CheckRejected(std::string_view text, ASWIni::TASWIniOptions const& options, std::string_view section,
+        std::string_view key, std::string_view value, std::string const& method, int lineNumber,
+        std::string const& msg);
+
+    // 'text' parsed with 'options', after SetValue('section', 'key', 'value') (checking that it succeeds, that the
+    // modified flag is set only when the text changed, and that the written text reads back with that value)
+    std::string SetAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options, std::string_view section,
+        std::string_view key, std::string_view value, std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_AddSection_AddsAnEmptySectionAtTheEnd();
+    void Test_AddSection_DoesNothingForAnExistingSection();
+    void Test_AddSection_RejectsNamesThatWouldntReadBack();
+    void Test_Modified_IsSetByAChange();
+    void Test_NewKey_GoesAfterTheHeaderOfASectionWithoutKeys();
+    void Test_NewKey_GoesAfterTheLastKey();
+    void Test_NewKey_GoesInTheFirstSectionOfThatName();
+    void Test_NewKey_GoesUnderTheFileCommentInThePreamble();
+    void Test_NewKey_IsQuotedWhenItNeedsIt();
+    void Test_NewKey_LineBreaks();
+    void Test_NewKey_RejectsNamesThatWouldntReadBack();
+    void Test_NewKey_UsesTheWritingSeparator();
+    void Test_NewSection_GoesAtTheEnd();
+    void Test_Value_ChangesTheWinningDuplicate();
+    void Test_Value_EmptyGetsTheBlanksBeforeTheSeparator();
+    void Test_Value_KeepsTheInlineComment();
+    void Test_Value_KeepsTheLineBreak();
+    void Test_Value_QuotedStaysQuoted();
+    void Test_Value_QuotedWhenItNeedsIt();
+    void Test_Value_RejectedWhenItWouldntReadBack();
+    void Test_Value_ReplacesOnlyTheValue();
+    void Test_Value_SameValueChangesNothing();
+
+public:
+    TTest_ASWIni_DocumentSetValue();
+    ~TTest_ASWIni_DocumentSetValue() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

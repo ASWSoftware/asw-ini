@@ -203,10 +203,69 @@ private:
     bool m_HasBom = false;
     bool m_Modified = false;
 
+private:
+    // Adds 'section' at the end, after a blank line when Writing.BlankLineBeforeNewSection says so, and sets the
+    // modified flag. Throws only std::bad_alloc, and then nothing changes.
+    void AppendSection(TASWIniDocumentSection& section);
+
+    // Gives the document's last line a line break (NewLineBreak()) when it has none
+    void EndLastLine() noexcept;
+
+    // The number of lines of the file comment: the comment lines at the start of the file, when a blank line or the
+    // end of the file follows them (comment lines that lead straight into the first header are its comment); 0 when
+    // there is none
+    std::size_t FileCommentSize() const noexcept;
+
+    // The index of the first section named 'name' (0 for ""), or m_Sections.size() when there is none
+    std::size_t FindSectionIndex(std::string_view name) const noexcept;
+
+    // Inserts 'lines' before line 'lineIndex' of section 'sectionIndex' (giving the line before them a line break
+    // when they go at the end of the document), and sets the modified flag. Throws only std::bad_alloc, and then
+    // nothing changes.
+    void InsertLines(std::size_t sectionIndex, std::size_t lineIndex, std::vector<TASWIniDocumentLine>& lines);
+
+    // In 'line', a new line of key 'key' with value 'value', written after 'indentation' with Writing.Separator (and
+    // in double quotes when it needs them, with QuotedValues). Fails with InvalidArgument when the key or the value
+    // wouldn't read back as it is.
+    TASWIniResult MakeKeyLine(std::string_view section, std::string_view key, std::string_view value,
+        std::string_view indentation, TASWIniDocumentLine& line) const;
+
+    // 'text' parsed as a line that ends with 'lineBreak', with the reading options
+    TASWIniDocumentLine MakeLine(std::string_view text, ELineBreak lineBreak) const;
+
+    // In 'section', a new section with only its header, named 'name'. Fails with InvalidArgument when the header
+    // wouldn't read back as 'name'.
+    TASWIniResult MakeSection(std::string_view name, TASWIniDocumentSection& section) const;
+
+    // In 'changed', key line 'line' of section 'section' with its value changed to 'value' and everything else kept.
+    // Fails with InvalidArgument when the value wouldn't read back as it is.
+    TASWIniResult MakeValueLine(TASWIniDocumentLine const& line, std::string_view section, std::string_view value,
+        TASWIniDocumentLine& changed) const;
+
+    // Where a new key of section 'sectionIndex' goes (see SetValue()): the index of the line it goes before, the
+    // indentation it copies (a view of a line's text), and whether a blank line goes before it
+    std::size_t NewKeyIndex(std::size_t sectionIndex, std::string_view& indentation, bool& blankLineFirst) const;
+
+    // The line break of new lines: GetLineBreak(), or the one Writing.LineEnding converts every line to
+    ELineBreak NewLineBreak() const noexcept;
+
+    // Whether 'before', 'value' and 'after', as a line, read back as key line 'line' with the value 'value' (the same
+    // key and comment); if they do, that line replaces 'line'. 'value' is tried in double quotes when 'quotedFirst',
+    // else without them, and then, with QuotedValues, the other way. A value with a line break never reads back.
+    bool TryValueLine(std::string_view before, std::string_view value, std::string_view after, bool quotedFirst,
+        TASWIniDocumentLine& line) const;
+
 public:
     // An empty document with the default options: an empty preamble, no byte order mark, and the platform's line
     // break
     TASWIniDocument();
+
+    // Adds an empty section named 'name' at the end of the document, after a blank line when
+    // Writing.BlankLineBeforeNewSection is set and the document has lines and doesn't end with a blank one. Does
+    // nothing when a section of that name exists ("" is the preamble, which always does). Fails with InvalidArgument,
+    // and then nothing changes, when the header wouldn't read back as 'name': a name can't be empty, start or end
+    // with a space or tab, or hold ']' or a line break. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult AddSection(std::string_view name);
 
     // Clears the modified flag (see IsModified()), e.g. after the document was saved
     void ClearModified() noexcept;
@@ -266,6 +325,20 @@ public:
     // TASWIniOptions::Validate()), and then nothing changes. Throws only std::bad_alloc, and then nothing changes
     // either.
     TASWIniResult Reset(TASWIniOptions const& options);
+
+    // Sets the value of key 'key' of section 'section' ("" for the keys before the first header). Of a key that
+    // exists, only the value of the line FindKey() finds changes: its indentation, key, separator, spacing and inline
+    // comment stay, a quoted value stays quoted, and an empty value gets the blanks written before the separator.
+    // A missing key is added after the last key of the first section of that name, with that key's indentation (or
+    // right after the header, or in a preamble with no keys after the file comment and the blank lines under it), as
+    // indentation, key, Writing.Separator and value; a missing section is added first, as AddSection() does. With
+    // QuotedValues, a value is written in double quotes when it needs them to read back (blanks at either end, a
+    // leading '"', or with InlineComments a comment prefix after a blank). Setting the value a key has changes
+    // nothing. Fails with InvalidArgument, and then nothing changes, when a name or the value wouldn't read back as
+    // it is: e.g. a line break, a key that is empty, holds a separator or starts with a comment prefix or '[', blanks
+    // around a name, or a value that needs quotes without QuotedValues (or holds a '"' that would end them). Throws
+    // only std::bad_alloc, and then nothing changes either.
+    TASWIniResult SetValue(std::string_view section, std::string_view key, std::string_view value);
 
     // The document as text, as its writing options say: a UTF-8 byte order mark (with EBomMode::Auto, when the text
     // that was read had one), then every line followed by its line break. With ELineEnding::Auto each line keeps its

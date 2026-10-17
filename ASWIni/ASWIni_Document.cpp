@@ -644,12 +644,12 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniReadingOption
                 return result;
             }
 
-            std::string text = problem.Text;
+            std::string warningText = problem.Text;
             if (line.m_Kind == ELineKind::Raw)
-                text += "; the line is kept as it is.";
+                warningText += "; the line is kept as it is.";
             else
-                text += "; the text is kept, and the section is used.";
-            warnings.push_back(Warning(problem.Code, text, lineNumber, sectionName, std::string_view()));
+                warningText += "; the text is kept, and the section is used.";
+            warnings.push_back(Warning(problem.Code, warningText, lineNumber, sectionName, std::string_view()));
         }
 
         if (line.m_Kind == ELineKind::KeyValue)

@@ -150,6 +150,14 @@
         <VerInfo_Locale>1033</VerInfo_Locale>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\ASWIni\ASWIni_Types.cpp">
+            <DependentOn>..\..\ASWIni\ASWIni_Types.h</DependentOn>
+            <BuildOrder>15</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\ASWIni\ASWIni_Utils.cpp">
+            <DependentOn>..\..\ASWIni\ASWIni_Utils.h</DependentOn>
+            <BuildOrder>16</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\ASWIni\ASWIni_Version.cpp">
             <DependentOn>..\..\ASWIni\ASWIni_Version.h</DependentOn>
             <BuildOrder>1</BuildOrder>
@@ -158,6 +166,14 @@
             <BuildOrder>0</BuildOrder>
             <PCH>true</PCH>
         </PCHCompile>
+        <CppCompile Include="..\tests\Test_ASWIni_Types.cpp">
+            <DependentOn>..\tests\Test_ASWIni_Types.h</DependentOn>
+            <BuildOrder>17</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\tests\Test_ASWIni_Utils.cpp">
+            <DependentOn>..\tests\Test_ASWIni_Utils.h</DependentOn>
+            <BuildOrder>18</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\tests\Test_ASWIni_Version.cpp">
             <DependentOn>..\tests\Test_ASWIni_Version.h</DependentOn>
             <BuildOrder>2</BuildOrder>

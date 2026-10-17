@@ -188,9 +188,25 @@
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Types.cpp">
+            <DependentOn>..\..\..\..\ASWIni\ASWIni_Types.h</DependentOn>
+            <BuildOrder>47</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Utils.cpp">
+            <DependentOn>..\..\..\..\ASWIni\ASWIni_Utils.h</DependentOn>
+            <BuildOrder>48</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Version.cpp">
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Version.h</DependentOn>
             <BuildOrder>2</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\tests\Test_ASWIni_Types.cpp">
+            <DependentOn>..\..\..\tests\Test_ASWIni_Types.h</DependentOn>
+            <BuildOrder>49</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\tests\Test_ASWIni_Utils.cpp">
+            <DependentOn>..\..\..\tests\Test_ASWIni_Utils.h</DependentOn>
+            <BuildOrder>50</BuildOrder>
         </CppCompile>
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Version.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Version.h</DependentOn>

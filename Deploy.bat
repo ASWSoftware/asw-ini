@@ -46,6 +46,14 @@ if errorlevel 1 exit /b 1
 call :CopyFile "cmake\ASWIniConfig.cmake.in" "%TARGET_DIR%\cmake\ASWIniConfig.cmake.in"
 if errorlevel 1 exit /b 1
 
+call :CopyFile "ASWIni\ASWIni_Types.cpp" "%TARGET_DIR%\ASWIni\ASWIni_Types.cpp"
+if errorlevel 1 exit /b 1
+call :CopyFile "ASWIni\ASWIni_Types.h" "%TARGET_DIR%\ASWIni\ASWIni_Types.h"
+if errorlevel 1 exit /b 1
+call :CopyFile "ASWIni\ASWIni_Utils.cpp" "%TARGET_DIR%\ASWIni\ASWIni_Utils.cpp"
+if errorlevel 1 exit /b 1
+call :CopyFile "ASWIni\ASWIni_Utils.h" "%TARGET_DIR%\ASWIni\ASWIni_Utils.h"
+if errorlevel 1 exit /b 1
 call :CopyFile "ASWIni\ASWIni_Version.cpp" "%TARGET_DIR%\ASWIni\ASWIni_Version.cpp"
 if errorlevel 1 exit /b 1
 call :CopyFile "ASWIni\ASWIni_Version.h" "%TARGET_DIR%\ASWIni\ASWIni_Version.h"

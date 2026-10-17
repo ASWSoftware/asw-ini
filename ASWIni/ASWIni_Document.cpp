@@ -57,16 +57,21 @@ struct TNameLess
 
 //---------------------------------------------------------------------------
 
+std::size_t CommentBlockBegin(std::vector<TASWIniDocumentLine> const& lines, std::size_t end) noexcept;
+TASWIniResult Failure(EIniCode code, std::string const& message);
 std::size_t FindInlineComment(std::string_view text, std::size_t from, std::vector<std::string> const& prefixes,
     std::size_t& prefixSize) noexcept;
 bool HasLineBreak(std::string_view text) noexcept;
 bool HasNamePrefix(std::string_view name, std::string_view prefix, bool caseSensitive) noexcept;
-TASWIniResult InvalidArgument(std::string const& message);
+TASWIniResult InvalidKeyName(std::string_view key);
+TASWIniResult InvalidSectionName(std::string_view name);
 TASWIniResult InvalidValue(std::string_view section, std::string_view key, std::string_view value);
 std::size_t MatchCommentPrefix(std::string_view text, std::size_t pos,
     std::vector<std::string> const& prefixes) noexcept;
 ELineBreak MostCommonLineBreak(std::vector<Detail::TLineSpan> const& lines) noexcept;
 std::string Quoted(std::string_view name);
+template <typename T>
+void RemoveMarked(std::vector<T>& items, std::vector<bool> const& marks);
 bool SameName(std::string_view left, std::string_view right, bool caseSensitive) noexcept;
 std::size_t SkipBlanks(std::string_view text, std::size_t pos) noexcept;
 std::size_t TrimBlanksBefore(std::string_view text, std::size_t begin, std::size_t end) noexcept;
@@ -74,6 +79,35 @@ TASWIniMessage Warning(EIniCode code, std::string const& text, std::size_t line,
     std::string_view key);
 ELineBreak WrittenLineBreak(ELineBreak lineBreak, ELineEnding lineEnding) noexcept;
 
+//---------------------------------------------------------------------------
+/*
+    CommentBlockBegin
+
+    The index of the first of the comment lines directly before line 'end' of 'lines' (or before their end, when
+    'end' is their size), with no other line between them; 'end' when the line before it isn't a comment.
+*/
+std::size_t CommentBlockBegin(std::vector<TASWIniDocumentLine> const& lines, std::size_t end) noexcept
+{
+    std::size_t begin = end;
+    while (begin > 0 && lines[begin - 1].GetKind() == ELineKind::Comment)
+        --begin;
+
+    return begin;
+}
+//---------------------------------------------------------------------------
+/*
+    Failure
+
+    A failed result with 'code' and 'message'.
+*/
+TASWIniResult Failure(EIniCode code, std::string const& message)
+{
+    TASWIniResult result;
+    result.Code = code;
+    result.Message = message;
+
+    return result;
+}
 //---------------------------------------------------------------------------
 /*
     FindInlineComment
@@ -121,17 +155,27 @@ bool HasNamePrefix(std::string_view name, std::string_view prefix, bool caseSens
 }
 //---------------------------------------------------------------------------
 /*
-    InvalidArgument
+    InvalidKeyName
 
-    A failed result with EIniCode::InvalidArgument and 'message'.
+    The InvalidArgument result of key name 'key', which can't be written in a line that reads back as it is.
 */
-TASWIniResult InvalidArgument(std::string const& message)
+TASWIniResult InvalidKeyName(std::string_view key)
 {
-    TASWIniResult result;
-    result.Code = EIniCode::InvalidArgument;
-    result.Message = message;
+    return Failure(EIniCode::InvalidArgument, "The key name " + Quoted(key) + " can't be written as a line that "
+        "reads back as it is: a key can't be empty, start or end with a space or tab, start with a comment prefix or "
+        "'[', or hold a separator or a line break.");
+}
+//---------------------------------------------------------------------------
+/*
+    InvalidSectionName
 
-    return result;
+    The InvalidArgument result of section name 'name', which can't be written as a header that reads back as it is.
+*/
+TASWIniResult InvalidSectionName(std::string_view name)
+{
+    return Failure(EIniCode::InvalidArgument, "The section name " + Quoted(name) + " can't be written as a header "
+        "that reads back as it is: a section name can't be empty, start or end with a space or tab, or hold ']' or a "
+        "line break.");
 }
 //---------------------------------------------------------------------------
 /*
@@ -144,11 +188,11 @@ TASWIniResult InvalidValue(std::string_view section, std::string_view key, std::
 {
     std::string const what = "The value of the key " + Quoted(key) + " of the section " + Quoted(section);
     if (HasLineBreak(value))
-        return InvalidArgument(what + " holds a line break; a value must be one line.");
+        return Failure(EIniCode::InvalidArgument, what + " holds a line break; a value must be one line.");
 
-    return InvalidArgument(what + " can't be written so that it reads back as it is: blanks at either end, a "
-        "leading '\"' and, with InlineComments, a comment prefix after a blank need QuotedValues, and a quoted value "
-        "can't hold a '\"'.");
+    return Failure(EIniCode::InvalidArgument, what + " can't be written so that it reads back as it is: blanks at "
+        "either end, a leading '\"' and, with InlineComments, a comment prefix after a blank need QuotedValues, and a "
+        "quoted value can't hold a '\"'.");
 }
 //---------------------------------------------------------------------------
 /*
@@ -220,6 +264,29 @@ std::string Quoted(std::string_view name)
     text += "\"";
 
     return text;
+}
+//---------------------------------------------------------------------------
+/*
+    RemoveMarked
+
+    Removes the items of 'items' whose mark in 'marks' is set, keeping the others in order. Moves the items, so it
+    can't throw for items whose moves can't (such as lines and sections).
+*/
+template <typename T>
+void RemoveMarked(std::vector<T>& items, std::vector<bool> const& marks)
+{
+    std::size_t kept = 0;
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        if (marks[i])
+            continue;
+
+        if (kept != i)
+            items[kept] = std::move(items[i]);
+        ++kept;
+    }
+
+    items.erase(items.begin() + static_cast<std::ptrdiff_t>(kept), items.end());
 }
 //---------------------------------------------------------------------------
 /*
@@ -827,9 +894,7 @@ TASWIniResult TASWIniDocument::MakeKeyLine(std::string_view section, std::string
     if (HasLineBreak(key) || keyLine.m_Kind != ELineKind::KeyValue || keyLine.GetKey() != key ||
         !keyLine.GetValue().empty())
     {
-        return InvalidArgument("The key name " + Quoted(key) + " can't be written as a line that reads back as it "
-            "is: a key can't be empty, start or end with a space or tab, start with a comment prefix or '[', or hold a "
-            "separator or a line break.");
+        return InvalidKeyName(key);
     }
 
     if (!value.empty() && !TryValueLine(before, value, std::string_view(), false, keyLine))
@@ -852,10 +917,7 @@ TASWIniResult TASWIniDocument::MakeSection(std::string_view name, TASWIniDocumen
 {
     TASWIniDocumentLine header = MakeLine("[" + std::string(name) + "]", NewLineBreak());
     if (HasLineBreak(name) || header.m_Kind != ELineKind::Section || header.GetSectionName() != name)
-    {
-        return InvalidArgument("The section name " + Quoted(name) + " can't be written as a header that reads back "
-            "as it is: a section name can't be empty, start or end with a space or tab, or hold ']' or a line break.");
-    }
+        return InvalidSectionName(name);
 
     section.m_Lines.clear();
     section.m_Lines.push_back(std::move(header));
@@ -1056,6 +1118,249 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniOptions const
         std::make_move_iterator(warnings.end()));
 
     return result;
+}
+//---------------------------------------------------------------------------
+bool TASWIniDocument::RemoveKey(std::string_view section, std::string_view key)
+{
+    bool const caseSensitive = m_Options.Reading.CaseSensitive;
+
+    // The lines are marked first, since only that can throw: each line of the key and its comment
+    std::vector<std::vector<bool> > marks(m_Sections.size());
+    bool found = false;
+    for (std::size_t sectionIndex = 0; sectionIndex < m_Sections.size(); ++sectionIndex)
+    {
+        std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex].m_Lines;
+        if (!SameName(m_Sections[sectionIndex].GetName(), section, caseSensitive))
+            continue;
+
+        for (std::size_t i = 0; i < lines.size(); ++i)
+        {
+            if (lines[i].m_Kind != ELineKind::KeyValue || !SameName(lines[i].GetKey(), key, caseSensitive))
+                continue;
+
+            if (marks[sectionIndex].empty())
+                marks[sectionIndex].resize(lines.size());
+
+            for (std::size_t j = CommentBlockBegin(lines, i); j <= i; ++j)
+                marks[sectionIndex][j] = true;
+
+            found = true;
+        }
+    }
+
+    if (!found)
+        return false;
+
+    for (std::size_t sectionIndex = 0; sectionIndex < m_Sections.size(); ++sectionIndex)
+    {
+        if (!marks[sectionIndex].empty())
+            RemoveMarked(m_Sections[sectionIndex].m_Lines, marks[sectionIndex]);
+    }
+
+    m_Modified = true;
+
+    return true;
+}
+//---------------------------------------------------------------------------
+bool TASWIniDocument::RemoveSection(std::string_view name)
+{
+    // The preamble (section 0) is never removed: no header has the name ""
+    std::size_t const count = m_Sections.size();
+    std::vector<bool> removed(count);
+    bool found = false;
+    for (std::size_t sectionIndex = 1; sectionIndex < count; ++sectionIndex)
+    {
+        if (SameName(m_Sections[sectionIndex].GetName(), name, m_Options.Reading.CaseSensitive))
+        {
+            removed[sectionIndex] = true;
+            found = true;
+        }
+    }
+
+    if (!found)
+        return false;
+
+    // What can throw comes first. A removed section's comment is at the end of the section before it (unless that one
+    // is removed too). The comment of a kept section after it is at its own end, and moves to the last kept section
+    // before it, which gets room for it here.
+    std::vector<std::vector<bool> > lineMarks(count);
+    std::vector<std::size_t> movedLines(count);
+    std::size_t lastKept = 0;
+    for (std::size_t sectionIndex = 1; sectionIndex < count; ++sectionIndex)
+    {
+        if (!removed[sectionIndex])
+        {
+            lastKept = sectionIndex;
+            continue;
+        }
+
+        std::vector<TASWIniDocumentLine> const& before = m_Sections[sectionIndex - 1].m_Lines;
+        std::size_t const commentBegin = CommentBlockBegin(before, before.size());
+        if (!removed[sectionIndex - 1] && commentBegin < before.size())
+        {
+            lineMarks[sectionIndex - 1].resize(before.size());
+            for (std::size_t i = commentBegin; i < before.size(); ++i)
+                lineMarks[sectionIndex - 1][i] = true;
+        }
+
+        std::vector<TASWIniDocumentLine> const& lines = m_Sections[sectionIndex].m_Lines;
+        if (sectionIndex + 1 < count && !removed[sectionIndex + 1])
+            movedLines[lastKept] += lines.size() - CommentBlockBegin(lines, lines.size());
+    }
+
+    for (std::size_t sectionIndex = 0; sectionIndex < count; ++sectionIndex)
+    {
+        std::vector<TASWIniDocumentLine>& lines = m_Sections[sectionIndex].m_Lines;
+        if (movedLines[sectionIndex] > 0)
+            lines.reserve(lines.size() + movedLines[sectionIndex]);
+    }
+
+    // Then the moves, which can't throw
+    lastKept = 0;
+    for (std::size_t sectionIndex = 1; sectionIndex < count; ++sectionIndex)
+    {
+        if (!removed[sectionIndex])
+        {
+            lastKept = sectionIndex;
+            continue;
+        }
+
+        if (!lineMarks[sectionIndex - 1].empty())
+            RemoveMarked(m_Sections[sectionIndex - 1].m_Lines, lineMarks[sectionIndex - 1]);
+
+        std::vector<TASWIniDocumentLine>& lines = m_Sections[sectionIndex].m_Lines;
+        if (sectionIndex + 1 < count && !removed[sectionIndex + 1])
+        {
+            std::vector<TASWIniDocumentLine>& target = m_Sections[lastKept].m_Lines;
+            for (std::size_t i = CommentBlockBegin(lines, lines.size()); i < lines.size(); ++i)
+                target.push_back(std::move(lines[i]));
+        }
+    }
+
+    RemoveMarked(m_Sections, removed);
+    m_Modified = true;
+
+    return true;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::RenameKey(std::string_view section, std::string_view key, std::string_view newKey)
+{
+    bool const caseSensitive = m_Options.Reading.CaseSensitive;
+
+    std::vector<TASWIniDocumentLine*> lines;
+    bool newKeyFound = false;
+    for (TASWIniDocumentSection& documentSection : m_Sections)
+    {
+        if (!SameName(documentSection.GetName(), section, caseSensitive))
+            continue;
+
+        for (TASWIniDocumentLine& line : documentSection.m_Lines)
+        {
+            if (line.m_Kind != ELineKind::KeyValue)
+                continue;
+
+            if (SameName(line.GetKey(), key, caseSensitive))
+                lines.push_back(&line);
+            else if (SameName(line.GetKey(), newKey, caseSensitive))
+                newKeyFound = true;
+        }
+    }
+
+    if (lines.empty())
+    {
+        return Failure(EIniCode::NotFound, "The key " + Quoted(key) + " of the section " + Quoted(section) +
+            " can't be renamed: it doesn't exist.");
+    }
+
+    // The renamed lines are made first, so a name that doesn't read back in one of them changes nothing
+    std::vector<TASWIniDocumentLine> renamed;
+    renamed.reserve(lines.size());
+    for (TASWIniDocumentLine const* const line : lines)
+    {
+        std::string_view const text = line->m_Text;
+        std::string const newText = std::string(text.substr(0, line->m_Name.Begin)) + std::string(newKey) +
+            std::string(text.substr(line->m_Name.End));
+        TASWIniDocumentLine changed = MakeLine(newText, line->m_LineBreak);
+        if (HasLineBreak(newKey) || changed.m_Kind != ELineKind::KeyValue || changed.GetKey() != newKey ||
+            changed.GetValue() != line->GetValue() || changed.IsQuoted() != line->IsQuoted() ||
+            changed.HasComment() != line->HasComment() || changed.GetComment() != line->GetComment())
+        {
+            return InvalidKeyName(newKey);
+        }
+
+        renamed.push_back(std::move(changed));
+    }
+
+    if (newKeyFound)
+    {
+        return Failure(EIniCode::AlreadyExists, "The key " + Quoted(key) + " of the section " + Quoted(section) +
+            " can't be renamed to " + Quoted(newKey) + ": the section has a key of that name.");
+    }
+
+    for (std::size_t i = 0; i < lines.size(); ++i)
+    {
+        if (renamed[i].m_Text == lines[i]->m_Text)
+            continue;
+
+        *lines[i] = std::move(renamed[i]);
+        m_Modified = true;
+    }
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::RenameSection(std::string_view name, std::string_view newName)
+{
+    if (name.empty())
+    {
+        return Failure(EIniCode::InvalidArgument,
+            "The section \"\" (the lines before the first header) has no header, so it can't be renamed.");
+    }
+
+    std::vector<TASWIniDocumentLine*> headers;
+    for (std::size_t sectionIndex = 1; sectionIndex < m_Sections.size(); ++sectionIndex)
+    {
+        if (SameName(m_Sections[sectionIndex].GetName(), name, m_Options.Reading.CaseSensitive))
+            headers.push_back(&m_Sections[sectionIndex].m_Lines.front());
+    }
+
+    if (headers.empty())
+        return Failure(EIniCode::NotFound, "The section " + Quoted(name) + " can't be renamed: it doesn't exist.");
+
+    // The renamed headers are made first, so a name that doesn't read back in one of them changes nothing
+    std::vector<TASWIniDocumentLine> renamed;
+    renamed.reserve(headers.size());
+    for (TASWIniDocumentLine const* const header : headers)
+    {
+        std::string_view const text = header->m_Text;
+        std::string const newText = std::string(text.substr(0, header->m_Name.Begin)) + std::string(newName) +
+            std::string(text.substr(header->m_Name.End));
+        TASWIniDocumentLine changed = MakeLine(newText, header->m_LineBreak);
+        if (HasLineBreak(newName) || changed.m_Kind != ELineKind::Section || changed.GetSectionName() != newName ||
+            changed.HasComment() != header->HasComment() || changed.GetComment() != header->GetComment())
+        {
+            return InvalidSectionName(newName);
+        }
+
+        renamed.push_back(std::move(changed));
+    }
+
+    if (!SameName(name, newName, m_Options.Reading.CaseSensitive) && FindSectionIndex(newName) < m_Sections.size())
+    {
+        return Failure(EIniCode::AlreadyExists, "The section " + Quoted(name) + " can't be renamed to " +
+            Quoted(newName) + ": a section of that name exists.");
+    }
+
+    for (std::size_t i = 0; i < headers.size(); ++i)
+    {
+        if (renamed[i].m_Text == headers[i]->m_Text)
+            continue;
+
+        *headers[i] = std::move(renamed[i]);
+        m_Modified = true;
+    }
+
+    return TASWIniResult();
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWIniDocument::Reset(TASWIniOptions const& options)

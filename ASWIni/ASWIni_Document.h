@@ -320,6 +320,31 @@ public:
     // document nor 'messages' changes. Throws only std::bad_alloc, and then nothing changes either.
     TASWIniResult Parse(std::string_view text, TASWIniOptions const& options, std::vector<TASWIniMessage>& messages);
 
+    // Removes every line of key 'key' from every section named 'section' ("" for the keys before the first header),
+    // each with its comment (the comment lines directly above it), so no duplicate of the key is left. Returns whether
+    // anything was removed (and then sets the modified flag). Throws only std::bad_alloc, and then nothing changes.
+    bool RemoveKey(std::string_view section, std::string_view key);
+
+    // Removes every section named 'name', each with all its lines and its comment (the comment lines directly above
+    // its header). The comment of the section after it (the comment lines at its end) is kept, unless that section is
+    // removed too. The preamble ("") is never removed. Returns whether anything was removed (and then sets the
+    // modified flag). Throws only std::bad_alloc, and then nothing changes.
+    bool RemoveSection(std::string_view name);
+
+    // Renames key 'key' of section 'section' ("" for the keys before the first header) to 'newKey' in every line of
+    // it, in every section of that name, changing only the name: the indentation, spacing, value and comments stay.
+    // 'newKey' may differ from 'key' only in case. Fails with NotFound when there is no such key, InvalidArgument when
+    // a line with 'newKey' wouldn't read back as it is (see SetValue()), or AlreadyExists when the section has
+    // another key named 'newKey'; then nothing changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult RenameKey(std::string_view section, std::string_view key, std::string_view newKey);
+
+    // Renames section 'name' to 'newName' in every header of that name, changing only the name: the spacing and a
+    // comment after the header stay. 'newName' may differ from 'name' only in case. Fails with InvalidArgument when
+    // either name is "" (the preamble has no header) or the header wouldn't read back as 'newName' (see
+    // AddSection()), NotFound when there is no such section, or AlreadyExists when another section is named
+    // 'newName'; then nothing changes. Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult RenameSection(std::string_view name, std::string_view newName);
+
     // Empties this document, as a new one is (see TASWIniDocument()), and gives it 'options', which may be its own
     // (Reset(GetOptions()) only empties it). Clears the modified flag. Fails with InvalidOptions (see
     // TASWIniOptions::Validate()), and then nothing changes. Throws only std::bad_alloc, and then nothing changes

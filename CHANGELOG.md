@@ -76,5 +76,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   back as it is (e.g. a line break, a key with a separator, a section name with `]`) fails with
   `InvalidArgument` and changes nothing. Setting the value a key already has changes nothing, and
   doesn't set `IsModified()`.
+- `TASWIniDocument::RemoveKey()`, `RemoveSection()`, `RenameKey()` and `RenameSection()`. A
+  removal takes every line of the key, or every section of the name, with the comment lines
+  directly above it (a removed section's lines that are the next section's comment stay), and
+  returns whether anything was removed. A rename changes only the name, in every line or header
+  of that name, and may change only its case. Renames fail with the new codes
+  `EIniCode::NotFound` (no such key or section) and `EIniCode::AlreadyExists` (the new name is
+  taken), or with `InvalidArgument` for a name that wouldn't read back or for the preamble (`""`),
+  which has no header.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

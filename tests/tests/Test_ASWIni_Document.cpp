@@ -2595,6 +2595,435 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_SameValueChangesNothing)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRemove
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRemove::TTest_ASWIni_DocumentRemove()
+    : inherited("ASWIni_DocumentRemove_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRemove::~TTest_ASWIni_DocumentRemove()
+{
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentRemove::RemoveKeyAndWrite(std::string_view text, std::string_view section,
+    std::string_view key, bool expected, std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    bool const removed = document.RemoveKey(section, key);
+    std::string const written = document.ToText();
+
+    CheckEquals(expected, removed, method, lineNumber, "whether the key was removed");
+    CheckEquals(expected, document.IsModified(), method, lineNumber, "the document should be modified when it was");
+    CheckEquals(expected, written != before, method, lineNumber, "the text should change when it was");
+    TASWIniDocument const reread = ParseText(written, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the written text should parse: " + result.Message);
+    CheckTrue(reread.FindKey(section, key) == nullptr, method, lineNumber, "the key shouldn't read back");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentRemove::RemoveSectionAndWrite(std::string_view text, std::string_view name,
+    bool expected, std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    bool const removed = document.RemoveSection(name);
+    std::string const written = document.ToText();
+
+    CheckEquals(expected, removed, method, lineNumber, "whether the section was removed");
+    CheckEquals(expected, document.IsModified(), method, lineNumber, "the document should be modified when it was");
+    CheckEquals(expected, written != before, method, lineNumber, "the text should change when it was");
+    TASWIniDocument const reread = ParseText(written, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the written text should parse: " + result.Message);
+    CheckTrue(name.empty() || reread.FindSection(name) == nullptr, method, lineNumber,
+        "the section shouldn't read back");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRemove::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRemove::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRemove::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRemove::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_KeepsTheLinesAroundIt)
+{
+    // Act & Assert
+    CheckEquals(std::string("[A]\nj=0\n; about B\n[B]\n"), RemoveKeyAndWrite("[A]\nj=0\nk=1\n; about B\n[B]\n", "A",
+        "k", true, __func__, __LINE__), __func__, __LINE__, "the comment below the key belongs to the next section");
+    CheckEquals(std::string("[A]\nj=0\n"), RemoveKeyAndWrite("[A]\nj=0\nk=1", "A", "k", true, __func__, __LINE__),
+        __func__, __LINE__, "a last line without a line break");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_RemovesEveryDuplicate)
+{
+    // Act
+    std::string const written = RemoveKeyAndWrite("[A]\nk=1\n; c2\nK=2\n[B]\nk=3\n[a]\nk=4\n", "A", "k", true,
+        __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("[A]\n[B]\nk=3\n[a]\n"), written, __func__, __LINE__,
+        "every line of the key in both [A] and [a], with their comments, and not the key of [B]");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_RemovesItsComment)
+{
+    // Act & Assert
+    CheckEquals(std::string("[A]\n\nl=2\n"), RemoveKeyAndWrite("[A]\n; about k\n; more\nk=1\n\nl=2\n", "A", "k",
+        true, __func__, __LINE__), __func__, __LINE__, "the comment lines directly above the key");
+    CheckEquals(std::string("[A]\n; c\n\nl=2\n"), RemoveKeyAndWrite("[A]\n; c\n\nk=1\nl=2\n", "A", "k", true,
+        __func__, __LINE__), __func__, __LINE__, "a comment with a blank line under it isn't the key's");
+    CheckEquals(std::string(), RemoveKeyAndWrite("; c\nk=1\n", "", "k", true, __func__, __LINE__), __func__,
+        __LINE__, "a comment directly above a key at the start of the file is the key's");
+    CheckEquals(std::string("; file\n\n[A]\n"), RemoveKeyAndWrite("; file\n\n; about k\nk=1\n[A]\n", "", "k", true,
+        __func__, __LINE__), __func__, __LINE__, "the file comment stays");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_ReturnsFalseWhenMissing)
+{
+    // Arrange
+    std::string const text = "[A]\nk=1\n; x=1\n";
+
+    // Act & Assert
+    CheckEquals(text, RemoveKeyAndWrite(text, "A", "missing", false, __func__, __LINE__), __func__, __LINE__,
+        "a missing key");
+    CheckEquals(text, RemoveKeyAndWrite(text, "B", "k", false, __func__, __LINE__), __func__, __LINE__,
+        "a missing section");
+    CheckEquals(text, RemoveKeyAndWrite(text, "", "k", false, __func__, __LINE__), __func__, __LINE__,
+        "a key that isn't in the preamble");
+    CheckEquals(text, RemoveKeyAndWrite(text, "A", "x", false, __func__, __LINE__), __func__, __LINE__,
+        "a comment isn't a key");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_KeepsTheCommentOfTheNextSection)
+{
+    // Act & Assert
+    CheckEquals(std::string("[A]\nk=1\n\n; about C\n[C]\n"), RemoveSectionAndWrite(
+        "[A]\nk=1\n\n[B]\nx=1\n\n; about C\n[C]\n", "B", true, __func__, __LINE__), __func__, __LINE__,
+        "the comment above [C] moves to [A]");
+    CheckEquals(std::string("; about C\n[C]\n"), RemoveSectionAndWrite("[B]\nx=1\n; about C\n[C]\n", "B", true,
+        __func__, __LINE__), __func__, __LINE__, "the comment above [C] moves to the preamble");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesEveryDuplicate)
+{
+    // Act
+    std::string const written = RemoveSectionAndWrite("[A]\n[B]\nx=1\n; about b\n[b]\ny=2\n; about C\n[C]\n", "B",
+        true, __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("[A]\n; about C\n[C]\n"), written, __func__, __LINE__,
+        "both [B] and [b] with their comments, and not the comment of [C]");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesItsComment)
+{
+    // Act & Assert
+    CheckEquals(std::string("[A]\nk=1\n\n[C]\n"), RemoveSectionAndWrite("[A]\nk=1\n\n; about B\n[B]\nx=1\n\n[C]\n",
+        "B", true, __func__, __LINE__), __func__, __LINE__, "the comment lines directly above the header");
+    CheckEquals(std::string("; file\n\n[B]\n"), RemoveSectionAndWrite("; file\n\n; about A\n[A]\nk=1\n[B]\n", "a",
+        true, __func__, __LINE__), __func__, __LINE__, "the first section's comment, but not the file comment");
+    CheckEquals(std::string(), RemoveSectionAndWrite("; about A\n[A]\n", "A", true, __func__, __LINE__), __func__,
+        __LINE__, "a comment that leads straight into the first header is its comment");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesTheLastSection)
+{
+    // Act & Assert
+    CheckEquals(std::string("[A]\nk=1\n\n"), RemoveSectionAndWrite("[A]\nk=1\n\n[B]\nx=1\n; trailing\n", "B", true,
+        __func__, __LINE__), __func__, __LINE__, "the comment at the end of the file goes with the last section");
+    CheckEquals(std::string("[A]\nk=1\n"), RemoveSectionAndWrite("[A]\nk=1\n[B]\nx=1", "B", true, __func__,
+        __LINE__), __func__, __LINE__, "a last line without a line break");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_ReturnsFalseForThePreambleAndWhenMissing)
+{
+    // Arrange
+    std::string const text = "k=1\n[A]\n";
+
+    // Act & Assert
+    CheckEquals(text, RemoveSectionAndWrite(text, "", false, __func__, __LINE__), __func__, __LINE__,
+        "the preamble is never removed");
+    CheckEquals(text, RemoveSectionAndWrite(text, "X", false, __func__, __LINE__), __func__, __LINE__,
+        "a missing section");
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRename
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRename::TTest_ASWIni_DocumentRename()
+    : inherited("ASWIni_DocumentRename_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_DocumentRename::~TTest_ASWIni_DocumentRename()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::CheckRenameKeyFails(std::string_view text, std::string_view section,
+    std::string_view key, std::string_view newKey, EIniCode code, std::string const& method, int lineNumber,
+    std::string const& msg)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, msg + ": the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    result = document.RenameKey(section, key, newKey);
+
+    CheckEquals(code, result.Code, method, lineNumber, msg + ": the result's code");
+    CheckFalse(result.Message.empty(), method, lineNumber, msg + ": the result should describe the problem");
+    CheckEquals(before, document.ToText(), method, lineNumber, msg + ": the text shouldn't change");
+    CheckFalse(document.IsModified(), method, lineNumber, msg + ": the document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::CheckRenameSectionFails(std::string_view text, std::string_view name,
+    std::string_view newName, EIniCode code, std::string const& method, int lineNumber, std::string const& msg)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, msg + ": the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    result = document.RenameSection(name, newName);
+
+    CheckEquals(code, result.Code, method, lineNumber, msg + ": the result's code");
+    CheckFalse(result.Message.empty(), method, lineNumber, msg + ": the result should describe the problem");
+    CheckEquals(before, document.ToText(), method, lineNumber, msg + ": the text shouldn't change");
+    CheckFalse(document.IsModified(), method, lineNumber, msg + ": the document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentRename::RenameKeyAndWrite(std::string_view text, TASWIniOptions const& options,
+    std::string_view section, std::string_view key, std::string_view newKey, std::string const& method,
+    int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, options, result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    result = document.RenameKey(section, key, newKey);
+    AssertTrue(result.IsOk(), method, lineNumber, "RenameKey() should succeed: " + result.Message);
+    std::string const written = document.ToText();
+    CheckEquals(written != before, document.IsModified(), method, lineNumber,
+        "the document should be modified exactly when its text changed");
+
+    TASWIniDocument const reread = ParseText(written, options, result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the written text should parse: " + result.Message);
+    TASWIniDocumentLine const* const line = reread.FindKey(section, newKey);
+    AssertTrue(line != nullptr, method, lineNumber, "the new key should read back");
+    CheckEquals(std::string(newKey), std::string(line->GetKey()), method, lineNumber,
+        "the key should be written as the new name");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+std::string TTest_ASWIni_DocumentRename::RenameSectionAndWrite(std::string_view text, std::string_view name,
+    std::string_view newName, std::string const& method, int lineNumber)
+{
+    TASWIniResult result;
+    std::vector<TASWIniMessage> messages;
+    TASWIniDocument document = ParseText(text, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the text should parse: " + result.Message);
+    std::string const before = document.ToText();
+
+    result = document.RenameSection(name, newName);
+    AssertTrue(result.IsOk(), method, lineNumber, "RenameSection() should succeed: " + result.Message);
+    std::string const written = document.ToText();
+    CheckEquals(written != before, document.IsModified(), method, lineNumber,
+        "the document should be modified exactly when its text changed");
+
+    TASWIniDocument const reread = ParseText(written, TASWIniOptions(), result, messages);
+    AssertTrue(result.IsOk(), method, lineNumber, "the written text should parse: " + result.Message);
+    ASWIni::TASWIniDocumentSection const* const section = reread.FindSection(newName);
+    AssertTrue(section != nullptr, method, lineNumber, "the new section should read back");
+    CheckEquals(std::string(newName), std::string(section->GetName()), method, lineNumber,
+        "the header should be written with the new name");
+
+    return written;
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_DocumentRename::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_ChangesOnlyTheName)
+{
+    // Arrange
+    TASWIniOptions const options;
+    TASWIniOptions quotedWithComments;
+    quotedWithComments.Reading.QuotedValues = true;
+    quotedWithComments.Reading.InlineComments = true;
+
+    // Act & Assert
+    CheckEquals(std::string("[A]\n  Height \t=\t 640\n"), RenameKeyAndWrite("[A]\n  Width \t=\t 640\n", options, "A",
+        "width", "Height", __func__, __LINE__), __func__, __LINE__, "the indentation, spacing and value stay");
+    CheckEquals(std::string("[A]\nn = \"v\" ; c\n"), RenameKeyAndWrite("[A]\nk = \"v\" ; c\n", quotedWithComments,
+        "A", "k", "n", __func__, __LINE__), __func__, __LINE__, "the quotes and the comment stay");
+    CheckEquals(std::string("Max Width: 1\n"), RenameKeyAndWrite("k: 1\n", options, "", "k", "Max Width", __func__,
+        __LINE__), __func__, __LINE__, "a key of the preamble, renamed to a name with a space");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_FailsOntoAnotherKey)
+{
+    // Act & Assert
+    CheckRenameKeyFails("[A]\nk=1\n[a]\nn=2\n", "A", "k", "N", EIniCode::AlreadyExists, __func__, __LINE__,
+        "a key of the duplicate section, in another case");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_FailsWhenMissing)
+{
+    // Act & Assert
+    CheckRenameKeyFails("[A]\nk=1\n", "A", "x", "y", EIniCode::NotFound, __func__, __LINE__, "a missing key");
+    CheckRenameKeyFails("[A]\nk=1\n", "B", "k", "y", EIniCode::NotFound, __func__, __LINE__, "a missing section");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_MayChangeOnlyTheCase)
+{
+    // Arrange
+    TASWIniOptions const options;
+
+    // Act & Assert
+    CheckEquals(std::string("[A]\nWidth=1\n"), RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "width", "Width",
+        __func__, __LINE__), __func__, __LINE__, "a new case");
+    CheckEquals(std::string("[A]\nwidth=1\n"), RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "WIDTH", "width",
+        __func__, __LINE__), __func__, __LINE__, "the name it has changes nothing");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_RejectsNamesThatWouldntReadBack)
+{
+    // Arrange
+    std::vector<std::string> const names = { "", " n", "n ", "a=b", "a:b", ";n", "#n", "[n", "a\nb", "a\rb" };
+
+    // Act & Assert
+    for (std::string const& name : names)
+    {
+        CheckRenameKeyFails("[A]\nk=1\nl=2\n", "A", "k", name, EIniCode::InvalidArgument, __func__, __LINE__,
+            "the new name \"" + name + "\"");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_RenamesEveryDuplicate)
+{
+    // Act
+    std::string const written = RenameKeyAndWrite("[A]\nk=1\nK=2\n[a]\nk=3\n[B]\nk=4\n", TASWIniOptions(), "a", "k",
+        "n", __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("[A]\nn=1\nn=2\n[a]\nn=3\n[B]\nk=4\n"), written, __func__, __LINE__,
+        "every line of the key in both [A] and [a], and not the key of [B]");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_ChangesOnlyTheName)
+{
+    // Act & Assert
+    CheckEquals(std::string("[ Main ] ; note\nk=1\n"), RenameSectionAndWrite("[ General ] ; note\nk=1\n", "general",
+        "Main", __func__, __LINE__), __func__, __LINE__, "the blanks and the comment stay");
+    CheckEquals(std::string("  [B]\n"), RenameSectionAndWrite("  [A]\n", "A", "B", __func__, __LINE__), __func__,
+        __LINE__, "the indentation stays");
+    CheckEquals(std::string("[B] junk\n"), RenameSectionAndWrite("[A] junk\n", "A", "B", __func__, __LINE__),
+        __func__, __LINE__, "text after the header stays");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_FailsOntoAnotherSection)
+{
+    // Act & Assert
+    CheckRenameSectionFails("[A]\n[B]\n", "A", "b", EIniCode::AlreadyExists, __func__, __LINE__,
+        "another section, in another case");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_FailsWhenMissing)
+{
+    // Act & Assert
+    CheckRenameSectionFails("[A]\n", "B", "C", EIniCode::NotFound, __func__, __LINE__, "a missing section");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_MayChangeOnlyTheCase)
+{
+    // Act & Assert
+    CheckEquals(std::string("[General]\n"), RenameSectionAndWrite("[general]\n", "general", "General", __func__,
+        __LINE__), __func__, __LINE__, "a new case");
+    CheckEquals(std::string("[general]\n"), RenameSectionAndWrite("[general]\n", "GENERAL", "general", __func__,
+        __LINE__), __func__, __LINE__, "the name it has changes nothing");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_RejectsThePreambleAndNamesThatWouldntReadBack)
+{
+    // Arrange
+    std::vector<std::string> const names = { "", " B", "B ", "a]b", "]", "a\nb", "a\rb" };
+
+    // Act & Assert
+    CheckRenameSectionFails("k=1\n[A]\n", "", "X", EIniCode::InvalidArgument, __func__, __LINE__,
+        "the preamble has no header to rename");
+    for (std::string const& name : names)
+    {
+        CheckRenameSectionFails("k=1\n[A]\n", "A", name, EIniCode::InvalidArgument, __func__, __LINE__,
+            "the new name \"" + name + "\"");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_RenamesEveryDuplicate)
+{
+    // Act
+    std::string const written = RenameSectionAndWrite("[A]\nk=1\n[B]\n[a]\nl=2\n", "A", "C", __func__, __LINE__);
+
+    // Assert
+    CheckEquals(std::string("[C]\nk=1\n[B]\n[C]\nl=2\n"), written, __func__, __LINE__, "both [A] and [a]");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
@@ -2603,6 +3032,8 @@ ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentLookup, "Doc
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentMessages, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentModel, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentParse, "Document")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentRemove, "Document")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentRename, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentRoundTrip, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentSetValue, "Document")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_DocumentToText, "Document")

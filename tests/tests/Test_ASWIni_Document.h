@@ -346,6 +346,103 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRemove
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentRemove : public TAutoTestGroup<TTest_ASWIni_DocumentRemove>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentRemove> inherited;
+
+private:
+    // 'text' parsed with the default options, after RemoveKey('section', 'key') (checking that it returns 'expected',
+    // that the modified flag and the text change only then, and that the key doesn't read back)
+    std::string RemoveKeyAndWrite(std::string_view text, std::string_view section, std::string_view key,
+        bool expected, std::string const& method, int lineNumber);
+
+    // 'text' parsed with the default options, after RemoveSection('name') (checking that it returns 'expected', that
+    // the modified flag and the text change only then, and that a section named 'name' doesn't read back)
+    std::string RemoveSectionAndWrite(std::string_view text, std::string_view name, bool expected,
+        std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_RemoveKey_KeepsTheLinesAroundIt();
+    void Test_RemoveKey_RemovesEveryDuplicate();
+    void Test_RemoveKey_RemovesItsComment();
+    void Test_RemoveKey_ReturnsFalseWhenMissing();
+    void Test_RemoveSection_KeepsTheCommentOfTheNextSection();
+    void Test_RemoveSection_RemovesEveryDuplicate();
+    void Test_RemoveSection_RemovesItsComment();
+    void Test_RemoveSection_RemovesTheLastSection();
+    void Test_RemoveSection_ReturnsFalseForThePreambleAndWhenMissing();
+
+public:
+    TTest_ASWIni_DocumentRemove();
+    ~TTest_ASWIni_DocumentRemove() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_DocumentRename
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_DocumentRename : public TAutoTestGroup<TTest_ASWIni_DocumentRename>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_DocumentRename> inherited;
+
+private:
+    // Checks that RenameKey('section', 'key', 'newKey') on 'text' parsed with the default options fails with 'code'
+    // and leaves the document as it was
+    void CheckRenameKeyFails(std::string_view text, std::string_view section, std::string_view key,
+        std::string_view newKey, ASWIni::EIniCode code, std::string const& method, int lineNumber,
+        std::string const& msg);
+
+    // Checks that RenameSection('name', 'newName') on 'text' parsed with the default options fails with 'code' and
+    // leaves the document as it was
+    void CheckRenameSectionFails(std::string_view text, std::string_view name, std::string_view newName,
+        ASWIni::EIniCode code, std::string const& method, int lineNumber, std::string const& msg);
+
+    // 'text' parsed with 'options', after RenameKey('section', 'key', 'newKey') (checking that it succeeds, that the
+    // modified flag is set only when the text changed, and that the key reads back as 'newKey')
+    std::string RenameKeyAndWrite(std::string_view text, ASWIni::TASWIniOptions const& options,
+        std::string_view section, std::string_view key, std::string_view newKey, std::string const& method,
+        int lineNumber);
+
+    // 'text' parsed with the default options, after RenameSection('name', 'newName') (checking that it succeeds, that
+    // the modified flag is set only when the text changed, and that the section reads back as 'newName')
+    std::string RenameSectionAndWrite(std::string_view text, std::string_view name, std::string_view newName,
+        std::string const& method, int lineNumber);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_RenameKey_ChangesOnlyTheName();
+    void Test_RenameKey_FailsOntoAnotherKey();
+    void Test_RenameKey_FailsWhenMissing();
+    void Test_RenameKey_MayChangeOnlyTheCase();
+    void Test_RenameKey_RejectsNamesThatWouldntReadBack();
+    void Test_RenameKey_RenamesEveryDuplicate();
+    void Test_RenameSection_ChangesOnlyTheName();
+    void Test_RenameSection_FailsOntoAnotherSection();
+    void Test_RenameSection_FailsWhenMissing();
+    void Test_RenameSection_MayChangeOnlyTheCase();
+    void Test_RenameSection_RejectsThePreambleAndNamesThatWouldntReadBack();
+    void Test_RenameSection_RenamesEveryDuplicate();
+
+public:
+    TTest_ASWIni_DocumentRename();
+    ~TTest_ASWIni_DocumentRename() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ limitations under the License.
 #include <vector>
 //---------------------------------------------------------------------------
 #include "ASWIni_Converters.h"
+#include "ASWIni_Document.h"
 //---------------------------------------------------------------------------
 
 // Only the integral types that aren't bool or wide or Unicode characters are converted as integers. Plain char is one
@@ -230,11 +231,12 @@ template <typename T>
 std::string EnumNumber(T value);
 std::vector<EFloatConversion> FloatConversions();
 std::string HexText(unsigned long long value);
+std::vector<std::vector<std::string> > ListsOfItems(std::size_t maxSize);
 std::uint64_t NextRandom(std::uint64_t& state);
 template <typename T>
 std::string NumberText(T value);
 template <typename T>
-std::string Written(T value);
+std::string Written(T const& value, TASWIniValueOptions const& options = TASWIniValueOptions());
 
 //---------------------------------------------------------------------------
 /*
@@ -342,6 +344,40 @@ std::string HexText(unsigned long long value)
 }
 //---------------------------------------------------------------------------
 /*
+    ListsOfItems
+
+    Every list of up to 'maxSize' items, each one of the items that a list must quote, or that are near them: blanks,
+    delimiters, quotes, and empty items.
+*/
+std::vector<std::vector<std::string> > ListsOfItems(std::size_t maxSize)
+{
+    std::string const items[] = {
+        "", " ", "\t", "a", " a", "a ", "a b", ",", ";", "|", "\"", "\"\"", "a\"b", "\"a\"", " \"a", "a, b",
+    };
+
+    // The lists of each size, made from those one item shorter
+    std::vector<std::vector<std::string> > lists(1);
+    std::size_t shorter = 0;
+    for (std::size_t size = 1; size <= maxSize; ++size)
+    {
+        std::size_t const end = lists.size();
+        for (std::size_t i = shorter; i < end; ++i)
+        {
+            for (std::string const& item : items)
+            {
+                std::vector<std::string> list = lists[i];
+                list.push_back(item);
+                lists.push_back(std::move(list));
+            }
+        }
+
+        shorter = end;
+    }
+
+    return lists;
+}
+//---------------------------------------------------------------------------
+/*
     NextRandom
 
     The next number of the xorshift sequence 'state' (which must not be 0), the same on every compiler.
@@ -369,13 +405,14 @@ std::string NumberText(T value)
 /*
     Written
 
-    The text TASWIniConverter<T>::ToText() writes for 'value' (replacing "old"), or "failed: " and the message.
+    The text TASWIniConverter<T>::ToText() writes for 'value' with 'options' (replacing "old"), or "failed: " and the
+    message.
 */
 template <typename T>
-std::string Written(T value)
+std::string Written(T const& value, TASWIniValueOptions const& options)
 {
     std::string text = "old";
-    TASWIniResult const result = TASWIniConverter<T>::ToText(value, text, TASWIniValueOptions());
+    TASWIniResult const result = TASWIniConverter<T>::ToText(value, text, options);
 
     return result.IsOk() ? text : "failed: " + result.Message;
 }
@@ -1534,6 +1571,354 @@ ASW_TEST(TTest_ASWIni_IntegerConverter, ToText_WritesDecimal)
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ListConverter
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_ListConverter::TTest_ASWIni_ListConverter()
+    : inherited("ASWIni_ListConverter_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_ListConverter::~TTest_ASWIni_ListConverter()
+{
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_ListConverter::CheckReads(std::string const& text, std::vector<T> const& expected,
+    std::string const& method, int line)
+{
+    // The list starts as something else, so a read that does nothing fails
+    std::vector<T> value;
+    if (expected.empty())
+        value.push_back(T());
+
+    TASWIniResult const result = TASWIniConverter<std::vector<T> >::FromText(text, value, m_Options);
+
+    CheckTrue(result.IsOk(), method, line, "\"" + text + "\" should read: " + result.Message);
+    CheckTrue(value == expected, method, line, "\"" + text + "\" should read as " + Written(expected, m_Options) +
+        " (" + std::to_string(expected.size()) + " items), not " + Written(value, m_Options) + " (" +
+        std::to_string(value.size()) + " items)");
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_ListConverter::CheckRejected(std::string const& text, EIniCode code, std::string const& method,
+    int line)
+{
+    for (std::vector<T> const& before : { std::vector<T>(), std::vector<T>(1, T()) })
+    {
+        std::vector<T> value = before;
+        TASWIniResult const result = TASWIniConverter<std::vector<T> >::FromText(text, value, m_Options);
+
+        CheckEquals(code, result.Code, method, line, "\"" + text + "\" should be " + ASWIni::ToString(code));
+        CheckContains(result.Message, ASWIni::Detail::MessageText(text), method, line,
+            "the message should quote \"" + text + "\"");
+        CheckTrue(value == before, method, line, "\"" + text + "\" should leave the list as it was");
+    }
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_ListConverter::CheckRoundTrip(std::vector<T> const& value, std::string const& method, int line)
+{
+    std::string text;
+    TASWIniResult const written = TASWIniConverter<std::vector<T> >::ToText(value, text, m_Options);
+    CheckTrue(written.IsOk(), method, line, "the list should be written: " + written.Message);
+    if (written.IsOk())
+        CheckReads(text, value, method, line);
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_ListConverter::CheckWrites(std::vector<T> const& value, std::string const& expected,
+    std::string const& method, int line)
+{
+    CheckEquals(expected, Written(value, m_Options), method, line, "the list should be written as \"" + expected +
+        "\"");
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ListConverter::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ListConverter::SetUp_Test(ITestCase& /*testCase*/)
+{
+    m_Options = TASWIniValueOptions();
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ListConverter::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ListConverter::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, Delimiter_IsTheOptionsOne)
+{
+    // Act & Assert
+    // The default delimiter is then an ordinary character
+    m_Options.ListDelimiter = ';';
+    CheckReads<std::string>("a; b,c ;d", { "a", "b,c", "d" }, __func__, __LINE__);
+    CheckReads<std::string>("\"a;b\"; c", { "a;b", "c" }, __func__, __LINE__);
+    CheckWrites<std::string>({ "a", "b,c", "d;e" }, "a; b,c; \"d;e\"", __func__, __LINE__);
+
+    m_Options.ListDelimiter = '|';
+    CheckReads<int>("1|2 | 3", { 1, 2, 3 }, __func__, __LINE__);
+    CheckWrites<int>({ 1, 2, 3 }, "1| 2| 3", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, Document_ListsReadBackWithQuotedValuesOnAndOff)
+{
+    // Arrange
+    // Every list of up to two tricky items, among them the one-item lists in quotes ("\"a, b\"" and "\"\"") that the
+    // document itself quotes with QuotedValues
+    std::vector<std::vector<std::string> > const lists = ListsOfItems(2);
+
+    // Act & Assert
+    for (bool const quotedValues : { false, true })
+    {
+        ASWIni::TASWIniOptions options;
+        options.Reading.QuotedValues = quotedValues;
+        std::string const mode = quotedValues ? "with QuotedValues: " : "without QuotedValues: ";
+
+        for (std::vector<std::string> const& list : lists)
+        {
+            std::string text;
+            TASWIniResult result = TASWIniConverter<std::vector<std::string> >::ToText(list, text, options.Values);
+            ASWIni::TASWIniDocument written;
+            if (result.IsOk())
+                result = written.Reset(options);
+
+            if (result.IsOk())
+                result = written.SetValue("Lists", "List", text);
+
+            CheckTrue(result.IsOk(), __func__, __LINE__, mode + "\"" + text + "\" should be set: " + result.Message);
+            if (!result.IsOk())
+                continue;
+
+            // The file text parsed again, as a load would
+            std::vector<ASWIni::TASWIniMessage> messages;
+            ASWIni::TASWIniDocument read;
+            result = read.Parse(written.ToText(), options, messages);
+            ASWIni::TASWIniDocumentLine const* const line = read.FindKey("Lists", "List");
+            CheckTrue(result.IsOk() && line != nullptr, __func__, __LINE__, mode + "\"" + text + "\" should be parsed");
+            if (!result.IsOk() || line == nullptr)
+                continue;
+
+            std::vector<std::string> readBack;
+            result = TASWIniConverter<std::vector<std::string> >::FromText(line->GetValue(), readBack,
+                options.Values);
+            CheckTrue(result.IsOk() && readBack == list, __func__, __LINE__, mode + "\"" + text +
+                "\" should read back as the list it was written from, not \"" + std::string(line->GetValue()) + "\"");
+        }
+    }
+
+    // With QuotedValues, the document quotes a one-item quoted list again, doubling its quotes
+    ASWIni::TASWIniOptions options;
+    options.Reading.QuotedValues = true;
+    ASWIni::TASWIniDocument document;
+    std::string text;
+    TASWIniResult const written = TASWIniConverter<std::vector<std::string> >::ToText({ "a, b" }, text, options.Values);
+    TASWIniResult const reset = document.Reset(options);
+    TASWIniResult const set = document.SetValue("", "List", text);
+    CheckTrue(written.IsOk() && reset.IsOk() && set.IsOk(), __func__, __LINE__, "the list should be set");
+    CheckContains(document.ToText(), "List = \"\"\"a, b\"\"\"", __func__, __LINE__,
+        "the line should hold the list in quotes, with its quotes doubled");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_EmptyTextIsAnEmptyList)
+{
+    // Act & Assert
+    CheckReads<std::string>("", {}, __func__, __LINE__);
+    CheckReads<std::string>(" \t ", {}, __func__, __LINE__);
+    CheckReads<int>("", {}, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_FailingItemFailsTheList)
+{
+    // Act & Assert
+    // The item's code is the list's: InvalidValue or ValueOutOfRange
+    CheckRejected<int>("1,,2", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<int>("1, 2,", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<int>("1, x", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<int>("\"1\"\"\"", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<std::uint8_t>("1, 300", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<bool>("true, maybe", EIniCode::InvalidValue, __func__, __LINE__);
+
+    // The message names the item, and gives its own message
+    std::vector<int> value;
+    TASWIniResult const result = TASWIniConverter<std::vector<int> >::FromText("1, x, 3", value, m_Options);
+    CheckEquals(std::string("The value \"1, x, 3\" can't be read: item 2: The value \"x\" isn't a whole number: it "
+        "must be decimal digits, or 0x and hex digits, after an optional sign."), result.Message, __func__, __LINE__,
+        "the message should name the item that failed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_QuoteInsideAnItemIsOrdinary)
+{
+    // Act & Assert
+    CheckReads<std::string>("5\" disk, 3.5\" disk", { "5\" disk", "3.5\" disk" }, __func__, __LINE__);
+    CheckReads<std::string>("a\"b, c\"\"", { "a\"b", "c\"\"" }, __func__, __LINE__);
+    CheckReads<std::string>("a \"b, c\" d", { "a \"b", "c\" d" }, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_ReadsQuotedItems)
+{
+    // Act & Assert
+    // A quoted item keeps its blanks and may hold the delimiter, and "" in it is one '"'
+    CheckReads<std::string>("\"a, b\", c", { "a, b", "c" }, __func__, __LINE__);
+    CheckReads<std::string>("\" a \"", { " a " }, __func__, __LINE__);
+    CheckReads<std::string>("\"\"", { "" }, __func__, __LINE__);
+    CheckReads<std::string>("\"\", \"\"", { "", "" }, __func__, __LINE__);
+    CheckReads<std::string>("\"say \"\"hi\"\"\"", { "say \"hi\"" }, __func__, __LINE__);
+    CheckReads<std::string>("\"\"\"\"", { "\"" }, __func__, __LINE__);
+    CheckReads<std::string>(" \t\"x\" \t, y", { "x", "y" }, __func__, __LINE__);
+    CheckReads<std::string>("a,\"b\"", { "a", "b" }, __func__, __LINE__);
+    CheckReads<int>("\"1\", \" 2 \"", { 1, 2 }, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_RejectsBadQuoting)
+{
+    // Arrange
+    // An unclosed quote, and more than blanks after a closing one
+    std::string const texts[] = {
+        "\"", "\"a", "\"a, b", "x, \"y", "\"a\"\"", "\"a\"b", "\"a\" b, c", "x, \"y\"z", "\"a\"\"b",
+    };
+
+    // Act & Assert
+    for (std::string const& text : texts)
+        CheckRejected<std::string>(text, EIniCode::InvalidValue, __func__, __LINE__);
+
+    // The messages name the item and the problem
+    std::vector<std::string> value;
+    TASWIniResult const unclosed = TASWIniConverter<std::vector<std::string> >::FromText("x, \"y", value, m_Options);
+    TASWIniResult const after = TASWIniConverter<std::vector<std::string> >::FromText("\"a\"b", value, m_Options);
+    CheckEquals(std::string("The value \"x, \"y\" isn't a list: its item 2 starts with a '\"' that isn't closed."),
+        unclosed.Message, __func__, __LINE__, "an unclosed quote");
+    CheckEquals(std::string("The value \"\"a\"b\" isn't a list: its item 1 has more than blanks after its closing "
+        "'\"'."), after.Message, __func__, __LINE__, "text after a closing quote");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, FromText_SplitsAtTheDelimiter)
+{
+    // Act & Assert
+    // Each item without the blanks around it; an empty item is one too
+    CheckReads<std::string>("a", { "a" }, __func__, __LINE__);
+    CheckReads<std::string>("a,b,c", { "a", "b", "c" }, __func__, __LINE__);
+    CheckReads<std::string>(" a ,\tb\t, c d ", { "a", "b", "c d" }, __func__, __LINE__);
+    CheckReads<std::string>("1,,2", { "1", "", "2" }, __func__, __LINE__);
+    CheckReads<std::string>("a,", { "a", "" }, __func__, __LINE__);
+    CheckReads<std::string>(",a", { "", "a" }, __func__, __LINE__);
+    CheckReads<std::string>(",", { "", "" }, __func__, __LINE__);
+    CheckReads<std::string>(" , ", { "", "" }, __func__, __LINE__);
+    CheckReads<int>("1, -2, 0x3", { 1, -2, 3 }, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, ItemTypes_BoolEnumAndNumbers)
+{
+    // Act & Assert
+    // std::vector<bool>'s items are proxies; the options reach the items' converters
+    CheckReads<bool>("true, no, 1", { true, false, true }, __func__, __LINE__);
+    CheckWrites<bool>({ true, false }, "true, false", __func__, __LINE__);
+    m_Options.BoolFormat = EBoolFormat::YesNo;
+    CheckWrites<bool>({ true, false }, "yes, no", __func__, __LINE__);
+    CheckRoundTrip<bool>({ false, true, true }, __func__, __LINE__);
+
+    CheckReads<EColor>("Red, lime, 40", { EColor::Red, EColor::Green, EColor::Blue }, __func__, __LINE__);
+    CheckWrites<EColor>({ EColor::Blue, EColor::Green }, "Blue, Green", __func__, __LINE__);
+    CheckRoundTrip<double>({ 0.1, -2.5, 1e300 }, __func__, __LINE__);
+    CheckRoundTrip<std::int64_t>({ std::numeric_limits<std::int64_t>::min(), 0 }, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, Nested_ListsOfLists)
+{
+    // Arrange
+    typedef std::vector<std::vector<int> > TGrid;
+    typedef std::vector<std::vector<std::string> > TTable;
+
+    // Act & Assert
+    // The inner lists are items like any other, quoted when they hold the delimiter (or are the only one and empty)
+    CheckWrites<std::vector<int> >({ { 1, 2 }, { 3, 4 } }, "\"1, 2\", \"3, 4\"", __func__, __LINE__);
+    CheckReads<std::vector<int> >("\"1, 2\", \"3, 4\"", TGrid({ { 1, 2 }, { 3, 4 } }), __func__, __LINE__);
+    CheckWrites<std::vector<int> >({ { 1 }, {} }, "1,", __func__, __LINE__);
+    CheckWrites<std::vector<int> >({ {} }, "\"\"", __func__, __LINE__);
+    CheckRoundTrip<std::vector<int> >({ {} }, __func__, __LINE__);
+    CheckRoundTrip<std::vector<int> >({ {}, {} }, __func__, __LINE__);
+    CheckRoundTrip<std::vector<int> >({ { 1 }, { 2, 3 }, {} }, __func__, __LINE__);
+    CheckRoundTrip<std::vector<std::string> >(TTable({ { "a, b", "c" }, { "\"q\"" }, { "" } }), __func__, __LINE__);
+    CheckRoundTrip<std::vector<std::vector<std::string> > >({ TTable({ { "x, \"y\"" }, {} }), TTable() }, __func__,
+        __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, RoundTrip_EveryCombinationOfTrickyItems)
+{
+    // Arrange
+    std::vector<std::vector<std::string> > const lists = ListsOfItems(3);
+
+    // Act & Assert
+    for (char const delimiter : { ',', ';', '|' })
+    {
+        m_Options.ListDelimiter = delimiter;
+        for (std::vector<std::string> const& list : lists)
+            CheckRoundTrip(list, __func__, __LINE__);
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, ToText_FailingItemFailsTheList)
+{
+    // Arrange
+    std::string text = "old";
+
+    // Act
+    TASWIniResult const result = TASWIniConverter<std::vector<EColor> >::ToText({ EColor::Red, EColor::Unlisted },
+        text, m_Options);
+
+    // Assert
+    CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__, "the item's code should be the list's");
+    CheckEquals(std::string("The list can't be written: item 2: The value \"7\" has no name in the enum's "
+        "ASWIniEnumNames(), so it can't be written."), result.Message, __func__, __LINE__,
+        "the message should name the item that failed");
+    CheckEquals(std::string("old"), text, __func__, __LINE__, "the text should be left as it was");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, ToText_JoinsWithTheDelimiterAndASpace)
+{
+    // Act & Assert
+    // Written() starts from "old", so these also check that the text is replaced
+    CheckWrites<std::string>({}, "", __func__, __LINE__);
+    CheckWrites<std::string>({ "a" }, "a", __func__, __LINE__);
+    CheckWrites<std::string>({ "a", "b", "c" }, "a, b, c", __func__, __LINE__);
+    CheckWrites<std::string>({ "a b", "c\td" }, "a b, c\td", __func__, __LINE__);
+    CheckWrites<int>({ 1, -2, 3 }, "1, -2, 3", __func__, __LINE__);
+
+    // No space before an empty item, so the text never ends with one
+    CheckWrites<std::string>({ "a", "" }, "a,", __func__, __LINE__);
+    CheckWrites<std::string>({ "", "a" }, ", a", __func__, __LINE__);
+    CheckWrites<std::string>({ "a", "", "b" }, "a,, b", __func__, __LINE__);
+    CheckWrites<std::string>({ "", "" }, ",", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ListConverter, ToText_QuotesOnlyWhenNeeded)
+{
+    // Act & Assert
+    // The delimiter or a '"', blanks at either end, or an empty only item
+    CheckWrites<std::string>({ "a, b", "c" }, "\"a, b\", c", __func__, __LINE__);
+    CheckWrites<std::string>({ "say \"hi\"" }, "\"say \"\"hi\"\"\"", __func__, __LINE__);
+    CheckWrites<std::string>({ "5\" disk" }, "\"5\"\" disk\"", __func__, __LINE__);
+    CheckWrites<std::string>({ " a", "b " }, "\" a\", \"b \"", __func__, __LINE__);
+    CheckWrites<std::string>({ "\ta", "b\t" }, "\"\ta\", \"b\t\"", __func__, __LINE__);
+    CheckWrites<std::string>({ " " }, "\" \"", __func__, __LINE__);
+    CheckWrites<std::string>({ "" }, "\"\"", __func__, __LINE__);
+
+    // Another delimiter is an ordinary character
+    CheckWrites<std::string>({ "a;b", "c|d" }, "a;b, c|d", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_TextConverter
 /////////////////////////////////////////////////////////////////////////////
 
@@ -1697,4 +2082,5 @@ ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_Converters, "Convert
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_EnumConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_FloatConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_IntegerConverter, "Converters")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_ListConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_TextConverter, "Converters")

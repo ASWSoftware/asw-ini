@@ -33,6 +33,7 @@ limitations under the License.
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <vector>
 #if ASWINI_STD_FLOAT_CHARCONV
 #  include <charconv>
@@ -104,6 +105,7 @@ template <typename T>
 std::string FloatText(T value, Detail::EFloatConversion conversion);
 TASWIniResult InvalidFloat(std::string_view text);
 TASWIniResult InvalidInteger(std::string_view text);
+TASWIniResult InvalidList(std::string_view text, std::size_t number, std::string_view problem);
 #if ASWINI_STD_FLOAT_CHARCONV
 bool IsBelowOne(std::string_view decimal) noexcept;
 #endif
@@ -111,17 +113,21 @@ bool IsDecimalNumber(std::string_view text) noexcept;
 #if defined(_WIN32)
 TUcrt LoadUcrt() noexcept;
 #endif
+bool NeedsListQuotes(std::string_view item, char delimiter, bool onlyItem) noexcept;
 TASWIniResult OutOfRange(std::string_view text, std::string const& min, std::string const& max);
 #if defined(_WIN32)
 template <typename T>
 T ProcAddress(HMODULE module, char const* name) noexcept;
 #endif
+std::string QuotedListItem(std::string_view item);
 template <typename T>
 ENumberRead ReadDecimal(std::string_view decimal, T& value, Detail::EFloatConversion conversion);
 template <typename T>
 TASWIniResult ReadFloat(std::string_view text, T& value, Detail::EFloatConversion conversion);
 ENumberRead ReadMagnitude(std::string_view text, bool& negative, unsigned long long& magnitude) noexcept;
+bool ReadQuotedItem(std::string_view text, std::size_t& at, std::string& item);
 std::string ScientificText(char const* printed);
+std::size_t SkipBlanks(std::string_view text, std::size_t from) noexcept;
 #if defined(_WIN32)
 TUcrt const* Ucrt() noexcept;
 #endif
@@ -363,6 +369,22 @@ TASWIniResult InvalidInteger(std::string_view text)
         "and hex digits, after an optional sign.");
 }
 //---------------------------------------------------------------------------
+/*
+    InvalidList
+
+    The InvalidValue result of 'text', which isn't a list because its item 'number' (1 for the first) has the
+    problem 'problem' (e.g. "starts with a '\"' that isn't closed").
+*/
+TASWIniResult InvalidList(std::string_view text, std::size_t number, std::string_view problem)
+{
+    std::string message = "isn't a list: its item " + Detail::IntegerText(static_cast<unsigned long long>(number));
+    message += ' ';
+    message += problem;
+    message += '.';
+
+    return Detail::ValueFailure(EIniCode::InvalidValue, text, message);
+}
+//---------------------------------------------------------------------------
 #if ASWINI_STD_FLOAT_CHARCONV
 /*
     IsBelowOne
@@ -482,6 +504,21 @@ TUcrt LoadUcrt() noexcept
 //---------------------------------------------------------------------------
 #endif
 /*
+    NeedsListQuotes
+
+    Whether the list item 'item' must be quoted to read back as itself (see Detail::JoinListItems()): it holds
+    'delimiter' or a '"', has a space or a tab at either end, or is empty and the list's only item ('onlyItem').
+*/
+bool NeedsListQuotes(std::string_view item, char delimiter, bool onlyItem) noexcept
+{
+    if (item.empty())
+        return onlyItem;
+
+    return item.find(delimiter) != std::string_view::npos || item.find('"') != std::string_view::npos ||
+        Detail::IsBlank(item.front()) || Detail::IsBlank(item.back());
+}
+//---------------------------------------------------------------------------
+/*
     OutOfRange
 
     The ValueOutOfRange result of 'text', a number outside the range 'min' to 'max' (as text).
@@ -506,6 +543,26 @@ T ProcAddress(HMODULE module, char const* name) noexcept
 }
 //---------------------------------------------------------------------------
 #endif
+/*
+    QuotedListItem
+
+    The list item 'item' in double quotes, with each '"' in it as "".
+*/
+std::string QuotedListItem(std::string_view item)
+{
+    std::string quoted = "\"";
+    for (char const c : item)
+    {
+        quoted += c;
+        if (c == '"')
+            quoted += '"';
+    }
+
+    quoted += '"';
+
+    return quoted;
+}
+//---------------------------------------------------------------------------
 /*
     ReadDecimal
 
@@ -649,6 +706,36 @@ ENumberRead ReadMagnitude(std::string_view text, bool& negative, unsigned long l
 }
 //---------------------------------------------------------------------------
 /*
+    ReadQuotedItem
+
+    Reads the quoted list item whose opening '"' is at 'at' in 'text' into 'item' (appended to it), without its quotes
+    and with each "" in it as one '"', and moves 'at' past its closing '"'; false when the quote isn't closed.
+*/
+bool ReadQuotedItem(std::string_view text, std::size_t& at, std::string& item)
+{
+    std::size_t i = at + 1;
+    while (i < text.size())
+    {
+        if (text[i] == '"')
+        {
+            if (i + 1 == text.size() || text[i + 1] != '"')
+            {
+                at = i + 1;
+                return true;
+            }
+
+            // The first '"' of a ""
+            ++i;
+        }
+
+        item += text[i];
+        ++i;
+    }
+
+    return false;
+}
+//---------------------------------------------------------------------------
+/*
     ScientificText
 
     The text DecimalText() makes of 'printed', a number as snprintf("%.*e") writes it ("1.2500e+03", with the C
@@ -683,6 +770,20 @@ std::string ScientificText(char const* printed)
     digits.erase(last == std::string::npos ? 1 : last + 1);
 
     return DecimalText(digits, exponent);
+}
+//---------------------------------------------------------------------------
+/*
+    SkipBlanks
+
+    The position of the first character of 'text' from 'from' on that isn't a space or a tab (its size when there is
+    none).
+*/
+std::size_t SkipBlanks(std::string_view text, std::size_t from) noexcept
+{
+    while (from < text.size() && Detail::IsBlank(text[from]))
+        ++from;
+
+    return from;
 }
 //---------------------------------------------------------------------------
 #if defined(_WIN32)
@@ -821,6 +922,46 @@ bool IsEnumName(std::string_view text, char const* name) noexcept
     return name != nullptr && EqualsNoCase(Trim(text), name);
 }
 //---------------------------------------------------------------------------
+std::string JoinListItems(std::vector<std::string> const& items, char delimiter)
+{
+    std::string text;
+    for (std::size_t i = 0; i < items.size(); ++i)
+    {
+        std::string const& item = items[i];
+        if (i > 0)
+            text += delimiter;
+
+        // No space before an empty item, so the text never ends with one
+        if (i > 0 && !item.empty())
+            text += ' ';
+
+        if (NeedsListQuotes(item, delimiter, items.size() == 1))
+            text += QuotedListItem(item);
+        else
+            text += item;
+    }
+
+    return text;
+}
+//---------------------------------------------------------------------------
+TASWIniResult ListItemReadFailure(std::string_view text, std::size_t number, TASWIniResult const& itemResult)
+{
+    std::string problem = "can't be read: item " + IntegerText(static_cast<unsigned long long>(number)) + ": ";
+    problem += itemResult.Message;
+
+    return ValueFailure(itemResult.Code, text, problem);
+}
+//---------------------------------------------------------------------------
+TASWIniResult ListItemWriteFailure(std::size_t number, TASWIniResult const& itemResult)
+{
+    TASWIniResult result;
+    result.Code = itemResult.Code;
+    result.Message = "The list can't be written: item " + IntegerText(static_cast<unsigned long long>(number)) + ": ";
+    result.Message += itemResult.Message;
+
+    return result;
+}
+//---------------------------------------------------------------------------
 std::string MessageText(std::string_view text)
 {
     // A long text is cut before a byte that starts a UTF-8 sequence (or is ASCII), so no sequence is split
@@ -896,6 +1037,48 @@ TASWIniResult ReadUnsignedInteger(std::string_view text, unsigned long long max,
         return OutOfRange(text, "0", IntegerText(max));
 
     value = magnitude;
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+TASWIniResult SplitListItems(std::string_view text, char delimiter, std::vector<std::string>& items)
+{
+    std::vector<std::string> split;
+    if (!Trim(text).empty())
+    {
+        std::size_t at = 0;
+        while (true)
+        {
+            // An item: blanks, then a quoted item, or the text up to the next delimiter
+            at = SkipBlanks(text, at);
+            if (at < text.size() && text[at] == '"')
+            {
+                std::string item;
+                if (!ReadQuotedItem(text, at, item))
+                    return InvalidList(text, split.size() + 1, "starts with a '\"' that isn't closed");
+
+                at = SkipBlanks(text, at);
+                if (at < text.size() && text[at] != delimiter)
+                    return InvalidList(text, split.size() + 1, "has more than blanks after its closing '\"'");
+
+                split.push_back(std::move(item));
+            }
+            else
+            {
+                std::size_t const end = std::min(text.find(delimiter, at), text.size());
+                split.emplace_back(TrimRight(text.substr(at, end - at)));
+                at = end;
+            }
+
+            if (at == text.size())
+                break;
+
+            // Past the delimiter
+            ++at;
+        }
+    }
+
+    items.swap(split);
 
     return TASWIniResult();
 }

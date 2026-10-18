@@ -24,9 +24,11 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include <initializer_list>
 #include <string>
+#include <vector>
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_TestBase.h"
 //---------------------------------------------------------------------------
+#include "ASWIni_Options.h"
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
 
@@ -212,6 +214,62 @@ public: // Test methods, each defined with ASW_TEST
 public:
     TTest_ASWIni_IntegerConverter();
     ~TTest_ASWIni_IntegerConverter() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ListConverter
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_ListConverter : public TAutoTestGroup<TTest_ASWIni_ListConverter>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_ListConverter> inherited;
+
+private:
+    ASWIni::TASWIniValueOptions m_Options; // What the checks convert with; the defaults at the start of each test
+
+private:
+    // Checks that 'text' reads as the list 'expected'
+    template <typename T>
+    void CheckReads(std::string const& text, std::vector<T> const& expected, std::string const& method, int line);
+
+    // Checks that 'text' fails to read as a list of T with 'code' and a message that quotes it, leaving the list as it
+    // was
+    template <typename T>
+    void CheckRejected(std::string const& text, ASWIni::EIniCode code, std::string const& method, int line);
+
+    // Checks that the list 'value' is written as a text that reads back as itself
+    template <typename T>
+    void CheckRoundTrip(std::vector<T> const& value, std::string const& method, int line);
+
+    // Checks that the list 'value' is written as 'expected'
+    template <typename T>
+    void CheckWrites(std::vector<T> const& value, std::string const& expected, std::string const& method, int line);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Delimiter_IsTheOptionsOne();
+    void Test_Document_ListsReadBackWithQuotedValuesOnAndOff();
+    void Test_FromText_EmptyTextIsAnEmptyList();
+    void Test_FromText_FailingItemFailsTheList();
+    void Test_FromText_QuoteInsideAnItemIsOrdinary();
+    void Test_FromText_ReadsQuotedItems();
+    void Test_FromText_RejectsBadQuoting();
+    void Test_FromText_SplitsAtTheDelimiter();
+    void Test_ItemTypes_BoolEnumAndNumbers();
+    void Test_Nested_ListsOfLists();
+    void Test_RoundTrip_EveryCombinationOfTrickyItems();
+    void Test_ToText_FailingItemFailsTheList();
+    void Test_ToText_JoinsWithTheDelimiterAndASpace();
+    void Test_ToText_QuotesOnlyWhenNeeded();
+
+public:
+    TTest_ASWIni_ListConverter();
+    ~TTest_ASWIni_ListConverter() override;
 
     void SetUp_Group() override;
     void SetUp_Test(ITestCase& testCase) override;

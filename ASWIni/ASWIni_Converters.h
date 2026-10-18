@@ -6,10 +6,10 @@ An INI file reader/writer library.
 
 TASWIniConverter<T>, which converts a typed value to and from the text of an
 INI value, as the value options (TASWIniValueOptions) say. The library has
-converters for std::string, bool, the integer types, float, double and enums
-(by name when the application gives the enum names, see TASWIniEnumName, else
-as numbers); an application can add its own by specializing TASWIniConverter
-for its type.
+converters for std::string, bool, the integer types, float, double, enums (by
+name when the application gives the enum names, see TASWIniEnumName, else as
+numbers) and std::vector of any of them (lists, also of lists); an application
+can add its own by specializing TASWIniConverter for its type.
 Conversions don't depend on the C or C++ locale.
 
 Requires C++ 17 or higher.
@@ -192,6 +192,19 @@ TASWIniResult InvalidEnumName(std::string_view text, std::vector<char const*> co
 // 'name' is nullptr)
 bool IsEnumName(std::string_view text, char const* name) noexcept;
 
+// The text of a list with the items 'items' (see TASWIniConverter<std::vector<T> >): the items joined with 'delimiter'
+// and a space (no space before an empty item, so the text never ends with one), each in double quotes, with each '"'
+// in it as "", when it holds 'delimiter' or a '"', has a space or a tab at either end, or is the only item and empty
+std::string JoinListItems(std::vector<std::string> const& items, char delimiter);
+
+// The result of a list's item 'number' (1 for the first) failing to read, with 'itemResult': its code, and a message
+// that quotes the list's 'text' and then gives the item's message
+TASWIniResult ListItemReadFailure(std::string_view text, std::size_t number, TASWIniResult const& itemResult);
+
+// The result of a list's item 'number' (1 for the first) failing to be written, with 'itemResult': its code, and a
+// message that names the item and then gives the item's message
+TASWIniResult ListItemWriteFailure(std::size_t number, TASWIniResult const& itemResult);
+
 // 'text' as a message quotes it: in double quotes, with each control character (below 0x20, and 0x7F) as '?', and,
 // when it has more than MaxMessageTextSize bytes, cut to at most that many (not inside a UTF-8 sequence) and
 // followed by "..."
@@ -207,6 +220,12 @@ TASWIniResult ReadFloatingPoint(std::string_view text, float& value, EFloatConve
 // range is a type's: 'min' is negative (signed) or 0 (unsigned), and 'max' is positive.
 TASWIniResult ReadSignedInteger(std::string_view text, long long min, long long max, long long& value);
 TASWIniResult ReadUnsignedInteger(std::string_view text, unsigned long long max, unsigned long long& value);
+
+// Splits 'text', a list (see TASWIniConverter<std::vector<T> >), into 'items' (set only on success): each item's text
+// as its converter reads it, without its quotes and with each "" in them as one '"' when it is quoted, else without
+// the spaces and tabs around it. An empty text (or only blanks) is no items. Fails with InvalidValue when a quote
+// isn't closed, or anything but blanks follows a closing quote before the next 'delimiter'.
+TASWIniResult SplitListItems(std::string_view text, char delimiter, std::vector<std::string>& items);
 
 // The InvalidValue result of an enum with names writing a value that has no name, whose number is 'number'
 TASWIniResult UnnamedEnumValue(std::string_view number);
@@ -455,6 +474,70 @@ public:
     static TASWIniResult ToText(T value, std::string& text, TASWIniValueOptions const& options)
     {
         return Detail::TIntegerConverter<TNumber>::ToText(static_cast<TNumber>(value), text, options);
+    }
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<std::vector<T> >
+//
+// A list of values of any type T that has a converter, as items separated by TASWIniValueOptions::ListDelimiter, in
+// the CSV style. Reads an empty text (or only blanks) as an empty list; otherwise each item is the text up to the next
+// delimiter, without the spaces and tabs around it, or, when it starts with a '"', a quoted item: the text up to the
+// closing '"', with each "" in it as one '"', which keeps its blanks and may hold the delimiter. Only blanks may follow
+// a quoted item before the next delimiter, and an unclosed quote is InvalidValue; a '"' anywhere else in an item is an
+// ordinary character. Each item is read with TASWIniConverter<T>, so "1,,2" fails as a list of int and is "1", "" and
+// "2" as a list of std::string. Writes the items joined with the delimiter and a space ("a, b, c"), quoting an item
+// only when it has to be (see Detail::JoinListItems()): "a, b" and c are written as "\"a, b\", c". A list of lists
+// needs nothing more: its items are lists, quoted ("\"1, 2\", \"3, 4\""). When an item fails, so does the list, with
+// the item's code and a message that names the item, leaving the value or text as it was.
+// With TASWIniReadingOptions::QuotedValues, the document removes the quotes around a whole value before the converter
+// sees it, so a hand-written k = "a, b" is the two items a and b; a list written through TASWIniDocument::SetValue()
+// still reads back, since the document quotes a value that starts with a '"' again (k = """a, b""").
+/////////////////////////////////////////////////////////////////////////////
+template <typename T, typename TAllocator>
+struct TASWIniConverter<std::vector<T, TAllocator> >
+{
+    static TASWIniResult FromText(std::string_view text, std::vector<T, TAllocator>& value,
+        TASWIniValueOptions const& options)
+    {
+        std::vector<std::string> items;
+        TASWIniResult result = Detail::SplitListItems(text, options.ListDelimiter, items);
+        if (!result.IsOk())
+            return result;
+
+        std::vector<T, TAllocator> read(value.get_allocator());
+        read.reserve(items.size());
+        for (std::size_t i = 0; i < items.size(); ++i)
+        {
+            T item = T();
+            result = TASWIniConverter<T>::FromText(items[i], item, options);
+            if (!result.IsOk())
+                return Detail::ListItemReadFailure(text, i + 1, result);
+
+            read.push_back(std::move(item));
+        }
+
+        value = std::move(read);
+
+        return TASWIniResult();
+    }
+
+    static TASWIniResult ToText(std::vector<T, TAllocator> const& value, std::string& text,
+        TASWIniValueOptions const& options)
+    {
+        // By index, since a std::vector<bool>'s items are proxies
+        std::vector<std::string> items(value.size());
+        for (std::size_t i = 0; i < value.size(); ++i)
+        {
+            TASWIniResult const result = TASWIniConverter<T>::ToText(value[i], items[i], options);
+            if (!result.IsOk())
+                return Detail::ListItemWriteFailure(i + 1, result);
+        }
+
+        text = Detail::JoinListItems(items, options.ListDelimiter);
+
+        return TASWIniResult();
     }
 };
 

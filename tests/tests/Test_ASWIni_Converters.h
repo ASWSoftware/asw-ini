@@ -314,6 +314,47 @@ public:
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ConverterFuzz
+//
+// Every converter with random texts and random values, each picked by a seed that a failure message names
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_ConverterFuzz : public TAutoTestGroup<TTest_ASWIni_ConverterFuzz>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_ConverterFuzz> inherited;
+
+private:
+    // Checks that random texts that read as a T (with random value options) are written as a text that reads back as
+    // the same value and is written the same again, that a text that doesn't read fails with InvalidValue or
+    // ValueOutOfRange and leaves the value as it was, and that some texts read
+    template <typename T>
+    void CheckRandomTexts(std::string const& typeName, std::string const& method, int line);
+
+    // Checks that random values of type T, each made by 'make' from a std::mt19937, are written as a text that reads
+    // back as the same value and is written the same again
+    template <typename T, typename TMake>
+    void CheckRandomValues(std::string const& typeName, TMake make, std::string const& method, int line);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_RandomTexts_EnumsAndLists();
+    void Test_RandomTexts_Numbers();
+    void Test_RandomTexts_TextTypes();
+    void Test_RandomValues_EnumsAndLists();
+    void Test_RandomValues_Numbers();
+    void Test_RandomValues_TextTypes();
+
+public:
+    TTest_ASWIni_ConverterFuzz();
+    ~TTest_ASWIni_ConverterFuzz() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_Converters
 /////////////////////////////////////////////////////////////////////////////
 class TTest_ASWIni_Converters : public TAutoTestGroup<TTest_ASWIni_Converters>

@@ -7,14 +7,17 @@ and Linux, which keeps the file's comments and layout.
 
 ASWIni is in development toward 1.0.0; the `develop` branch carries `1.0.0-dev.N` versions. So far
 it has the project structure, the version (`ASWIni_Version.h`), the CMake target and package, the
-unit-test projects, the options (`ASWIni_Options.h`), and the document model
-(`ASWIni_Document.h`): `TASWIniDocument` reads INI text and writes it back byte for byte, keeping
-comments, blank lines, line breaks and lines it doesn't understand, and reports malformed lines and
-duplicates as warnings. It looks up sections and keys, sets values, adds, removes and renames
-sections and keys, and gets and sets comments, changing only the lines an edit is about. Typed
-values, loading and saving files, and the settings classes come next.
-[CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may change in any way until
-1.0.0.
+unit-test projects, the options (`ASWIni_Options.h`), and the document model (`ASWIni_Document.h`):
+`TASWIniDocument` reads INI text and writes it back byte for byte, keeping comments, blank lines,
+line breaks and lines it doesn't understand, and reports malformed lines and duplicates as warnings.
+It looks up sections and keys, sets values, adds, removes and renames sections and keys, and gets
+and sets comments, changing only the lines an edit is about. The value converters
+(`ASWIni_Converters.h`) turn a value's text into a typed value and back, the same in any locale:
+strings, file paths (UTF-8 on every platform), booleans, every integer type with range checks,
+`float` and `double`, enums (by name, or as numbers) and lists of any of them, with your own types
+added by specializing `TASWIniConverter`. Loading and saving files, and the settings classes come
+next. [CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may change in any way
+until 1.0.0.
 
 ## Design
 
@@ -42,8 +45,8 @@ with RAD Studio (bcc32c at C++17, bcc64x at C++20), MSVC, MinGW, GCC and Clang. 
   optional inline comments.
 - LF, CRLF and CR line endings on read; the file's own (or the platform's) on write. UTF-8, with or
   without a BOM.
-- Typed values: strings, booleans, integers with range checks, floating point, enumerations and
-  lists, read and written independently of the locale, plus your own types.
+- Typed values: strings, file paths, booleans, integers with range checks, floating point,
+  enumerations and lists, read and written independently of the locale, plus your own types.
 - An interface, `ASWIni::IASWIni`, and its implementation, `ASWIni::TASWBaseIni`, which an
   application's settings class derives from.
 - Atomic saves with an optional backup, and UTF-8 file paths on Windows and Linux.

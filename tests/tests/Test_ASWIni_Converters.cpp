@@ -34,6 +34,7 @@ limitations under the License.
 #include <filesystem>
 #include <initializer_list>
 #include <limits>
+#include <random>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -74,6 +75,11 @@ namespace
 {
 
 using ASWIni::Detail::EFloatConversion;
+
+// The fuzz tests: the seed of the first random text or value, and how many of each a type gets
+constexpr std::uint32_t FuzzFirstSeed = 20261018;
+constexpr std::size_t FuzzTextCount = 5000;
+constexpr std::size_t FuzzValueCount = 2000;
 
 // The enums of the enum converter tests. Those with names declare ASWIniEnumNames() as an application does, next to
 // the enum.
@@ -231,12 +237,35 @@ TBits Bits(T value);
 std::string ConversionName(EFloatConversion conversion);
 template <typename T>
 std::string EnumNumber(T value);
+std::string Escaped(std::string_view text);
 std::vector<EFloatConversion> FloatConversions();
+TASWIniValueOptions FuzzOptions(std::mt19937& generator);
 std::string HexText(unsigned long long value);
 std::vector<std::vector<std::string> > ListsOfItems(std::size_t maxSize);
 std::uint64_t NextRandom(std::uint64_t& state);
 template <typename T>
 std::string NumberText(T value);
+bool RandomBool(std::mt19937& generator);
+std::string RandomBytes(std::mt19937& generator);
+EColor RandomColor(std::mt19937& generator);
+template <typename TEnum>
+TEnum RandomEnumNumber(std::mt19937& generator);
+template <typename T>
+T RandomFloat(std::mt19937& generator);
+template <typename T>
+T RandomInteger(std::mt19937& generator);
+template <typename T, auto Make>
+std::vector<T> RandomList(std::mt19937& generator);
+std::filesystem::path RandomPath(std::mt19937& generator);
+std::string RandomPathText(std::mt19937& generator);
+std::string RandomText(std::mt19937& generator);
+#if ASWINI_HAS_U8STRING
+std::u8string RandomU8String(std::mt19937& generator);
+#endif
+template <typename T>
+bool SameValue(T const& left, T const& right);
+template <typename T, typename TAllocator>
+bool SameValue(std::vector<T, TAllocator> const& left, std::vector<T, TAllocator> const& right);
 #if ASWINI_HAS_U8STRING
 std::u8string U8(std::string_view bytes);
 #endif
@@ -315,6 +344,33 @@ std::string EnumNumber(T value)
 }
 //---------------------------------------------------------------------------
 /*
+    Escaped
+
+    'text' for a message: printable ASCII as it is, and every other byte (and the backslash) as \x and two hex digits.
+*/
+std::string Escaped(std::string_view text)
+{
+    static char const hexDigits[] = "0123456789ABCDEF";
+    std::string escaped;
+    for (char const c : text)
+    {
+        unsigned char const byte = static_cast<unsigned char>(c);
+        if (byte >= 0x20 && byte < 0x7F && c != '\\')
+        {
+            escaped += c;
+        }
+        else
+        {
+            escaped += "\\x";
+            escaped += hexDigits[byte >> 4];
+            escaped += hexDigits[byte & 0x0F];
+        }
+    }
+
+    return escaped;
+}
+//---------------------------------------------------------------------------
+/*
     FloatConversions
 
     The float conversions to test: every one, except Standard where it isn't reliable (ASWINI_STD_FLOAT_CHARCONV 0).
@@ -329,6 +385,21 @@ std::vector<EFloatConversion> FloatConversions()
     conversions.push_back(EFloatConversion::UniversalCrt);
 
     return conversions;
+}
+//---------------------------------------------------------------------------
+/*
+    FuzzOptions
+
+    Random value options: the list delimiter ',', ';' or '|', and any bool format.
+*/
+TASWIniValueOptions FuzzOptions(std::mt19937& generator)
+{
+    char const delimiters[] = { ',', ';', '|' };
+    TASWIniValueOptions options;
+    options.ListDelimiter = delimiters[generator() % 3];
+    options.BoolFormat = static_cast<EBoolFormat>(generator() % 4);
+
+    return options;
 }
 //---------------------------------------------------------------------------
 /*
@@ -405,6 +476,235 @@ template <typename T>
 std::string NumberText(T value)
 {
     return std::to_string(+value);
+}
+//---------------------------------------------------------------------------
+/*
+    RandomBool
+
+    A random bool.
+*/
+bool RandomBool(std::mt19937& generator)
+{
+    return generator() % 2 == 0;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomBytes
+
+    A random string of up to 8 bytes, half of them those a list or a value treats specially (blanks, delimiters, a
+    quote, NUL), the others any byte.
+*/
+std::string RandomBytes(std::mt19937& generator)
+{
+    char const special[] = { ' ', '\t', ',', ';', '|', '"', 'a', '\0' };
+    std::string bytes;
+    std::size_t const size = generator() % 9;
+    for (std::size_t i = 0; i < size; ++i)
+    {
+        if (generator() % 2 == 0)
+            bytes += special[generator() % sizeof(special)];
+        else
+            bytes += static_cast<char>(generator() % 256);
+    }
+
+    return bytes;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomColor
+
+    A random EColor, one of the listed values (another has no name to write).
+*/
+EColor RandomColor(std::mt19937& generator)
+{
+    EColor const colors[] = { EColor::Red, EColor::Green, EColor::Blue };
+
+    return colors[generator() % 3];
+}
+//---------------------------------------------------------------------------
+/*
+    RandomEnumNumber
+
+    A random value of the enum TEnum, as any number of its underlying type, an enumerator or not.
+*/
+template <typename TEnum>
+TEnum RandomEnumNumber(std::mt19937& generator)
+{
+    typedef std::underlying_type_t<TEnum> TNumber;
+    if constexpr (std::is_same_v<TNumber, bool>)
+        return static_cast<TEnum>(RandomBool(generator));
+    else
+        return static_cast<TEnum>(RandomInteger<TNumber>(generator));
+}
+//---------------------------------------------------------------------------
+/*
+    RandomFloat
+
+    A random float or double: a quarter of them 0, -0, the infinities, NaN, the smallest subnormal or the largest
+    magnitude, the others any bits (so NaNs and subnormals too).
+*/
+template <typename T>
+T RandomFloat(std::mt19937& generator)
+{
+    if (generator() % 4 == 0)
+    {
+        T const specials[] = {
+            T(0), -T(0), std::numeric_limits<T>::infinity(), -std::numeric_limits<T>::infinity(),
+            std::numeric_limits<T>::quiet_NaN(), std::numeric_limits<T>::denorm_min(), std::numeric_limits<T>::max(),
+            std::numeric_limits<T>::lowest(),
+        };
+
+        return specials[generator() % 8];
+    }
+
+    // Two calls, in this order, so a seed gives the same value everywhere
+    std::uint64_t bits = generator();
+    bits = (bits << 32) | generator();
+    T value = T(0);
+    std::memcpy(&value, &bits, sizeof(value));
+
+    return value;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomInteger
+
+    A random integer of type T (not bool): a quarter of them the type's limits, 0, 1 or -1 (the largest value for an
+    unsigned type), the others any bits.
+*/
+template <typename T>
+T RandomInteger(std::mt19937& generator)
+{
+    static_assert(sizeof(T) <= sizeof(std::uint64_t), "T should be at most 64 bits");
+    if (generator() % 4 == 0)
+    {
+        T const specials[] = {
+            std::numeric_limits<T>::min(), std::numeric_limits<T>::max(), T(0), T(1), static_cast<T>(-1),
+        };
+
+        return specials[generator() % 5];
+    }
+
+    // Two calls, in this order, so a seed gives the same value everywhere
+    std::uint64_t bits = generator();
+    bits = (bits << 32) | generator();
+    T value = T(0);
+    std::memcpy(&value, &bits, sizeof(value));
+
+    return value;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomList
+
+    A random list of up to 4 items, each made by Make from 'generator' (a list too, for a list of lists).
+*/
+template <typename T, auto Make>
+std::vector<T> RandomList(std::mt19937& generator)
+{
+    std::vector<T> list;
+    std::size_t const size = generator() % 5;
+    for (std::size_t i = 0; i < size; ++i)
+        list.push_back(Make(generator));
+
+    return list;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomPath
+
+    A random path, from a random valid UTF-8 text (another can't be written, see RandomPathText()).
+*/
+std::filesystem::path RandomPath(std::mt19937& generator)
+{
+    return ASWIni::Detail::Utf8ToPath(RandomPathText(generator));
+}
+//---------------------------------------------------------------------------
+/*
+    RandomPathText
+
+    A random path as UTF-8 text: up to 6 parts, among them separators, a drive's ':', blanks, a list's delimiter, a
+    quote, and characters of two, three and four bytes.
+*/
+std::string RandomPathText(std::mt19937& generator)
+{
+    char const* const parts[] = {
+        "a", "B", " ", ".", ",", "\"", "\\", "/", ":", "\xC3\xA9", "\xE2\x82\xAC", "\xF0\x9F\x98\x80",
+    };
+
+    std::string text;
+    std::size_t const count = generator() % 7;
+    for (std::size_t i = 0; i < count; ++i)
+        text += parts[generator() % (sizeof(parts) / sizeof(parts[0]))];
+
+    return text;
+}
+//---------------------------------------------------------------------------
+/*
+    RandomText
+
+    A random value text: up to 7 parts, each a part of a number, a bool, an enum's name or number, a list, or a byte
+    that isn't valid UTF-8, so every converter gets texts it reads and texts it rejects.
+*/
+std::string RandomText(std::mt19937& generator)
+{
+    std::string const parts[] = {
+        "0", "1", "2", "7", "9", "40", "255", "-", "+", "0x", "X", "f", ".", "e", "E", "inf", "nan", "1e400",
+        "99999999999999999999", "true", "no", "Red", "lime", "Blue", "Normal", "a", " ", "\t", ",", ";", "|", "\"",
+        "\"\"", "\\", "/", "\xC3\xA9", "\xF0\x9F\x98\x80", "\xFF", "\xED\xA0\x80", std::string(1, '\0'),
+    };
+
+    std::string text;
+    std::size_t const count = generator() % 8;
+    for (std::size_t i = 0; i < count; ++i)
+        text += parts[generator() % (sizeof(parts) / sizeof(parts[0]))];
+
+    return text;
+}
+//---------------------------------------------------------------------------
+#if ASWINI_HAS_U8STRING
+/*
+    RandomU8String
+
+    A random std::u8string, with the bytes of RandomBytes().
+*/
+std::u8string RandomU8String(std::mt19937& generator)
+{
+    return U8(RandomBytes(generator));
+}
+//---------------------------------------------------------------------------
+#endif
+/*
+    SameValue
+
+    Whether 'left' and 'right' are the same value: for float and double the same bits (so -0 isn't 0), or both NaN;
+    for a list, as many items, each the same value.
+*/
+template <typename T>
+bool SameValue(T const& left, T const& right)
+{
+    if constexpr (std::is_floating_point_v<T>)
+        return (std::isnan(left) && std::isnan(right)) || std::memcmp(&left, &right, sizeof(T)) == 0;
+    else
+        return left == right;
+}
+//---------------------------------------------------------------------------
+template <typename T, typename TAllocator>
+bool SameValue(std::vector<T, TAllocator> const& left, std::vector<T, TAllocator> const& right)
+{
+    if (left.size() != right.size())
+        return false;
+
+    // Copies, since a std::vector<bool>'s items are proxies
+    for (std::size_t i = 0; i < left.size(); ++i)
+    {
+        T const leftItem = left[i];
+        T const rightItem = right[i];
+        if (!SameValue(leftItem, rightItem))
+            return false;
+    }
+
+    return true;
 }
 //---------------------------------------------------------------------------
 #if ASWINI_HAS_U8STRING
@@ -2223,6 +2523,226 @@ ASW_TEST(TTest_ASWIni_TextConverter, U8String_ToTextWritesTheBytesExactly)
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_ConverterFuzz
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_ConverterFuzz::TTest_ASWIni_ConverterFuzz()
+    : inherited("ASWIni_ConverterFuzz_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_ConverterFuzz::~TTest_ASWIni_ConverterFuzz()
+{
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_ConverterFuzz::CheckRandomTexts(std::string const& typeName, std::string const& method, int line)
+{
+    std::size_t accepted = 0;
+    T previous = T();
+    for (std::size_t i = 0; i < FuzzTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::mt19937 generator(seed);
+        TASWIniValueOptions const options = FuzzOptions(generator);
+        std::string const text = RandomText(generator);
+        std::string const name = typeName + ", seed " + std::to_string(seed) + ", \"" + Escaped(text) + "\"";
+
+        // The value starts as the last one read, so a failure that changes it shows
+        T value = previous;
+        TASWIniResult const read = TASWIniConverter<T>::FromText(text, value, options);
+        if (!read.IsOk())
+        {
+            bool const known = read.Code == EIniCode::InvalidValue || read.Code == EIniCode::ValueOutOfRange;
+            if (!known || read.Message.empty() || !SameValue(previous, value))
+            {
+                CheckTrue(false, method, line, name + ": a text that doesn't read should fail with InvalidValue or "
+                    "ValueOutOfRange and a message, and leave the value as it was");
+            }
+
+            continue;
+        }
+
+        ++accepted;
+        std::string written;
+        std::string again;
+        T readBack = previous;
+        TASWIniResult const write = TASWIniConverter<T>::ToText(value, written, options);
+        TASWIniResult const reread = TASWIniConverter<T>::FromText(written, readBack, options);
+        TASWIniResult const rewrite = TASWIniConverter<T>::ToText(readBack, again, options);
+        if (!write.IsOk() || !reread.IsOk() || !rewrite.IsOk() || !SameValue(value, readBack) || again != written)
+        {
+            CheckTrue(false, method, line, name + ": the value read should be written as a text (\"" +
+                Escaped(written) + "\") that reads back as the same value and is written the same again" +
+                write.Message + reread.Message + rewrite.Message);
+        }
+
+        previous = value;
+    }
+
+    CheckTrue(accepted > 0, method, line, typeName + ": some random texts should read");
+}
+//---------------------------------------------------------------------------
+template <typename T, typename TMake>
+void TTest_ASWIni_ConverterFuzz::CheckRandomValues(std::string const& typeName, TMake make, std::string const& method,
+    int line)
+{
+    for (std::size_t i = 0; i < FuzzValueCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::mt19937 generator(seed);
+        TASWIniValueOptions const options = FuzzOptions(generator);
+        T const value = make(generator);
+
+        std::string written;
+        std::string again;
+        T readBack = T();
+        TASWIniResult const write = TASWIniConverter<T>::ToText(value, written, options);
+        TASWIniResult const read = TASWIniConverter<T>::FromText(written, readBack, options);
+        TASWIniResult const rewrite = TASWIniConverter<T>::ToText(readBack, again, options);
+        if (!write.IsOk() || !read.IsOk() || !rewrite.IsOk() || !SameValue(value, readBack) || again != written)
+        {
+            CheckTrue(false, method, line, typeName + ", seed " + std::to_string(seed) + ": the value should be "
+                "written as a text (\"" + Escaped(written) + "\") that reads back as the same value and is written "
+                "the same again" + write.Message + read.Message + rewrite.Message);
+        }
+    }
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ConverterFuzz::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ConverterFuzz::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ConverterFuzz::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_ConverterFuzz::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomTexts_EnumsAndLists)
+{
+    // Act & Assert
+    CheckRandomTexts<EColor>("EColor", __func__, __LINE__);
+    CheckRandomTexts<ESize>("ESize", __func__, __LINE__);
+    CheckRandomTexts<TWindow::EState>("TWindow::EState", __func__, __LINE__);
+    CheckRandomTexts<EFlags>("EFlags", __func__, __LINE__);
+    CheckRandomTexts<ESmall>("ESmall", __func__, __LINE__);
+    CheckRandomTexts<ESwitch>("ESwitch", __func__, __LINE__);
+    CheckRandomTexts<EWide>("EWide", __func__, __LINE__);
+    CheckRandomTexts<std::vector<int> >("std::vector<int>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<double> >("std::vector<double>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<bool> >("std::vector<bool>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<std::string> >("std::vector<std::string>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<EColor> >("std::vector<EColor>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<std::filesystem::path> >("std::vector<std::filesystem::path>", __func__, __LINE__);
+    CheckRandomTexts<std::vector<std::vector<int> > >("std::vector<std::vector<int> >", __func__, __LINE__);
+    CheckRandomTexts<std::vector<std::vector<std::string> > >("std::vector<std::vector<std::string> >", __func__,
+        __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomTexts_Numbers)
+{
+    // Act & Assert
+    CheckRandomTexts<bool>("bool", __func__, __LINE__);
+    CheckRandomTexts<char>("char", __func__, __LINE__);
+    CheckRandomTexts<signed char>("signed char", __func__, __LINE__);
+    CheckRandomTexts<unsigned char>("unsigned char", __func__, __LINE__);
+    CheckRandomTexts<short>("short", __func__, __LINE__);
+    CheckRandomTexts<unsigned short>("unsigned short", __func__, __LINE__);
+    CheckRandomTexts<int>("int", __func__, __LINE__);
+    CheckRandomTexts<unsigned int>("unsigned int", __func__, __LINE__);
+    CheckRandomTexts<long>("long", __func__, __LINE__);
+    CheckRandomTexts<unsigned long>("unsigned long", __func__, __LINE__);
+    CheckRandomTexts<long long>("long long", __func__, __LINE__);
+    CheckRandomTexts<unsigned long long>("unsigned long long", __func__, __LINE__);
+    CheckRandomTexts<float>("float", __func__, __LINE__);
+    CheckRandomTexts<double>("double", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomTexts_TextTypes)
+{
+    // Act & Assert
+    CheckRandomTexts<std::string>("std::string", __func__, __LINE__);
+    CheckRandomTexts<std::filesystem::path>("std::filesystem::path", __func__, __LINE__);
+#if ASWINI_HAS_U8STRING
+    CheckRandomTexts<std::u8string>("std::u8string", __func__, __LINE__);
+#endif
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomValues_EnumsAndLists)
+{
+    // Arrange
+    typedef std::vector<int> TInts;
+    typedef std::vector<std::string> TStrings;
+
+    // Act & Assert
+    // An enum with names gets listed values only (another has no name to write)
+    CheckRandomValues<EColor>("EColor", RandomColor, __func__, __LINE__);
+    CheckRandomValues<EFlags>("EFlags", RandomEnumNumber<EFlags>, __func__, __LINE__);
+    CheckRandomValues<ESmall>("ESmall", RandomEnumNumber<ESmall>, __func__, __LINE__);
+    CheckRandomValues<ESwitch>("ESwitch", RandomEnumNumber<ESwitch>, __func__, __LINE__);
+    CheckRandomValues<EWide>("EWide", RandomEnumNumber<EWide>, __func__, __LINE__);
+    CheckRandomValues<TInts>("std::vector<int>", RandomList<int, RandomInteger<int> >, __func__, __LINE__);
+    CheckRandomValues<std::vector<double> >("std::vector<double>", RandomList<double, RandomFloat<double> >, __func__,
+        __LINE__);
+    CheckRandomValues<std::vector<bool> >("std::vector<bool>", RandomList<bool, RandomBool>, __func__, __LINE__);
+    CheckRandomValues<TStrings>("std::vector<std::string>", RandomList<std::string, RandomBytes>, __func__, __LINE__);
+    CheckRandomValues<std::vector<EColor> >("std::vector<EColor>", RandomList<EColor, RandomColor>, __func__,
+        __LINE__);
+    CheckRandomValues<std::vector<std::filesystem::path> >("std::vector<std::filesystem::path>",
+        RandomList<std::filesystem::path, RandomPath>, __func__, __LINE__);
+    CheckRandomValues<std::vector<TInts> >("std::vector<std::vector<int> >",
+        RandomList<TInts, RandomList<int, RandomInteger<int> > >, __func__, __LINE__);
+    CheckRandomValues<std::vector<TStrings> >("std::vector<std::vector<std::string> >",
+        RandomList<TStrings, RandomList<std::string, RandomBytes> >, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomValues_Numbers)
+{
+    // Act & Assert
+    CheckRandomValues<bool>("bool", RandomBool, __func__, __LINE__);
+    CheckRandomValues<char>("char", RandomInteger<char>, __func__, __LINE__);
+    CheckRandomValues<signed char>("signed char", RandomInteger<signed char>, __func__, __LINE__);
+    CheckRandomValues<unsigned char>("unsigned char", RandomInteger<unsigned char>, __func__, __LINE__);
+    CheckRandomValues<short>("short", RandomInteger<short>, __func__, __LINE__);
+    CheckRandomValues<unsigned short>("unsigned short", RandomInteger<unsigned short>, __func__, __LINE__);
+    CheckRandomValues<int>("int", RandomInteger<int>, __func__, __LINE__);
+    CheckRandomValues<unsigned int>("unsigned int", RandomInteger<unsigned int>, __func__, __LINE__);
+    CheckRandomValues<long>("long", RandomInteger<long>, __func__, __LINE__);
+    CheckRandomValues<unsigned long>("unsigned long", RandomInteger<unsigned long>, __func__, __LINE__);
+    CheckRandomValues<long long>("long long", RandomInteger<long long>, __func__, __LINE__);
+    CheckRandomValues<unsigned long long>("unsigned long long", RandomInteger<unsigned long long>, __func__, __LINE__);
+    CheckRandomValues<float>("float", RandomFloat<float>, __func__, __LINE__);
+    CheckRandomValues<double>("double", RandomFloat<double>, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_ConverterFuzz, RandomValues_TextTypes)
+{
+    // Act & Assert
+    // Paths from valid UTF-8 only (another can't be written)
+    CheckRandomValues<std::string>("std::string", RandomBytes, __func__, __LINE__);
+    CheckRandomValues<std::filesystem::path>("std::filesystem::path", RandomPath, __func__, __LINE__);
+#if ASWINI_HAS_U8STRING
+    CheckRandomValues<std::u8string>("std::u8string", RandomU8String, __func__, __LINE__);
+    CheckRandomValues<std::vector<std::u8string> >("std::vector<std::u8string>",
+        RandomList<std::u8string, RandomU8String>, __func__, __LINE__);
+#endif
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_Converters
 /////////////////////////////////////////////////////////////////////////////
 
@@ -2313,6 +2833,7 @@ ASW_TEST(TTest_ASWIni_Converters, ValueFailure_MakesTheMessage)
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BoolConverter, "Converters")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_ConverterFuzz, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_Converters, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_EnumConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_FloatConverter, "Converters")

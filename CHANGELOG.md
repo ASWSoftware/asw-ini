@@ -104,11 +104,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `false`, `yes`, `no`, `on`, `off`, `1` and `0` in any case; writes the `Values.BoolFormat` form),
   the integer types (every integral type except `bool`, `wchar_t`, `char8_t`, `char16_t` and
   `char32_t`, so `char`, `std::int8_t` and `std::uint8_t` are numbers; reads decimal or `0x` hex
-  digits after an optional sign, checked against the type's range; writes decimal) and
-  `std::string` (the text as it is). An application adds a converter for its own type by
-  specializing the template. A text that isn't a value of the type fails with the new code
+  digits after an optional sign, checked against the type's range; writes decimal), `float` and
+  `double` (read digits with an optional `.` and exponent after an optional sign, or `inf`,
+  `infinity` or `nan`; a number too large is out of range, one too small reads as 0; written as the
+  shortest text that reads back the same, as `std::to_chars()` writes it, e.g. `0.1`, `3`,
+  `1e+21`) and `std::string` (the text as it is). An application adds a converter for its own type
+  by specializing the template. A text that isn't a value of the type fails with the new code
   `EIniCode::InvalidValue` (a number outside its type's range with `EIniCode::ValueOutOfRange`),
   with a message that quotes the text, and leaves the value as it was. New source:
   `ASWIni_Converters.cpp`.
+
+  RAD Studio Win32 (bcc32c) converts `float` and `double` with the C runtime instead of
+  `std::to_chars()`/`std::from_chars()`, which give wrong results there, reading with Windows'
+  Universal C Runtime (`ucrtbase.dll`) when it is there. On a Windows without it, about 1 in 12,000
+  doubles written on another platform reads back 1 unit in the last place off. The macro
+  `ASWINI_STD_FLOAT_CHARCONV` (defined as 0 when building the library) chooses the C runtime for
+  another standard library without floating-point `<charconv>`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

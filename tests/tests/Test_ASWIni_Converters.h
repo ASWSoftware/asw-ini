@@ -68,6 +68,62 @@ public:
 
 
 /////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_FloatConverter
+//
+// Most tests check every float conversion (see ASWIni::Detail::EFloatConversion), not only the one the converters use
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_FloatConverter : public TAutoTestGroup<TTest_ASWIni_FloatConverter>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_FloatConverter> inherited;
+
+private:
+    // Checks that 'text' reads as 'expected' (the same bits, or a NaN) with every conversion
+    template <typename T>
+    void CheckReads(std::string const& text, T expected, std::string const& method, int line);
+
+    // Checks that 'text' fails to read with 'code' and a message that quotes it, leaving the value as it was, with
+    // every conversion
+    template <typename T>
+    void CheckRejected(std::string const& text, ASWIni::EIniCode code, std::string const& method, int line);
+
+    // Checks that random values of type T (with the bits TBits) are written as texts that read back as the same bits
+    // with every conversion, and that every conversion writes the text the Standard one does (or, with strtold(),
+    // sometimes a longer one that the Standard one reads back as the same bits)
+    template <typename T, typename TBits>
+    void CheckRandomValues(std::string const& typeName, std::string const& method, int line);
+
+    // Checks that 'value' is written as 'expected' with every conversion
+    template <typename T>
+    void CheckWrites(T value, std::string const& expected, std::string const& method, int line);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Converters_UseTheDefaultConversion();
+    void Test_FromText_IgnoresBlanksAroundTheText();
+    void Test_FromText_ReadsDecimalForms();
+    void Test_FromText_ReadsInfinityAndNan();
+    void Test_FromText_ReadsTheLimits();
+    void Test_FromText_RejectsOtherTexts();
+    void Test_FromText_TooLargeIsOutOfRange();
+    void Test_FromText_TooSmallReadsAsZero();
+    void Test_Locale_DecimalCommaChangesNothing();
+    void Test_Messages_NameTheProblem();
+    void Test_RandomValues_RoundTripWithEveryConversion();
+    void Test_ToText_WritesInfinityAndNan();
+    void Test_ToText_WritesTheShortestText();
+
+public:
+    TTest_ASWIni_FloatConverter();
+    ~TTest_ASWIni_FloatConverter() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
 // TTest_ASWIni_IntegerConverter
 /////////////////////////////////////////////////////////////////////////////
 class TTest_ASWIni_IntegerConverter : public TAutoTestGroup<TTest_ASWIni_IntegerConverter>

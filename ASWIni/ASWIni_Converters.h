@@ -6,9 +6,9 @@ An INI file reader/writer library.
 
 TASWIniConverter<T>, which converts a typed value to and from the text of an
 INI value, as the value options (TASWIniValueOptions) say. The library has
-converters for std::string, bool and the integer types; an application can
-add its own by specializing TASWIniConverter for its type. Conversions don't
-depend on the C or C++ locale.
+converters for std::string, bool, the integer types, float and double; an
+application can add its own by specializing TASWIniConverter for its type.
+Conversions don't depend on the C or C++ locale.
 
 Requires C++ 17 or higher.
 
@@ -43,6 +43,19 @@ limitations under the License.
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
 
+// Whether the float and double converters use the standard library's std::to_chars() and std::from_chars() (1) or
+// the C runtime (0). bcc32c's (RAD Studio Win32) give wrong results for many values, so it uses the C runtime. Define
+// it as 0 when building the library with another standard library that has no floating-point <charconv> (e.g.
+// libstdc++ before GCC 11).
+#if !defined(ASWINI_STD_FLOAT_CHARCONV)
+#  if defined(__BORLANDC__) && !defined(_WIN64)
+#    define ASWINI_STD_FLOAT_CHARCONV 0
+#  else
+#    define ASWINI_STD_FLOAT_CHARCONV 1
+#  endif
+#endif
+//---------------------------------------------------------------------------
+
 namespace ASWIni
 {
 
@@ -71,6 +84,24 @@ struct TASWIniConverter;
 namespace Detail
 {
 
+// The code the float and double converters convert with. Each one reads and writes the same texts (the converters
+// check the text's form, its sign, inf and nan themselves); they differ only in how exact they are. All of them are
+// built on every compiler, so the tests can compare them.
+enum class EFloatConversion : int
+{
+    Standard = 0, // std::to_chars() and std::from_chars() (the C runtime's when ASWINI_STD_FLOAT_CHARCONV is 0)
+    CRuntime = 1, // snprintf() for the digits, and strtold() narrowed to the type
+    UniversalCrt = 2, // As CRuntime, but read with the Windows Universal C Runtime's exact _strtod_l() and _strtof_l()
+                      // (ucrtbase.dll) when Windows has it; CRuntime elsewhere
+};
+
+// The conversion the float and double converters use
+#if ASWINI_STD_FLOAT_CHARCONV
+constexpr EFloatConversion DefaultFloatConversion = EFloatConversion::Standard;
+#else
+constexpr EFloatConversion DefaultFloatConversion = EFloatConversion::UniversalCrt;
+#endif
+
 // Whether T is char8_t (C++20; never before it)
 #if defined(__cpp_char8_t)
 template <typename T>
@@ -89,6 +120,10 @@ constexpr bool IsConvertibleInteger = std::is_integral_v<T> && !std::is_same_v<T
 // The longest part of a value's text a message quotes (see MessageText())
 constexpr std::size_t MaxMessageTextSize = 40;
 
+// 'value' as TASWIniConverter<double> and TASWIniConverter<float> write it, converted with 'conversion'
+std::string FloatingPointText(double value, EFloatConversion conversion);
+std::string FloatingPointText(float value, EFloatConversion conversion);
+
 // 'value' as decimal digits, with '-' when it is negative
 std::string IntegerText(long long value);
 std::string IntegerText(unsigned long long value);
@@ -97,6 +132,11 @@ std::string IntegerText(unsigned long long value);
 // when it has more than MaxMessageTextSize bytes, cut to at most that many (not inside a UTF-8 sequence) and
 // followed by "..."
 std::string MessageText(std::string_view text);
+
+// Reads 'text' as TASWIniConverter<double> and TASWIniConverter<float> read it, converted with 'conversion', into
+// 'value', which is left as it was on failure
+TASWIniResult ReadFloatingPoint(std::string_view text, double& value, EFloatConversion conversion);
+TASWIniResult ReadFloatingPoint(std::string_view text, float& value, EFloatConversion conversion);
 
 // Reads 'text' as an integer from 'min' to 'max' (see TASWIniConverter<integer types>) into 'value', which is left as
 // it was on failure: InvalidValue when the text isn't an integer, ValueOutOfRange when it is outside the range. The
@@ -186,6 +226,40 @@ struct TASWIniConverter<T, std::enable_if_t<Detail::IsConvertibleInteger<T> > >
 
         return TASWIniResult();
     }
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<double>
+//
+// Reads an optional sign, then digits with an optional '.' and exponent ("1.5", ".5", "5.", "1e5", "-2.5E-3"), or inf,
+// infinity or nan (with the ASCII letters' case ignored), with the spaces and tabs around the text ignored. A ','
+// decimal mark, hex and digit separators are InvalidValue, whatever the C locale says. A number too large for the type
+// is ValueOutOfRange; one too small reads as 0. Writes the shortest text that reads back as the same value, as
+// std::to_chars() does ("0.1", "3", "1e+21", "-0"), or "inf", "-inf" or "nan" (a NaN's sign isn't kept).
+// On RAD Studio Win32 (bcc32c), whose std::to_chars() and std::from_chars() aren't reliable, the C runtime is used: the
+// text is the same in nearly every case, and every value written reads back the same; with an older Windows that
+// lacks the Universal C Runtime (ucrtbase.dll), about 1 in 12,000 doubles written elsewhere reads back 1 unit in the
+// last place off.
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<double>
+{
+    static TASWIniResult FromText(std::string_view text, double& value, TASWIniValueOptions const& options);
+    static TASWIniResult ToText(double value, std::string& text, TASWIniValueOptions const& options);
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<float>
+//
+// As TASWIniConverter<double>, with float's range and precision ("0.1" is the float nearest to 0.1)
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<float>
+{
+    static TASWIniResult FromText(std::string_view text, float& value, TASWIniValueOptions const& options);
+    static TASWIniResult ToText(float value, std::string& text, TASWIniValueOptions const& options);
 };
 
 } // namespace ASWIni

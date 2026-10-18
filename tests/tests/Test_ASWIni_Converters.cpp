@@ -26,7 +26,11 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_Registry.h"
 //---------------------------------------------------------------------------
+#include <clocale>
+#include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -64,8 +68,15 @@ using ASWIni::TASWIniValueOptions;
 namespace
 {
 
+using ASWIni::Detail::EFloatConversion;
+
 std::string AddOne(std::string digits);
+template <typename TBits, typename T>
+TBits Bits(T value);
+std::string ConversionName(EFloatConversion conversion);
+std::vector<EFloatConversion> FloatConversions();
 std::string HexText(unsigned long long value);
+std::uint64_t NextRandom(std::uint64_t& state);
 template <typename T>
 std::string NumberText(T value);
 template <typename T>
@@ -95,6 +106,60 @@ std::string AddOne(std::string digits)
 }
 //---------------------------------------------------------------------------
 /*
+    Bits
+
+    The bits of floating-point 'value', as a TBits of the same size.
+*/
+template <typename TBits, typename T>
+TBits Bits(T value)
+{
+    static_assert(sizeof(TBits) == sizeof(T), "TBits should have T's size");
+    TBits bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+
+    return bits;
+}
+//---------------------------------------------------------------------------
+/*
+    ConversionName
+
+    The name of 'conversion', for a message.
+*/
+std::string ConversionName(EFloatConversion conversion)
+{
+    switch (conversion)
+    {
+        case EFloatConversion::Standard:
+            return "Standard";
+
+        case EFloatConversion::CRuntime:
+            return "CRuntime";
+
+        case EFloatConversion::UniversalCrt:
+            return "UniversalCrt";
+    }
+
+    return "Unknown";
+}
+//---------------------------------------------------------------------------
+/*
+    FloatConversions
+
+    The float conversions to test: every one, except Standard where it isn't reliable (ASWINI_STD_FLOAT_CHARCONV 0).
+*/
+std::vector<EFloatConversion> FloatConversions()
+{
+    std::vector<EFloatConversion> conversions;
+#if ASWINI_STD_FLOAT_CHARCONV
+    conversions.push_back(EFloatConversion::Standard);
+#endif
+    conversions.push_back(EFloatConversion::CRuntime);
+    conversions.push_back(EFloatConversion::UniversalCrt);
+
+    return conversions;
+}
+//---------------------------------------------------------------------------
+/*
     HexText
 
     'value' as "0x" and upper case hex digits, e.g. "0xFF".
@@ -109,6 +174,20 @@ std::string HexText(unsigned long long value)
     }
 
     return "0x" + digits;
+}
+//---------------------------------------------------------------------------
+/*
+    NextRandom
+
+    The next number of the xorshift sequence 'state' (which must not be 0), the same on every compiler.
+*/
+std::uint64_t NextRandom(std::uint64_t& state)
+{
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+
+    return state;
 }
 //---------------------------------------------------------------------------
 /*
@@ -330,6 +409,422 @@ ASW_TEST(TTest_ASWIni_BoolConverter, ToText_WritesTheFormatsForm)
         CheckTrue(result.IsOk(), __func__, __LINE__, format + ": writing false should succeed");
         CheckEquals(std::string(c.False), text, __func__, __LINE__, format + ": false");
     }
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_FloatConverter
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_FloatConverter::TTest_ASWIni_FloatConverter()
+    : inherited("ASWIni_FloatConverter_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_FloatConverter::~TTest_ASWIni_FloatConverter()
+{
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_FloatConverter::CheckReads(std::string const& text, T expected, std::string const& method,
+    int line)
+{
+    using TBits = std::conditional_t<sizeof(T) == 8, std::uint64_t, std::uint32_t>;
+    for (EFloatConversion const conversion : FloatConversions())
+    {
+        std::string const what = "\"" + text + "\" (" + ConversionName(conversion) + ")";
+        T value = static_cast<T>(-12345);
+        TASWIniResult const result = ASWIni::Detail::ReadFloatingPoint(text, value, conversion);
+
+        CheckTrue(result.IsOk(), method, line, what + " should read: " + result.Message);
+        if (std::isnan(expected))
+        {
+            CheckTrue(std::isnan(value), method, line, what + " should read as a NaN");
+        }
+        else
+        {
+            CheckTrue(Bits<TBits>(value) == Bits<TBits>(expected), method, line, what + " should read as " +
+                ASWIni::Detail::FloatingPointText(expected, conversion) + ", not " +
+                ASWIni::Detail::FloatingPointText(value, conversion));
+        }
+    }
+}
+//---------------------------------------------------------------------------
+template <typename T, typename TBits>
+void TTest_ASWIni_FloatConverter::CheckRandomValues(std::string const& typeName, std::string const& method, int line)
+{
+    constexpr int Count = 20000;
+    std::vector<EFloatConversion> const conversions = FloatConversions();
+    std::vector<int> failures(conversions.size(), 0);
+    std::vector<int> otherTexts(conversions.size(), 0);
+    std::vector<std::string> firstFailures(conversions.size());
+    std::vector<std::string> firstOtherTexts(conversions.size());
+
+    // One value in ten is subnormal, and one in ten has the largest exponent
+    TBits const infinity = Bits<TBits>(std::numeric_limits<T>::infinity());
+    TBits const signAndMantissa = static_cast<TBits>(~infinity);
+    TBits const largestExponent = static_cast<TBits>(infinity -
+        (static_cast<TBits>(1) << (std::numeric_limits<T>::digits - 1)));
+    std::uint64_t state = 20261018;
+    for (int i = 0; i < Count; ++i)
+    {
+        TBits bits = static_cast<TBits>(NextRandom(state));
+        if (i % 10 == 0)
+            bits &= signAndMantissa;
+        else if (i % 10 == 1)
+            bits = static_cast<TBits>((bits & signAndMantissa) | largestExponent);
+
+        T value = 0;
+        std::memcpy(&value, &bits, sizeof(value));
+        if (!std::isfinite(value))
+            continue;
+
+        std::string standardText;
+        for (std::size_t c = 0; c < conversions.size(); ++c)
+        {
+            std::string const text = ASWIni::Detail::FloatingPointText(value, conversions[c]);
+            T readBack = 0;
+            TASWIniResult const result = ASWIni::Detail::ReadFloatingPoint(text, readBack, conversions[c]);
+            if ((!result.IsOk() || Bits<TBits>(readBack) != bits) && failures[c]++ == 0)
+                firstFailures[c] = text;
+
+            // The first conversion is Standard where it is reliable. Another may only write a longer text, when
+            // strtold() can't prove a shorter one (see CRuntimeRead()), and an exact reader must read it back.
+            if (conversions[0] != EFloatConversion::Standard)
+                continue;
+
+            if (c == 0)
+            {
+                standardText = text;
+                continue;
+            }
+
+            // On Windows, the Universal C Runtime is exact: UniversalCrt writes what Standard does, and reads it
+            bool exactConversion = false;
+#if defined(_WIN32)
+            exactConversion = conversions[c] == EFloatConversion::UniversalCrt;
+            if (exactConversion)
+            {
+                T standardBack = 0;
+                bool const read = ASWIni::Detail::ReadFloatingPoint(standardText, standardBack, conversions[c]).IsOk();
+                if ((!read || Bits<TBits>(standardBack) != bits) && failures[c]++ == 0)
+                    firstFailures[c] = standardText + " (written by Standard)";
+            }
+#endif
+
+            if (text == standardText)
+                continue;
+
+            T exactBack = 0;
+            bool const exact = ASWIni::Detail::ReadFloatingPoint(text, exactBack, EFloatConversion::Standard).IsOk() &&
+                Bits<TBits>(exactBack) == bits;
+            if ((exactConversion || !exact || text.size() <= standardText.size()) && otherTexts[c]++ == 0)
+                firstOtherTexts[c] = text + " instead of " + standardText;
+        }
+    }
+
+    for (std::size_t c = 0; c < conversions.size(); ++c)
+    {
+        std::string const what = typeName + " (" + ConversionName(conversions[c]) + ")";
+        CheckEquals(0, failures[c], method, line, what + ": every value should read back as itself; the first that "
+            "doesn't is written as " + firstFailures[c]);
+        CheckEquals(0, otherTexts[c], method, line, what + ": every value should be written as the Standard "
+            "conversion writes it, or longer and reading back as itself there; the first that isn't is " +
+            firstOtherTexts[c]);
+    }
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_FloatConverter::CheckRejected(std::string const& text, EIniCode code, std::string const& method,
+    int line)
+{
+    for (EFloatConversion const conversion : FloatConversions())
+    {
+        std::string const what = "\"" + text + "\" (" + ConversionName(conversion) + ")";
+        for (T const before : { static_cast<T>(1.5), static_cast<T>(-2) })
+        {
+            T value = before;
+            TASWIniResult const result = ASWIni::Detail::ReadFloatingPoint(text, value, conversion);
+
+            CheckEquals(code, result.Code, method, line, what + " should be " + ASWIni::ToString(code));
+            CheckContains(result.Message, ASWIni::Detail::MessageText(text), method, line,
+                "the message should quote " + what);
+            CheckTrue(value == before, method, line, what + " should leave the value as it was");
+        }
+    }
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_FloatConverter::CheckWrites(T value, std::string const& expected, std::string const& method,
+    int line)
+{
+    for (EFloatConversion const conversion : FloatConversions())
+    {
+        CheckEquals(expected, ASWIni::Detail::FloatingPointText(value, conversion), method, line,
+            "the text of " + expected + " (" + ConversionName(conversion) + ")");
+    }
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_FloatConverter::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_FloatConverter::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_FloatConverter::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_FloatConverter::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, Converters_UseTheDefaultConversion)
+{
+    // Arrange
+    double number = 1.5;
+    float single = 1.5f;
+    std::string numberText;
+    std::string singleText;
+
+    // Act
+    TASWIniResult const numberRead = TASWIniConverter<double>::FromText("0.1", number, TASWIniValueOptions());
+    TASWIniResult const singleRead = TASWIniConverter<float>::FromText("0.1", single, TASWIniValueOptions());
+    TASWIniResult const numberWritten = TASWIniConverter<double>::ToText(0.1, numberText, TASWIniValueOptions());
+    TASWIniResult const singleWritten = TASWIniConverter<float>::ToText(0.1f, singleText, TASWIniValueOptions());
+    double invalidNumber = 2.5;
+    TASWIniResult const invalid = TASWIniConverter<double>::FromText("abc", invalidNumber, TASWIniValueOptions());
+
+    // Assert
+    CheckTrue(numberRead.IsOk() && number == 0.1, __func__, __LINE__, "\"0.1\" should read as the double 0.1");
+    CheckTrue(singleRead.IsOk() && single == 0.1f, __func__, __LINE__, "\"0.1\" should read as the float 0.1");
+    CheckTrue(numberWritten.IsOk() && singleWritten.IsOk(), __func__, __LINE__, "writing should succeed");
+    CheckEquals(std::string("0.1"), numberText, __func__, __LINE__, "the double 0.1");
+    CheckEquals(std::string("0.1"), singleText, __func__, __LINE__, "the float 0.1");
+    CheckEquals(EIniCode::InvalidValue, invalid.Code, __func__, __LINE__, "\"abc\" should be InvalidValue");
+    CheckTrue(invalidNumber == 2.5, __func__, __LINE__, "a failed read should leave the value as it was");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_IgnoresBlanksAroundTheText)
+{
+    // Act & Assert
+    CheckReads<double>(" 1.5", 1.5, __func__, __LINE__);
+    CheckReads<double>("1.5\t", 1.5, __func__, __LINE__);
+    CheckReads<double>("\t -2e3  ", -2000.0, __func__, __LINE__);
+    CheckReads<double>(" inf ", std::numeric_limits<double>::infinity(), __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_ReadsDecimalForms)
+{
+    // Act & Assert
+    CheckReads<double>("1.5", 1.5, __func__, __LINE__);
+    CheckReads<double>(".5", 0.5, __func__, __LINE__);
+    CheckReads<double>("5.", 5.0, __func__, __LINE__);
+    CheckReads<double>("1e5", 1e5, __func__, __LINE__);
+    CheckReads<double>("1E-3", 1e-3, __func__, __LINE__);
+    CheckReads<double>("2.5e+2", 250.0, __func__, __LINE__);
+    CheckReads<double>("-2.5", -2.5, __func__, __LINE__);
+    CheckReads<double>("+2.5", 2.5, __func__, __LINE__);
+    CheckReads<double>("007.25", 7.25, __func__, __LINE__);
+    CheckReads<double>("0", 0.0, __func__, __LINE__);
+    CheckReads<double>("-0", -0.0, __func__, __LINE__);
+    CheckReads<double>("0.1", 0.1, __func__, __LINE__);
+    CheckReads<double>("123456789012345680", 123456789012345680.0, __func__, __LINE__);
+    CheckReads<float>("0.1", 0.1f, __func__, __LINE__);
+    CheckReads<float>("16777216", 16777216.0f, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_ReadsInfinityAndNan)
+{
+    // Act & Assert
+    // With the ASCII letters' case ignored, and a NaN's sign dropped
+    double const infinity = std::numeric_limits<double>::infinity();
+    double const nan = std::numeric_limits<double>::quiet_NaN();
+    CheckReads<double>("inf", infinity, __func__, __LINE__);
+    CheckReads<double>("INF", infinity, __func__, __LINE__);
+    CheckReads<double>("Infinity", infinity, __func__, __LINE__);
+    CheckReads<double>("+inf", infinity, __func__, __LINE__);
+    CheckReads<double>("-inf", -infinity, __func__, __LINE__);
+    CheckReads<double>("nan", nan, __func__, __LINE__);
+    CheckReads<double>("NaN", nan, __func__, __LINE__);
+    CheckReads<double>("-nan", nan, __func__, __LINE__);
+    CheckReads<float>("-Infinity", -std::numeric_limits<float>::infinity(), __func__, __LINE__);
+    CheckReads<float>("nan", std::numeric_limits<float>::quiet_NaN(), __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_ReadsTheLimits)
+{
+    // Act & Assert
+    // The largest and smallest values, normal and subnormal (bcc32c's own strtod() reads subnormals as 0)
+    CheckReads<double>("1.7976931348623157e+308", std::numeric_limits<double>::max(), __func__, __LINE__);
+    CheckReads<double>("-1.7976931348623157e308", std::numeric_limits<double>::lowest(), __func__, __LINE__);
+    CheckReads<double>("1.7976931348623158e308", std::numeric_limits<double>::max(), __func__, __LINE__);
+    CheckReads<double>("2.2250738585072014e-308", std::numeric_limits<double>::min(), __func__, __LINE__);
+    CheckReads<double>("4.9406564584124654e-324", std::numeric_limits<double>::denorm_min(), __func__, __LINE__);
+    CheckReads<double>("5e-324", std::numeric_limits<double>::denorm_min(), __func__, __LINE__);
+    CheckReads<float>("3.4028235e+38", std::numeric_limits<float>::max(), __func__, __LINE__);
+    CheckReads<float>("1.17549435e-38", std::numeric_limits<float>::min(), __func__, __LINE__);
+    CheckReads<float>("1e-45", std::numeric_limits<float>::denorm_min(), __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_RejectsOtherTexts)
+{
+    // Arrange
+    // No sign alone, second sign, decimal comma, hex, digit separator, blank inside, other suffix or spelling
+    std::string const texts[] = {
+        "", " ", "+", "-", ".", "-.", "e5", ".e5", "1e", "1e+", "1.5.2", "1,5", "0x1p3", "0x10", "--1", "+-1", "1 5",
+        "1.5e3x", "1e5.5", "1d5", "1f", "1_000", "infx", "in f", "nann", "nan(1)", "+-inf", "\xD9\xA1",
+        std::string("1\0", 2),
+    };
+
+    // Act & Assert
+    for (std::string const& text : texts)
+        CheckRejected<double>(text, EIniCode::InvalidValue, __func__, __LINE__);
+
+    CheckRejected<float>("1,5", EIniCode::InvalidValue, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_TooLargeIsOutOfRange)
+{
+    // Act & Assert
+    CheckRejected<double>("1e400", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<double>("-1e400", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<double>("1.8e308", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<double>("1e99999999999999999999", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<float>("3.5e38", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<float>("-1e39", EIniCode::ValueOutOfRange, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, FromText_TooSmallReadsAsZero)
+{
+    // Act & Assert
+    // Below half the smallest subnormal, a number rounds to 0 (with its sign)
+    CheckReads<double>("1e-400", 0.0, __func__, __LINE__);
+    CheckReads<double>("-1e-400", -0.0, __func__, __LINE__);
+    CheckReads<double>("2e-324", 0.0, __func__, __LINE__);
+    CheckReads<double>("1e-99999999999999999999", 0.0, __func__, __LINE__);
+    CheckReads<double>("0.000000000000000000001e-400", 0.0, __func__, __LINE__);
+    CheckReads<float>("1e-46", 0.0f, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, Locale_DecimalCommaChangesNothing)
+{
+    // Arrange
+    // A C locale with a ',' decimal mark, if one is installed (Linux images often have none; then "C" is checked)
+    std::string const previous = std::setlocale(LC_ALL, nullptr);
+    std::string used = "C";
+    for (char const* name : { "de_DE.UTF-8", "de_DE", "German_Germany.1252", "de-DE" })
+    {
+        if (std::setlocale(LC_ALL, name) != nullptr && std::localeconv()->decimal_point == std::string(","))
+        {
+            used = name;
+            break;
+        }
+    }
+
+    if (used == "C")
+        std::setlocale(LC_ALL, "C");
+
+    // Act & Assert
+    std::string const where = " in the locale " + used;
+    CheckReads<double>("1.5", 1.5, __func__, __LINE__);
+    CheckReads<float>("0.25", 0.25f, __func__, __LINE__);
+    CheckRejected<double>("1,5", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckWrites<double>(1.5, "1.5", __func__, __LINE__);
+    CheckWrites<double>(1234567.25, "1234567.25", __func__, __LINE__);
+    CheckWrites<float>(0.1f, "0.1", __func__, __LINE__);
+
+    int integer = 0;
+    std::string integerText;
+    TASWIniResult const integerRead = TASWIniConverter<int>::FromText("1234567", integer, TASWIniValueOptions());
+    TASWIniResult const integerWritten = TASWIniConverter<int>::ToText(1234567, integerText, TASWIniValueOptions());
+    CheckTrue(integerRead.IsOk() && integer == 1234567, __func__, __LINE__, "an integer should read" + where);
+    CheckTrue(integerWritten.IsOk() && integerText == "1234567", __func__, __LINE__, "an integer should be written "
+        "without separators" + where);
+
+    std::setlocale(LC_ALL, previous.c_str());
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, Messages_NameTheProblem)
+{
+    // Arrange
+    double number = 0;
+    float single = 0;
+
+    // Act
+    TASWIniResult const invalid = TASWIniConverter<double>::FromText("1,5", number, TASWIniValueOptions());
+    TASWIniResult const tooLarge = TASWIniConverter<double>::FromText("1e400", number, TASWIniValueOptions());
+    TASWIniResult const floatTooLarge = TASWIniConverter<float>::FromText("1e39", single, TASWIniValueOptions());
+
+    // Assert
+    CheckEquals(std::string("The value \"1,5\" isn't a number: it must be digits with an optional '.' and exponent, "
+        "after an optional sign (e.g. 1.5, -2e-3), or inf or nan."), invalid.Message, __func__, __LINE__,
+        "a text that isn't a number");
+    CheckEquals(std::string("The value \"1e400\" is out of range: it must be -1.7976931348623157e+308 to "
+        "1.7976931348623157e+308."), tooLarge.Message, __func__, __LINE__, "a number too large for a double");
+    CheckEquals(std::string("The value \"1e39\" is out of range: it must be -3.4028235e+38 to 3.4028235e+38."),
+        floatTooLarge.Message, __func__, __LINE__, "a number too large for a float");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, RandomValues_RoundTripWithEveryConversion)
+{
+    // Act & Assert
+    CheckRandomValues<double, std::uint64_t>("double", __func__, __LINE__);
+    CheckRandomValues<float, std::uint32_t>("float", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, ToText_WritesInfinityAndNan)
+{
+    // Act & Assert
+    CheckWrites<double>(std::numeric_limits<double>::infinity(), "inf", __func__, __LINE__);
+    CheckWrites<double>(-std::numeric_limits<double>::infinity(), "-inf", __func__, __LINE__);
+    CheckWrites<double>(std::numeric_limits<double>::quiet_NaN(), "nan", __func__, __LINE__);
+    CheckWrites<double>(-std::numeric_limits<double>::quiet_NaN(), "nan", __func__, __LINE__);
+    CheckWrites<float>(-std::numeric_limits<float>::infinity(), "-inf", __func__, __LINE__);
+    CheckWrites<float>(std::numeric_limits<float>::quiet_NaN(), "nan", __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_FloatConverter, ToText_WritesTheShortestText)
+{
+    // Act & Assert
+    // As std::to_chars() writes them: the fewest digits that read back, in fixed or scientific notation, whichever
+    // is shorter (fixed when both are as long)
+    CheckWrites<double>(0.1, "0.1", __func__, __LINE__);
+    CheckWrites<double>(1.0 / 3, "0.3333333333333333", __func__, __LINE__);
+    CheckWrites<double>(3.0, "3", __func__, __LINE__);
+    CheckWrites<double>(0.0, "0", __func__, __LINE__);
+    CheckWrites<double>(-0.0, "-0", __func__, __LINE__);
+    CheckWrites<double>(-2.5, "-2.5", __func__, __LINE__);
+    CheckWrites<double>(100.0, "100", __func__, __LINE__);
+    CheckWrites<double>(10000.0, "10000", __func__, __LINE__);
+    CheckWrites<double>(100000.0, "1e+05", __func__, __LINE__);
+    CheckWrites<double>(1e21, "1e+21", __func__, __LINE__);
+    CheckWrites<double>(123456789012345680.0, "123456789012345680", __func__, __LINE__);
+    // A whole number above 2^53 is written with all its digits, not the shortest ones padded with zeros
+    CheckWrites<double>(143860433449586288.0, "143860433449586288", __func__, __LINE__);
+    CheckWrites<double>(1152921504606846976.0, "1152921504606846976", __func__, __LINE__);
+    CheckWrites<float>(57457352.0f, "57457352", __func__, __LINE__);
+    CheckWrites<double>(0.001, "0.001", __func__, __LINE__);
+    CheckWrites<double>(1e-7, "1e-07", __func__, __LINE__);
+    CheckWrites<double>(1.5e-10, "1.5e-10", __func__, __LINE__);
+    CheckWrites<double>(1e300, "1e+300", __func__, __LINE__);
+    CheckWrites<double>(std::numeric_limits<double>::max(), "1.7976931348623157e+308", __func__, __LINE__);
+    CheckWrites<double>(std::numeric_limits<double>::min(), "2.2250738585072014e-308", __func__, __LINE__);
+    CheckWrites<double>(std::numeric_limits<double>::denorm_min(), "5e-324", __func__, __LINE__);
+    CheckWrites<float>(0.1f, "0.1", __func__, __LINE__);
+    CheckWrites<float>(1.0f / 3, "0.33333334", __func__, __LINE__);
+    CheckWrites<float>(16777216.0f, "16777216", __func__, __LINE__);
+    CheckWrites<float>(1e10f, "1e+10", __func__, __LINE__);
+    CheckWrites<float>(std::numeric_limits<float>::max(), "3.4028235e+38", __func__, __LINE__);
+    CheckWrites<float>(std::numeric_limits<float>::denorm_min(), "1e-45", __func__, __LINE__);
 }
 //---------------------------------------------------------------------------
 
@@ -752,5 +1247,6 @@ ASW_TEST(TTest_ASWIni_Converters, ValueFailure_MakesTheMessage)
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BoolConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_Converters, "Converters")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_FloatConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_IntegerConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_TextConverter, "Converters")

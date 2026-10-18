@@ -194,8 +194,8 @@ public:
 //
 // An INI text as sections of lines, in file order, keeping every line as it was read: comments, blank lines,
 // malformed lines, duplicate keys and sections, and each line's own line break. It keeps its options: the lines'
-// parts depend on the reading options, so they only change when the document is parsed again or reset. Not
-// thread-safe (TASWBaseIni wraps one with a lock); copyable.
+// parts depend on the reading options, so they only change when the document is parsed again or reset, or when
+// SetOptions() reads its text again with new ones. Not thread-safe (TASWBaseIni wraps one with a lock); copyable.
 /////////////////////////////////////////////////////////////////////////////
 class TASWIniDocument
 {
@@ -263,6 +263,11 @@ private:
     // The line break of new lines: GetLineBreak(), or the one Writing.LineEnding converts every line to
     ELineBreak NewLineBreak() const noexcept;
 
+    // Parse() for 'text', which has no byte order mark ('hasBom' says whether the document has one), with 'options',
+    // which are valid. A text that starts with the bytes of a byte order mark keeps them in its first line.
+    TASWIniResult ParseLines(std::string_view text, bool hasBom, TASWIniOptions const& options,
+        std::vector<TASWIniMessage>& messages);
+
     // Replaces the comment lines 'begin' up to 'end' of section 'sectionIndex' with the comment lines of 'text' (see
     // MakeCommentLines()), unless they read the same already. With 'fileComment', a new comment gets a blank line
     // under it (unless one follows already) and a removed one loses the blank line under it. Fails with
@@ -282,6 +287,10 @@ private:
     // never reads back.
     bool TryValueLine(std::string_view before, std::string_view value, std::string_view after, bool quotedFirst,
         TASWIniDocumentLine& line) const;
+
+    // The lines as text, each followed by its line break as 'lineEnding' says (see ToText()), after a UTF-8 byte order
+    // mark when 'bom' is set
+    std::string WriteText(bool bom, ELineEnding lineEnding) const;
 
 public:
     // An empty document with the default options: an empty preamble, no byte order mark, and the platform's line
@@ -330,7 +339,8 @@ public:
     // The number of lines in all the sections, headers included
     std::size_t GetLineCount() const noexcept;
 
-    // The options the document was parsed or reset with (the defaults for a new document)
+    // The options the document was parsed or reset with, or last given with SetOptions() (the defaults for a new
+    // document)
     TASWIniOptions const& GetOptions() const noexcept;
 
     // The comment of section 'section' (the first of that name): the comment lines directly above its header, with no
@@ -411,6 +421,15 @@ public:
     // Fails with NotFound when the key doesn't exist, or InvalidArgument; then nothing changes. Throws only
     // std::bad_alloc, and then nothing changes either.
     TASWIniResult SetKeyComment(std::string_view section, std::string_view key, std::string_view text);
+
+    // Gives this document 'options', which may be its own, and reads its text again with them, as Parse() does, so the
+    // lines' parts (their kinds, keys, values and comments) are what the new reading options find in them. The text
+    // doesn't change: each line keeps its bytes and its line break, and the byte order mark (HasBom()), the line break
+    // new lines get (GetLineBreak()) and the modified flag stay as they were. The warnings are added to 'messages', as
+    // Parse() says. Fails with InvalidOptions (see TASWIniOptions::Validate()) or, with StrictParsing, ParseFailed for
+    // the first line that can't be parsed (its number in Line); then neither the document nor 'messages' changes.
+    // Throws only std::bad_alloc, and then nothing changes either.
+    TASWIniResult SetOptions(TASWIniOptions const& options, std::vector<TASWIniMessage>& messages);
 
     // Sets the comment of section 'section' (see GetSectionComment()) to 'text', as SetFileComment() says: the comment
     // lines go directly above its header, with its indentation, and an empty 'text' removes them. Fails with NotFound

@@ -47,9 +47,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`TASWIniDocumentLine`: the text as read, its line break, its kind (`ELineKind`: `Blank`,
   `Comment`, `Section`, `KeyValue` or `Raw`) and its key, value, separator, section name and
   comment), plus whether the text had a UTF-8 byte order mark and the line break new lines get. It
-  keeps its `TASWIniOptions` (`GetOptions()`), which only change when it is parsed again or reset
-  (`Reset()` empties it and gives it new options), and whether an edit changed it (`IsModified()`,
-  `ClearModified()`). It is copyable and not thread-safe. New source: `ASWIni_Document.cpp`.
+  keeps its `TASWIniOptions` (`GetOptions()`), which only change when it is parsed again, reset
+  (`Reset()` empties it and gives it new options) or given new ones with `SetOptions()`, and
+  whether an edit changed it (`IsModified()`, `ClearModified()`). It is copyable and not
+  thread-safe. New source: `ASWIni_Document.cpp`.
 - `TASWIniDocument::Parse()` reads UTF-8 text (with or without a byte order mark, with LF, CRLF or
   CR line breaks) as the options' `Reading` group says, keeping every line, and keeps the options.
   Lines that can't be parsed are kept as `Raw` lines and reported as warnings (`MalformedLine`,
@@ -99,6 +100,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - After every edit, the text a `TASWIniDocument` writes reads back as the lines it holds. When an
   edit would put an empty line that ends with LF right after a line that ends with CR (which would
   read back as one CRLF line break), that line gets a CRLF line break instead.
+- `TASWIniDocument::SetOptions()` gives a document new options and reads its text again with them,
+  so its keys, values and comments are what the new reading options find (e.g. a `key: value` line
+  becomes a key once `:` is a separator). The text stays byte for byte, and so do the byte order
+  mark, the line break new lines get and `IsModified()`. The warnings of the new reading are
+  reported as `Parse()` reports them; invalid options, or a malformed line with `StrictParsing`,
+  fail and change nothing.
 - `TASWIniConverter<T>` (`ASWIni_Converters.h`), which converts a typed value to and from the text
   of an INI value as `TASWIniOptions::Values` says, the same in any locale: `bool` (reads `true`,
   `false`, `yes`, `no`, `on`, `off`, `1` and `0` in any case; writes the `Values.BoolFormat` form),

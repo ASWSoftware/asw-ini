@@ -1168,8 +1168,6 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniOptions const
     if (!result)
         return result;
 
-    TASWIniReadingOptions const& reading = options.Reading;
-
     Detail::EBom const bom = Detail::DetectBom(text);
     if (bom != Detail::EBom::None && bom != Detail::EBom::Utf8)
     {
@@ -1178,12 +1176,21 @@ TASWIniResult TASWIniDocument::Parse(std::string_view text, TASWIniOptions const
         return result;
     }
 
+    return ParseLines(text.substr(Detail::BomSize(bom)), bom == Detail::EBom::Utf8, options, messages);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::ParseLines(std::string_view text, bool hasBom, TASWIniOptions const& options,
+    std::vector<TASWIniMessage>& messages)
+{
+    TASWIniResult result;
+    TASWIniReadingOptions const& reading = options.Reading;
+
     // Parsed into a new document, which replaces this one only when the whole text is parsed
     TASWIniDocument document;
     document.m_Options = options;
-    document.m_HasBom = bom == Detail::EBom::Utf8;
+    document.m_HasBom = hasBom;
 
-    std::vector<Detail::TLineSpan> const lines = Detail::SplitLines(text.substr(Detail::BomSize(bom)));
+    std::vector<Detail::TLineSpan> const lines = Detail::SplitLines(text);
     std::vector<TASWIniMessage> warnings;
 
     // The line each section and each key of the current section is first on. The names are views of 'text'.
@@ -1616,6 +1623,27 @@ TASWIniResult TASWIniDocument::SetKeyComment(std::string_view section, std::stri
         std::string_view(line.m_Text).substr(0, line.m_Name.Begin), false);
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWIniDocument::SetOptions(TASWIniOptions const& options, std::vector<TASWIniMessage>& messages)
+{
+    TASWIniResult result = options.Validate();
+    if (!result)
+        return result;
+
+    // Each line with its own line break, and the byte order mark passed on as a flag, so a first line that starts with
+    // the mark's bytes keeps them
+    ELineBreak const lineBreak = m_LineBreak;
+    bool const modified = m_Modified;
+    result = ParseLines(WriteText(false, ELineEnding::Auto), m_HasBom, options, messages);
+    if (!result)
+        return result;
+
+    // The text is the same, so what was found in it before still holds
+    m_LineBreak = lineBreak;
+    m_Modified = modified;
+
+    return result;
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWIniDocument::SetSectionComment(std::string_view section, std::string_view text)
 {
     if (section.empty())
@@ -1708,30 +1736,7 @@ std::string TASWIniDocument::ToText() const
     else if (options.Bom == EBomMode::Never)
         writeBom = false;
 
-    // Room for the mark and every line with a two-character line break, so the text is allocated once
-    std::size_t size = Utf8Bom.size();
-    for (TASWIniDocumentSection const& section : m_Sections)
-    {
-        for (TASWIniDocumentLine const& line : section.m_Lines)
-            size += line.m_Text.size() + 2;
-    }
-
-    std::string text;
-    text.reserve(size);
-
-    if (writeBom)
-        text += Utf8Bom;
-
-    for (TASWIniDocumentSection const& section : m_Sections)
-    {
-        for (TASWIniDocumentLine const& line : section.m_Lines)
-        {
-            text += line.m_Text;
-            text += Detail::LineBreakText(WrittenLineBreak(line.m_LineBreak, options.LineEnding));
-        }
-    }
-
-    return text;
+    return WriteText(writeBom, options.LineEnding);
 }
 //---------------------------------------------------------------------------
 bool TASWIniDocument::TryValueLine(std::string_view before, std::string_view value, std::string_view after,
@@ -1763,6 +1768,34 @@ bool TASWIniDocument::TryValueLine(std::string_view before, std::string_view val
     }
 
     return false;
+}
+//---------------------------------------------------------------------------
+std::string TASWIniDocument::WriteText(bool bom, ELineEnding lineEnding) const
+{
+    // Room for the mark and every line with a two-character line break, so the text is allocated once
+    std::size_t size = Utf8Bom.size();
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        for (TASWIniDocumentLine const& line : section.m_Lines)
+            size += line.m_Text.size() + 2;
+    }
+
+    std::string text;
+    text.reserve(size);
+
+    if (bom)
+        text += Utf8Bom;
+
+    for (TASWIniDocumentSection const& section : m_Sections)
+    {
+        for (TASWIniDocumentLine const& line : section.m_Lines)
+        {
+            text += line.m_Text;
+            text += Detail::LineBreakText(WrittenLineBreak(line.m_LineBreak, lineEnding));
+        }
+    }
+
+    return text;
 }
 //---------------------------------------------------------------------------
 

@@ -146,6 +146,7 @@ bool IsSubsequence(std::vector<TASWIniDocumentLine> const& part, std::vector<TAS
 std::string JoinedNames(std::vector<std::string> const& names);
 std::string LineDifference(TASWIniDocumentLine const& expected, TASWIniDocumentLine const& actual);
 std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages);
+std::string MessagesText(std::vector<TASWIniMessage> const& messages);
 std::string NormalizedComment(std::string_view text);
 TASWIniDocument ParseText(std::string_view text, TASWIniOptions const& options, TASWIniResult& result,
     std::vector<TASWIniMessage>& messages);
@@ -578,6 +579,20 @@ std::vector<EIniCode> MessageCodes(std::vector<TASWIniMessage> const& messages)
         codes.push_back(message.Code);
 
     return codes;
+}
+//---------------------------------------------------------------------------
+/*
+    MessagesText
+
+    Each of 'messages' as ASWIni::ToString() writes it, followed by a line break, in order.
+*/
+std::string MessagesText(std::vector<TASWIniMessage> const& messages)
+{
+    std::string text;
+    for (TASWIniMessage const& message : messages)
+        text += ASWIni::ToString(message) + "\n";
+
+    return text;
 }
 //---------------------------------------------------------------------------
 /*
@@ -1044,6 +1059,182 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Section_DefaultIsEmptyPreamble)
         "a section with no header should have the name \"\"");
     CheckEquals(0, static_cast<int>(section.GetLines().size()), __func__, __LINE__,
         "a new section should have no lines");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_InvalidOptionsChangeNothing)
+{
+    // Arrange
+    // Each group is valid on its own, but a "=" separator wouldn't read back with only ':' read
+    TASWIniOptions invalid;
+    invalid.Reading.Separators = ":";
+    invalid.Writing.Separator = "=";
+    TASWIniOptions options;
+    options.Reading.CaseSensitive = true;
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("[A]\nk=1\n", options, messages).IsOk(), __func__, __LINE__, "the text should parse");
+
+    // Act
+    TASWIniResult const result = document.SetOptions(invalid, messages);
+
+    // Assert
+    CheckEquals(EIniCode::InvalidOptions, result.Code, __func__, __LINE__, "the options should be rejected");
+    CheckFalse(result.Message.empty(), __func__, __LINE__, "the result should describe the problem");
+    CheckEquals(std::string("[A]\nk=1\n"), document.ToText(), __func__, __LINE__, "the document should keep its text");
+    CheckTrue(document.FindKey("A", "k") != nullptr, __func__, __LINE__, "the document should keep its key");
+    CheckTrue(document.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
+        "the document should keep its options");
+    CheckEquals(0, static_cast<int>(messages.size()), __func__, __LINE__, "no messages should be added");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_KeepsLineBreaksAndTheModifiedFlag)
+{
+    // Arrange
+    // The text's line break is CR, and new lines get CRLF, so after three new keys CRLF is the most common one
+    TASWIniOptions crlf;
+    crlf.Writing.LineEnding = ASWIni::ELineEnding::CRLF;
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("\xEF\xBB\xBF[A]\rk=1\r", crlf, messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+    for (char const* const key : { "x", "y", "z" })
+        AssertTrue(document.SetValue("A", key, "1").IsOk(), __func__, __LINE__, "the key should be added");
+
+    // Act
+    TASWIniResult const result = document.SetOptions(TASWIniOptions(), messages);
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
+    CheckEquals(std::string("\xEF\xBB\xBF[A]\rk=1\rx = 1\r\ny = 1\r\nz = 1\r\n"), document.ToText(), __func__,
+        __LINE__, "each line should keep its own line break, and the text its byte order mark");
+    CheckTrue(document.HasBom(), __func__, __LINE__, "the document should keep its byte order mark");
+    CheckEquals(ELineBreak::CR, document.GetLineBreak(), __func__, __LINE__,
+        "new lines should still get the line break of the text that was read");
+    CheckTrue(document.IsModified(), __func__, __LINE__, "the modified flag should stay set");
+    CheckEquals(ASWIni::ELineEnding::Auto, document.GetOptions().Writing.LineEnding, __func__, __LINE__,
+        "the document should have the new writing options");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_KeepsTheBytesOfAByteOrderMarkInALine)
+{
+    // Arrange
+    // Removing the first key makes the line that starts with the mark's bytes the first line of a document that has
+    // no byte order mark; a text read from the start would take them for one
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("k=1\n\xEF\xBB\xBFx=2\n", TASWIniOptions(), messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+    AssertTrue(document.RemoveKey("", "k"), __func__, __LINE__, "the first key should be removed");
+
+    // Act
+    TASWIniResult const result = document.SetOptions(TASWIniOptions(), messages);
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
+    CheckFalse(document.HasBom(), __func__, __LINE__, "the document should still have no byte order mark");
+    CheckEquals(std::string("\xEF\xBB\xBFx=2\n"), document.ToText(), __func__, __LINE__,
+        "the line should keep the mark's bytes");
+    CheckTrue(document.FindKey("", "\xEF\xBB\xBFx") != nullptr, __func__, __LINE__,
+        "the key should keep the mark's bytes");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_RereadsTheTextWithNewOptions)
+{
+    // Arrange
+    // With only '=' read, "url:x" is a malformed line; "// c=1" is the key "// c" until "//" starts a comment; and the
+    // value of "k = v ; note" holds "; note" until inline comments are on
+    std::string const text = "[A]\r\nurl:x\n// c=1\r\nk = v ; note\n";
+    TASWIniOptions equalsOnly;
+    equalsOnly.Reading.Separators = "=";
+    equalsOnly.Writing.Separator = "=";
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { ";", "#", "//" };
+    options.Reading.InlineComments = true;
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse(text, equalsOnly, messages).IsOk(), __func__, __LINE__, "the text should parse");
+    AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the line with ':' should be malformed with only '=' read");
+    messages.clear();
+
+    // Act
+    TASWIniResult const result = document.SetOptions(options, messages);
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
+    CheckEquals(0, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the text should have no warnings with the new options");
+    CheckEquals(text, document.ToText(), __func__, __LINE__, "the text should stay byte for byte");
+    TASWIniDocumentLine const* const url = document.FindKey("A", "url");
+    AssertTrue(url != nullptr, __func__, __LINE__, "the line with ':' should be a key");
+    CheckEquals(std::string("x"), std::string(url->GetValue()), __func__, __LINE__, "the key's value");
+    CheckTrue(document.FindKey("A", "// c") == nullptr, __func__, __LINE__,
+        "the line that starts with \"//\" shouldn't be a key");
+    AssertEquals(4, static_cast<int>(document.GetSections()[1].GetLines().size()), __func__, __LINE__,
+        "the section should keep its lines");
+    CheckEquals(ELineKind::Comment, document.GetSections()[1].GetLines()[2].GetKind(), __func__, __LINE__,
+        "the line that starts with \"//\" should be a comment");
+    TASWIniDocumentLine const* const k = document.FindKey("A", "k");
+    AssertTrue(k != nullptr, __func__, __LINE__, "the key with an inline comment should be found");
+    CheckEquals(std::string("v"), std::string(k->GetValue()), __func__, __LINE__,
+        "the inline comment shouldn't be part of the value");
+    CheckEquals(std::string("note"), std::string(k->GetComment()), __func__, __LINE__, "the inline comment");
+    CheckTrue(document.GetOptions().Reading.InlineComments, __func__, __LINE__,
+        "the document should have the new options");
+    CheckFalse(document.IsModified(), __func__, __LINE__, "the modified flag should stay clear");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_StrictParsingFailureChangesNothing)
+{
+    // Arrange
+    TASWIniOptions strict;
+    strict.Reading.StrictParsing = true;
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("[A]\nbad\nk=1\n", TASWIniOptions(), messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+    AssertTrue(document.SetValue("A", "k", "2").IsOk(), __func__, __LINE__, "the value should be set");
+    std::size_t const messageCount = messages.size();
+
+    // Act
+    TASWIniResult const result = document.SetOptions(strict, messages);
+
+    // Assert
+    CheckEquals(EIniCode::ParseFailed, result.Code, __func__, __LINE__, "the malformed line should fail the options");
+    CheckEquals(2, static_cast<int>(result.Line), __func__, __LINE__, "the result should name the malformed line");
+    CheckEquals(std::string("[A]\nbad\nk=2\n"), document.ToText(), __func__, __LINE__,
+        "the document should keep its text");
+    CheckFalse(document.GetOptions().Reading.StrictParsing, __func__, __LINE__,
+        "the document should keep its options");
+    CheckTrue(document.IsModified(), __func__, __LINE__, "the modified flag should stay set");
+    CheckEquals(static_cast<int>(messageCount), static_cast<int>(messages.size()), __func__, __LINE__,
+        "no messages should be added");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_WithItsOwnOptionsKeepsTheDocument)
+{
+    // Arrange
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { "//" };
+    options.Writing.CommentPrefix = "// ";
+    TASWIniDocument document;
+    std::vector<TASWIniMessage> messages;
+    AssertTrue(document.Parse("// c\n[A]\nk=1\n", options, messages).IsOk(), __func__, __LINE__,
+        "the text should parse");
+
+    // Act
+    TASWIniResult const result = document.SetOptions(document.GetOptions(), messages);
+
+    // Assert
+    AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
+    CheckEquals(std::string("// c\n[A]\nk=1\n"), document.ToText(), __func__, __LINE__,
+        "the document should keep its text");
+    AssertEquals(1, static_cast<int>(document.GetOptions().Reading.CommentPrefixes.size()), __func__, __LINE__,
+        "the document should keep its comment prefixes");
+    CheckEquals(std::string("//"), document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
+        "the document should keep its comment prefix");
+    CheckEquals(std::string("c"), document.GetSectionComment("A"), __func__, __LINE__,
+        "the comment should still be read with the comment prefix");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentModel, ToString_LineKindNames)
@@ -2451,6 +2642,59 @@ ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_ParseAndWriteBack)
             AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
             CheckTrue(document.ToText() == text, __func__, __LINE__,
                 name + ": the text should be written back byte for byte");
+        }
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_DocumentFuzz, RandomTexts_SetOptionsRereadsThem)
+{
+    // Arrange
+    std::vector<TASWIniOptions> const optionSets = ReadingOptionSets();
+
+    for (std::size_t i = 0; i < FuzzTextCount; ++i)
+    {
+        std::uint32_t const seed = FuzzFirstSeed + static_cast<std::uint32_t>(i);
+        std::string const text = RandomText(seed);
+
+        for (std::size_t from = 0; from < optionSets.size(); ++from)
+        {
+            for (std::size_t to = 0; to < optionSets.size(); ++to)
+            {
+                std::string const name = "seed " + std::to_string(seed) + " (reading options " +
+                    std::to_string(from) + ", then " + std::to_string(to) + ")";
+                TASWIniResult result;
+                std::vector<TASWIniMessage> expectedMessages;
+                TASWIniDocument const expected = ParseText(text, optionSets[to], result, expectedMessages);
+                AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+                std::vector<TASWIniMessage> messages;
+                TASWIniDocument document = ParseText(text, optionSets[from], result, messages);
+                AssertTrue(result.IsOk(), __func__, __LINE__, name + ": the text should parse: " + result.Message);
+                messages.clear();
+
+                // Act
+                result = document.SetOptions(optionSets[to], messages);
+
+                // Assert
+                // Checked with if, since the checks run tens of thousands of times
+                if (!result.IsOk())
+                    AssertTrue(false, __func__, __LINE__, name + ": the options should be set: " + result.Message);
+
+                if (document.ToText() != text)
+                    CheckTrue(false, __func__, __LINE__, name + ": the text should stay byte for byte");
+
+                std::string const difference = DocumentDifference(expected, document);
+                if (!difference.empty())
+                {
+                    CheckTrue(false, __func__, __LINE__, name +
+                        ": the document should be what the text parses to with the new options: " + difference);
+                }
+
+                if (MessagesText(messages) != MessagesText(expectedMessages))
+                {
+                    CheckTrue(false, __func__, __LINE__, name +
+                        ": the warnings should be those of the text parsed with the new options");
+                }
+            }
         }
     }
 }

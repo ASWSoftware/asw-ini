@@ -55,6 +55,12 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Reset_InvalidOptionsChangeNothing();
     void Test_Reset_WithItsOwnOptionsOnlyEmptiesIt();
     void Test_Section_DefaultIsEmptyPreamble();
+    void Test_SetOptions_InvalidOptionsChangeNothing();
+    void Test_SetOptions_KeepsLineBreaksAndTheModifiedFlag();
+    void Test_SetOptions_KeepsTheBytesOfAByteOrderMarkInALine();
+    void Test_SetOptions_RereadsTheTextWithNewOptions();
+    void Test_SetOptions_StrictParsingFailureChangesNothing();
+    void Test_SetOptions_WithItsOwnOptionsKeepsTheDocument();
     void Test_ToString_LineKindNames();
 
 public:
@@ -247,6 +253,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_RandomText_IsTheSameEverywhere();
     void Test_RandomTexts_ConvertedLineEndingsKeepTheLines();
     void Test_RandomTexts_ParseAndWriteBack();
+    void Test_RandomTexts_SetOptionsRereadsThem();
     void Test_RandomTexts_StrictParsingFailsCleanly();
 
 public:

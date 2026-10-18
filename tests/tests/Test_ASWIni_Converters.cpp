@@ -26,6 +26,7 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_Registry.h"
 //---------------------------------------------------------------------------
+#include <array>
 #include <clocale>
 #include <cmath>
 #include <cstdint>
@@ -62,6 +63,7 @@ namespace ASWUnitTests
 using ASWIni::EBoolFormat;
 using ASWIni::EIniCode;
 using ASWIni::TASWIniConverter;
+using ASWIni::TASWIniEnumName;
 using ASWIni::TASWIniResult;
 using ASWIni::TASWIniValueOptions;
 
@@ -70,10 +72,162 @@ namespace
 
 using ASWIni::Detail::EFloatConversion;
 
+// The enums of the enum converter tests. Those with names declare ASWIniEnumNames() as an application does, next to
+// the enum.
+
+// Names in an array, as TASWIniEnumName shows: Green has a second name, and Unlisted none
+enum class EColor
+{
+    Red = -1,
+    Green = 2,
+    Blue = 40,
+    Unlisted = 7,
+};
+
+auto const& ASWIniEnumNames(EColor)
+{
+    static constexpr TASWIniEnumName<EColor> names[] = {
+        { EColor::Red, "Red" }, { EColor::Green, "Green" }, { EColor::Blue, "Blue" }, { EColor::Green, "Lime" },
+    };
+
+    return names;
+}
+
+// No names at all
+enum class EEmpty
+{
+    Only,
+};
+
+std::vector<TASWIniEnumName<EEmpty> > ASWIniEnumNames(EEmpty)
+{
+    return std::vector<TASWIniEnumName<EEmpty> >();
+}
+
+// No ASWIniEnumNames(), so converted as the underlying type: one for each kind of underlying type
+enum class EFlags : unsigned int
+{
+    None = 0,
+    Read = 1,
+    Write = 2,
+};
+
+enum class ESmall : std::int8_t
+{
+    Low = -128,
+    High = 127,
+};
+
+enum class ESwitch : bool
+{
+    Off = false,
+    On = true,
+};
+
+enum class EWide : char16_t
+{
+    First = 0,
+};
+
+// Names in a std::vector, returned by value
+enum class EMode
+{
+    Off,
+    Auto,
+    Manual,
+};
+
+std::vector<TASWIniEnumName<EMode> > ASWIniEnumNames(EMode)
+{
+    return { { EMode::Off, "Off" }, { EMode::Auto, "Auto" }, { EMode::Manual, "Manual" } };
+}
+
+// An unscoped enum, with names in an array
+enum EPlain
+{
+    PlainOne = 1,
+    PlainTwo = 2,
+};
+
+auto const& ASWIniEnumNames(EPlain)
+{
+    static constexpr TASWIniEnumName<EPlain> names[] = { { PlainOne, "One" }, { PlainTwo, "Two" } };
+
+    return names;
+}
+
+// Names in a std::array, with an unsigned char underlying type: Medium's first entry has no name (nullptr), so its
+// second one is written, and Huge's only entry has none, so it isn't listed
+enum class ESize : unsigned char
+{
+    Small = 0,
+    Medium = 1,
+    Huge = 200,
+    Large = 255,
+};
+
+std::array<TASWIniEnumName<ESize>, 5> const& ASWIniEnumNames(ESize)
+{
+    static std::array<TASWIniEnumName<ESize>, 5> const names = { {
+        { ESize::Small, "Small" }, { ESize::Medium, nullptr }, { ESize::Medium, "Medium" }, { ESize::Huge, nullptr },
+        { ESize::Large, "Large" },
+    } };
+
+    return names;
+}
+
+// A class that converts to an enum with names, but isn't an enum (never defined)
+struct TColorHolder
+{
+    operator EColor() const;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TWindow
+//
+// A class with an enum whose names are a friend function, which only argument-dependent lookup finds
+/////////////////////////////////////////////////////////////////////////////
+class TWindow
+{
+public:
+    enum class EState
+    {
+        Normal,
+        Maximized,
+    };
+
+    friend auto const& ASWIniEnumNames(EState)
+    {
+        static constexpr TASWIniEnumName<EState> names[] = {
+            { EState::Normal, "Normal" }, { EState::Maximized, "Maximized" },
+        };
+
+        return names;
+    }
+};
+
+// Argument-dependent lookup finds ASWIniEnumNames() wherever an application may declare it, and an enum without one
+// has no names
+static_assert(ASWIni::Detail::IsNamedEnum<EColor>, "names in an array should be found");
+static_assert(ASWIni::Detail::IsNamedEnum<ESize>, "names in a std::array should be found");
+static_assert(ASWIni::Detail::IsNamedEnum<EMode>, "names in a std::vector should be found");
+static_assert(ASWIni::Detail::IsNamedEnum<EEmpty>, "an empty std::vector of names should be found");
+static_assert(ASWIni::Detail::IsNamedEnum<EPlain>, "the names of an unscoped enum should be found");
+static_assert(ASWIni::Detail::IsNamedEnum<TWindow::EState>, "names in a friend function should be found");
+static_assert(!ASWIni::Detail::IsNamedEnum<EFlags>, "an enum without ASWIniEnumNames() has no names");
+static_assert(!ASWIni::Detail::IsNamedEnum<int>, "int isn't an enum");
+static_assert(ASWIni::Detail::THasEnumNames<TColorHolder>::value && !ASWIni::Detail::IsNamedEnum<TColorHolder>,
+    "a class that converts to an enum with names isn't an enum with names");
+
+//---------------------------------------------------------------------------
+
 std::string AddOne(std::string digits);
 template <typename TBits, typename T>
 TBits Bits(T value);
 std::string ConversionName(EFloatConversion conversion);
+template <typename T>
+std::string EnumNumber(T value);
 std::vector<EFloatConversion> FloatConversions();
 std::string HexText(unsigned long long value);
 std::uint64_t NextRandom(std::uint64_t& state);
@@ -140,6 +294,17 @@ std::string ConversionName(EFloatConversion conversion)
     }
 
     return "Unknown";
+}
+//---------------------------------------------------------------------------
+/*
+    EnumNumber
+
+    The number of the enum 'value', as decimal digits.
+*/
+template <typename T>
+std::string EnumNumber(T value)
+{
+    return std::to_string(+static_cast<std::underlying_type_t<T> >(value));
 }
 //---------------------------------------------------------------------------
 /*
@@ -409,6 +574,288 @@ ASW_TEST(TTest_ASWIni_BoolConverter, ToText_WritesTheFormatsForm)
         CheckTrue(result.IsOk(), __func__, __LINE__, format + ": writing false should succeed");
         CheckEquals(std::string(c.False), text, __func__, __LINE__, format + ": false");
     }
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_EnumConverter
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_EnumConverter::TTest_ASWIni_EnumConverter()
+    : inherited("ASWIni_EnumConverter_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_EnumConverter::~TTest_ASWIni_EnumConverter()
+{
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_EnumConverter::CheckReads(std::string const& text, T expected, std::string const& method,
+    int line)
+{
+    // The value starts as something else, so a read that does nothing fails
+    typedef std::underlying_type_t<T> TNumber;
+    T value = static_cast<T>(static_cast<TNumber>(expected) == 0 ? 1 : 0);
+    TASWIniResult const result = TASWIniConverter<T>::FromText(text, value, TASWIniValueOptions());
+
+    CheckTrue(result.IsOk(), method, line, "\"" + text + "\" should read: " + result.Message);
+    CheckTrue(value == expected, method, line, "\"" + text + "\" should read as " + EnumNumber(expected) + ", not " +
+        EnumNumber(value));
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_EnumConverter::CheckRejected(std::string const& text, EIniCode code, std::string const& method,
+    int line)
+{
+    for (T const before : { static_cast<T>(0), static_cast<T>(1) })
+    {
+        T value = before;
+        TASWIniResult const result = TASWIniConverter<T>::FromText(text, value, TASWIniValueOptions());
+
+        CheckEquals(code, result.Code, method, line, "\"" + text + "\" should be " + ASWIni::ToString(code));
+        CheckContains(result.Message, ASWIni::Detail::MessageText(text), method, line,
+            "the message should quote \"" + text + "\"");
+        CheckTrue(value == before, method, line, "\"" + text + "\" should leave the value as it was");
+    }
+}
+//---------------------------------------------------------------------------
+template <typename T>
+void TTest_ASWIni_EnumConverter::CheckRoundTrip(std::initializer_list<T> values, std::string const& method, int line)
+{
+    for (T const value : values)
+    {
+        std::string text;
+        TASWIniResult const written = TASWIniConverter<T>::ToText(value, text, TASWIniValueOptions());
+
+        CheckTrue(written.IsOk(), method, line, EnumNumber(value) + " should be written: " + written.Message);
+        CheckReads<T>(text, value, method, line);
+    }
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_EnumConverter::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_EnumConverter::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_EnumConverter::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_EnumConverter::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, FromText_IgnoresCaseAndBlanks)
+{
+    // Act & Assert
+    CheckReads("red", EColor::Red, __func__, __LINE__);
+    CheckReads("GREEN", EColor::Green, __func__, __LINE__);
+    CheckReads("lIME", EColor::Green, __func__, __LINE__);
+    CheckReads(" Blue\t", EColor::Blue, __func__, __LINE__);
+    CheckReads("\t maximized ", TWindow::EState::Maximized, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, FromText_ReadsEveryName)
+{
+    // Act & Assert
+    // Every kind of names: an array (with a second name), a std::array (with a nullptr name), a std::vector, an
+    // unscoped enum's and a friend function
+    CheckReads("Red", EColor::Red, __func__, __LINE__);
+    CheckReads("Green", EColor::Green, __func__, __LINE__);
+    CheckReads("Blue", EColor::Blue, __func__, __LINE__);
+    CheckReads("Lime", EColor::Green, __func__, __LINE__);
+    CheckReads("Small", ESize::Small, __func__, __LINE__);
+    CheckReads("Medium", ESize::Medium, __func__, __LINE__);
+    CheckReads("Large", ESize::Large, __func__, __LINE__);
+    CheckReads("Off", EMode::Off, __func__, __LINE__);
+    CheckReads("Auto", EMode::Auto, __func__, __LINE__);
+    CheckReads("Manual", EMode::Manual, __func__, __LINE__);
+    CheckReads("One", PlainOne, __func__, __LINE__);
+    CheckReads("Two", PlainTwo, __func__, __LINE__);
+    CheckReads("Normal", TWindow::EState::Normal, __func__, __LINE__);
+    CheckReads("Maximized", TWindow::EState::Maximized, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, FromText_ReadsTheNumberOfAListedValue)
+{
+    // Act & Assert
+    // Read as the underlying type is: with a sign, in hex, with blanks around it
+    CheckReads("-1", EColor::Red, __func__, __LINE__);
+    CheckReads("2", EColor::Green, __func__, __LINE__);
+    CheckReads("40", EColor::Blue, __func__, __LINE__);
+    CheckReads("0x28", EColor::Blue, __func__, __LINE__);
+    CheckReads(" +2\t", EColor::Green, __func__, __LINE__);
+    CheckReads("255", ESize::Large, __func__, __LINE__);
+    CheckReads("2", PlainTwo, __func__, __LINE__);
+    CheckReads("1", TWindow::EState::Maximized, __func__, __LINE__);
+
+    // Medium's first entry has no name, but its second one lists it
+    CheckReads("1", ESize::Medium, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, FromText_RejectsOtherTexts)
+{
+    // Arrange
+    // Other names, names with more around them, an enumerator that isn't listed, the numbers of values that aren't
+    // listed or are outside the underlying type, and other number forms
+    std::string const texts[] = {
+        "", " ", "Purple", "Unlisted", "Re", "Reds", "Re d", "Red,", "Red Green", "\"Red\"", "Red;", "7", "3", "0",
+        "1.0", "2e0", "99999999999999999999", "-99999999999999999999", std::string("Red\0", 4), "R\xC3\xA9" "d",
+    };
+
+    // Act & Assert
+    for (std::string const& text : texts)
+        CheckRejected<EColor>(text, EIniCode::InvalidValue, __func__, __LINE__);
+
+    // A number outside the underlying type is InvalidValue too, not ValueOutOfRange, and so is the number of a value
+    // that is listed with no name only
+    CheckRejected<ESize>("-1", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<ESize>("256", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<ESize>("2", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<ESize>("200", EIniCode::InvalidValue, __func__, __LINE__);
+
+    // An enum without names reads nothing, its enumerator's number neither
+    CheckRejected<EEmpty>("Only", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<EEmpty>("0", EIniCode::InvalidValue, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, Messages_NameTheProblem)
+{
+    // Arrange
+    EColor color = EColor::Red;
+    ESize size = ESize::Small;
+    TWindow::EState state = TWindow::EState::Normal;
+    EEmpty empty = EEmpty::Only;
+    std::string text = "old";
+
+    // Act
+    TASWIniResult const colorRead = TASWIniConverter<EColor>::FromText("Purple", color, TASWIniValueOptions());
+    TASWIniResult const sizeRead = TASWIniConverter<ESize>::FromText("Giant", size, TASWIniValueOptions());
+    TASWIniResult const stateRead = TASWIniConverter<TWindow::EState>::FromText("Min", state, TASWIniValueOptions());
+    TASWIniResult const emptyRead = TASWIniConverter<EEmpty>::FromText("Only", empty, TASWIniValueOptions());
+    TASWIniResult const written = TASWIniConverter<EColor>::ToText(EColor::Unlisted, text, TASWIniValueOptions());
+
+    // Assert
+    // The names listed are those written: a second name of a value, or a nullptr one, isn't
+    CheckEquals(std::string("The value \"Purple\" isn't a name of the enum: it must be Red, Green or Blue."),
+        colorRead.Message, __func__, __LINE__, "the message should list the names written, without Lime");
+    CheckEquals(std::string("The value \"Giant\" isn't a name of the enum: it must be Small, Medium or Large."),
+        sizeRead.Message, __func__, __LINE__, "the message should list each value's name once");
+    CheckEquals(std::string("The value \"Min\" isn't a name of the enum: it must be Normal or Maximized."),
+        stateRead.Message, __func__, __LINE__, "the message should list two names with \"or\"");
+    CheckEquals(std::string("The value \"Only\" isn't a name of the enum: it has no names."), emptyRead.Message,
+        __func__, __LINE__, "the message should say that the enum has no names");
+    CheckEquals(std::string("The value \"7\" has no name in the enum's ASWIniEnumNames(), so it can't be written."),
+        written.Message, __func__, __LINE__, "the message should name the value's number");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, RoundTrip_EveryListedValue)
+{
+    // Act & Assert
+    CheckRoundTrip({ EColor::Red, EColor::Green, EColor::Blue }, __func__, __LINE__);
+    CheckRoundTrip({ ESize::Small, ESize::Medium, ESize::Large }, __func__, __LINE__);
+    CheckRoundTrip({ EMode::Off, EMode::Auto, EMode::Manual }, __func__, __LINE__);
+    CheckRoundTrip({ PlainOne, PlainTwo }, __func__, __LINE__);
+    CheckRoundTrip({ TWindow::EState::Normal, TWindow::EState::Maximized }, __func__, __LINE__);
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, ToText_UnnamedValueIsInvalid)
+{
+    // Arrange
+    // Enumerators that aren't listed or are listed with no name only, numbers that are no enumerator, and the
+    // enumerator of an enum without names
+    struct TCase
+    {
+        std::string Expected;
+        std::string Text;
+    };
+
+    TCase const cases[] = {
+        { Written(EColor::Unlisted), "\"7\"" },
+        { Written(static_cast<EColor>(-1000)), "\"-1000\"" },
+        { Written(static_cast<ESize>(2)), "\"2\"" },
+        { Written(ESize::Huge), "\"200\"" },
+        { Written(EEmpty::Only), "\"0\"" },
+    };
+
+    // Act & Assert
+    for (TCase const& c : cases)
+    {
+        CheckContains(c.Expected, "failed: The value " + c.Text + " has no name", __func__, __LINE__,
+            c.Text + " should fail with a message that quotes its number");
+    }
+
+    // The text is left as it was
+    std::string text = "old";
+    TASWIniResult const result = TASWIniConverter<EColor>::ToText(EColor::Unlisted, text, TASWIniValueOptions());
+    CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__, "an unnamed value should be InvalidValue");
+    CheckEquals(std::string("old"), text, __func__, __LINE__, "an unnamed value should leave the text as it was");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, ToText_WritesTheFirstName)
+{
+    // Act & Assert
+    // Written() starts from "old", so these also check that the text is replaced
+    CheckEquals(std::string("Red"), Written(EColor::Red), __func__, __LINE__, "Red");
+    CheckEquals(std::string("Green"), Written(EColor::Green), __func__, __LINE__, "Green, not its second name Lime");
+    CheckEquals(std::string("Blue"), Written(EColor::Blue), __func__, __LINE__, "Blue");
+    CheckEquals(std::string("Medium"), Written(ESize::Medium), __func__, __LINE__,
+        "Medium, whose first entry has no name");
+    CheckEquals(std::string("Large"), Written(ESize::Large), __func__, __LINE__, "Large");
+    CheckEquals(std::string("Manual"), Written(EMode::Manual), __func__, __LINE__, "Manual, from a std::vector");
+    CheckEquals(std::string("Two"), Written(PlainTwo), __func__, __LINE__, "PlainTwo, of an unscoped enum");
+    CheckEquals(std::string("Maximized"), Written(TWindow::EState::Maximized), __func__, __LINE__,
+        "Maximized, from a friend function");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, WithoutNames_ConvertsAsTheUnderlyingType)
+{
+    // Act & Assert
+    // Any number of the underlying type, an enumerator or not, as a number (not as a character or a bool's word)
+    CheckReads("3", static_cast<EFlags>(3), __func__, __LINE__);
+    CheckReads(" 0x2 ", EFlags::Write, __func__, __LINE__);
+    CheckReads("4294967295", static_cast<EFlags>(4294967295u), __func__, __LINE__);
+    CheckReads("-128", ESmall::Low, __func__, __LINE__);
+    CheckReads("127", ESmall::High, __func__, __LINE__);
+    CheckReads("1", ESwitch::On, __func__, __LINE__);
+    CheckReads("0", ESwitch::Off, __func__, __LINE__);
+    CheckReads("65535", static_cast<EWide>(65535), __func__, __LINE__);
+
+    CheckEquals(std::string("5"), Written(static_cast<EFlags>(5)), __func__, __LINE__, "flags that are no enumerator");
+    CheckEquals(std::string("-128"), Written(ESmall::Low), __func__, __LINE__, "a std::int8_t enum, as a number");
+    CheckEquals(std::string("1"), Written(ESwitch::On), __func__, __LINE__, "a bool enum, as a number");
+    CheckEquals(std::string("65"), Written(static_cast<EWide>(65)), __func__, __LINE__, "a char16_t enum, as a number");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_EnumConverter, WithoutNames_RejectsWhatTheUnderlyingTypeRejects)
+{
+    // Act & Assert
+    // The enumerators' names aren't known
+    CheckRejected<EFlags>("Read", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<ESwitch>("true", EIniCode::InvalidValue, __func__, __LINE__);
+    CheckRejected<EWide>("A", EIniCode::InvalidValue, __func__, __LINE__);
+
+    // The underlying type's range
+    CheckRejected<EFlags>("-1", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<EFlags>("4294967296", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<ESmall>("128", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<ESwitch>("2", EIniCode::ValueOutOfRange, __func__, __LINE__);
+    CheckRejected<EWide>("65536", EIniCode::ValueOutOfRange, __func__, __LINE__);
+
+    ESwitch value = ESwitch::Off;
+    TASWIniResult const result = TASWIniConverter<ESwitch>::FromText("2", value, TASWIniValueOptions());
+    CheckEquals(std::string("The value \"2\" is out of range: it must be 0 to 1."), result.Message, __func__,
+        __LINE__, "the message should name the underlying type's range");
 }
 //---------------------------------------------------------------------------
 
@@ -1247,6 +1694,7 @@ ASW_TEST(TTest_ASWIni_Converters, ValueFailure_MakesTheMessage)
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BoolConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_Converters, "Converters")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_EnumConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_FloatConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_IntegerConverter, "Converters")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_TextConverter, "Converters")

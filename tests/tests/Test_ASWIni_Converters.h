@@ -22,6 +22,7 @@ limitations under the License.
 #ifndef Test_ASWIni_ConvertersH
 #define Test_ASWIni_ConvertersH
 //---------------------------------------------------------------------------
+#include <initializer_list>
 #include <string>
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_TestBase.h"
@@ -59,6 +60,51 @@ public: // Test methods, each defined with ASW_TEST
 public:
     TTest_ASWIni_BoolConverter();
     ~TTest_ASWIni_BoolConverter() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_EnumConverter
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_EnumConverter : public TAutoTestGroup<TTest_ASWIni_EnumConverter>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_EnumConverter> inherited;
+
+private:
+    // Checks that 'text' reads as 'expected' of the enum T
+    template <typename T>
+    void CheckReads(std::string const& text, T expected, std::string const& method, int line);
+
+    // Checks that 'text' fails to read as the enum T with 'code' and a message that quotes it, leaving the value as it
+    // was
+    template <typename T>
+    void CheckRejected(std::string const& text, ASWIni::EIniCode code, std::string const& method, int line);
+
+    // Checks that each of 'values' of the enum T is written as a text that reads back as itself
+    template <typename T>
+    void CheckRoundTrip(std::initializer_list<T> values, std::string const& method, int line);
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_FromText_IgnoresCaseAndBlanks();
+    void Test_FromText_ReadsEveryName();
+    void Test_FromText_ReadsTheNumberOfAListedValue();
+    void Test_FromText_RejectsOtherTexts();
+    void Test_Messages_NameTheProblem();
+    void Test_RoundTrip_EveryListedValue();
+    void Test_ToText_UnnamedValueIsInvalid();
+    void Test_ToText_WritesTheFirstName();
+    void Test_WithoutNames_ConvertsAsTheUnderlyingType();
+    void Test_WithoutNames_RejectsWhatTheUnderlyingTypeRejects();
+
+public:
+    TTest_ASWIni_EnumConverter();
+    ~TTest_ASWIni_EnumConverter() override;
 
     void SetUp_Group() override;
     void SetUp_Test(ITestCase& testCase) override;

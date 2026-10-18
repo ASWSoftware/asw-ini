@@ -107,12 +107,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   digits after an optional sign, checked against the type's range; writes decimal), `float` and
   `double` (read digits with an optional `.` and exponent after an optional sign, or `inf`,
   `infinity` or `nan`; a number too large is out of range, one too small reads as 0; written as the
-  shortest text that reads back the same, as `std::to_chars()` writes it, e.g. `0.1`, `3`,
-  `1e+21`) and `std::string` (the text as it is). An application adds a converter for its own type
-  by specializing the template. A text that isn't a value of the type fails with the new code
-  `EIniCode::InvalidValue` (a number outside its type's range with `EIniCode::ValueOutOfRange`),
-  with a message that quotes the text, and leaves the value as it was. New source:
-  `ASWIni_Converters.cpp`.
+  shortest text that reads back the same, as `std::to_chars()` writes it, e.g. `0.1`, `3`, `1e+21`),
+  enums (by name when the application declares `ASWIniEnumNames()` next to the enum, which returns
+  its names as `TASWIniEnumName<T>` entries: reads a name in any case, or the number of a listed
+  value; writes the first name listed for the value, so the others are aliases that are only read;
+  an enum without `ASWIniEnumNames()` converts as its underlying integer type) and `std::string`
+  (the text as it is). An application adds a converter for its own type by specializing the
+  template. A text that isn't a value of the type fails with the new code `EIniCode::InvalidValue`
+  (a number outside its type's range with `EIniCode::ValueOutOfRange`), with a message that quotes
+  the text, and leaves the value as it was. New source: `ASWIni_Converters.cpp`.
 
   RAD Studio Win32 (bcc32c) converts `float` and `double` with the C runtime instead of
   `std::to_chars()`/`std::from_chars()`, which give wrong results there, reading with Windows'

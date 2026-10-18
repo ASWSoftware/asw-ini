@@ -797,6 +797,30 @@ std::string IntegerText(unsigned long long value)
     return std::string(digits + begin, sizeof(digits) - begin);
 }
 //---------------------------------------------------------------------------
+TASWIniResult InvalidEnumName(std::string_view text, std::vector<char const*> const& names)
+{
+    if (names.empty())
+        return ValueFailure(EIniCode::InvalidValue, text, "isn't a name of the enum: it has no names.");
+
+    std::string problem = "isn't a name of the enum: it must be ";
+    for (std::size_t i = 0; i < names.size(); ++i)
+    {
+        if (i > 0)
+            problem += i + 1 < names.size() ? ", " : " or ";
+
+        problem += names[i];
+    }
+
+    problem += '.';
+
+    return ValueFailure(EIniCode::InvalidValue, text, problem);
+}
+//---------------------------------------------------------------------------
+bool IsEnumName(std::string_view text, char const* name) noexcept
+{
+    return name != nullptr && EqualsNoCase(Trim(text), name);
+}
+//---------------------------------------------------------------------------
 std::string MessageText(std::string_view text)
 {
     // A long text is cut before a byte that starts a UTF-8 sequence (or is ASCII), so no sequence is split
@@ -874,6 +898,12 @@ TASWIniResult ReadUnsignedInteger(std::string_view text, unsigned long long max,
     value = magnitude;
 
     return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+TASWIniResult UnnamedEnumValue(std::string_view number)
+{
+    return ValueFailure(EIniCode::InvalidValue, number,
+        "has no name in the enum's ASWIniEnumNames(), so it can't be written.");
 }
 //---------------------------------------------------------------------------
 TASWIniResult ValueFailure(EIniCode code, std::string_view text, std::string_view problem)

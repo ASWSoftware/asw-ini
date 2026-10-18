@@ -6,8 +6,10 @@ An INI file reader/writer library.
 
 TASWIniConverter<T>, which converts a typed value to and from the text of an
 INI value, as the value options (TASWIniValueOptions) say. The library has
-converters for std::string, bool, the integer types, float and double; an
-application can add its own by specializing TASWIniConverter for its type.
+converters for std::string, bool, the integer types, float, double and enums
+(by name when the application gives the enum names, see TASWIniEnumName, else
+as numbers); an application can add its own by specializing TASWIniConverter
+for its type.
 Conversions don't depend on the C or C++ locale.
 
 Requires C++ 17 or higher.
@@ -33,11 +35,14 @@ limitations under the License.
 #ifndef ASWIni_ConvertersH
 #define ASWIni_ConvertersH
 //---------------------------------------------------------------------------
+#include <algorithm>
 #include <cstddef>
 #include <limits>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
+#include <vector>
 //---------------------------------------------------------------------------
 #include "ASWIni_Options.h"
 #include "ASWIni_Types.h"
@@ -78,6 +83,40 @@ namespace ASWIni
 template <typename T, typename Enable = void>
 struct TASWIniConverter;
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniEnumName
+//
+// One name of a value of the enum T, in the names an application gives an enum so that it is converted by name (see
+// TASWIniConverter<enums with names>). The application declares a function ASWIniEnumNames() next to the enum, in the
+// enum's namespace (or, for an enum declared in a class, as a friend in that class), so argument-dependent lookup
+// finds it. Its argument only selects it, and it returns anything a range-based for loop can go over that gives
+// TASWIniEnumName<T>s: a reference to an array or a std::array, or a std::vector. A value may have several names: the
+// first one listed is written, and the others are read too (e.g. an old name). A name is compared with the ASCII
+// letters' case ignored; one that is nullptr is skipped, and one that is empty or has blanks at either end never
+// matches.
+//
+//     enum class EColor { Red, Green, Blue };
+//
+//     inline auto const& ASWIniEnumNames(EColor)
+//     {
+//         static constexpr ASWIni::TASWIniEnumName<EColor> names[] = {
+//             { EColor::Red, "Red" }, { EColor::Green, "Green" }, { EColor::Blue, "Blue" },
+//             { EColor::Green, "Lime" }, // Read as Green, never written
+//         };
+//
+//         return names;
+//     }
+/////////////////////////////////////////////////////////////////////////////
+template <typename T>
+struct TASWIniEnumName
+{
+    static_assert(std::is_enum_v<T>, "TASWIniEnumName is for enums");
+
+    T Value;
+    char const* Name;
+};
+
 //---------------------------------------------------------------------------
 
 // Helpers of the converters' templates
@@ -93,6 +132,18 @@ enum class EFloatConversion : int
     CRuntime = 1, // snprintf() for the digits, and strtold() narrowed to the type
     UniversalCrt = 2, // As CRuntime, but read with the Windows Universal C Runtime's exact _strtod_l() and _strtof_l()
                       // (ucrtbase.dll) when Windows has it; CRuntime elsewhere
+};
+
+// Whether argument-dependent lookup finds ASWIniEnumNames() for a T (see TASWIniEnumName); IsNamedEnum says it for
+// enums only
+template <typename T, typename Enable = void>
+struct THasEnumNames : std::false_type
+{
+};
+
+template <typename T>
+struct THasEnumNames<T, std::void_t<decltype(ASWIniEnumNames(std::declval<T>()))> > : std::true_type
+{
 };
 
 // The conversion the float and double converters use
@@ -117,6 +168,11 @@ template <typename T>
 constexpr bool IsConvertibleInteger = std::is_integral_v<T> && !std::is_same_v<T, bool> &&
     !std::is_same_v<T, wchar_t> && !std::is_same_v<T, char16_t> && !std::is_same_v<T, char32_t> && !IsChar8<T>;
 
+// Whether T is an enum with names: one for which argument-dependent lookup finds ASWIniEnumNames() (see
+// TASWIniEnumName)
+template <typename T>
+constexpr bool IsNamedEnum = std::is_enum_v<T> && THasEnumNames<T>::value;
+
 // The longest part of a value's text a message quotes (see MessageText())
 constexpr std::size_t MaxMessageTextSize = 40;
 
@@ -127,6 +183,14 @@ std::string FloatingPointText(float value, EFloatConversion conversion);
 // 'value' as decimal digits, with '-' when it is negative
 std::string IntegerText(long long value);
 std::string IntegerText(unsigned long long value);
+
+// The InvalidValue result of an enum with names reading 'text', which is none of its names (see
+// TASWIniConverter<enums with names>): the message lists 'names', the names the enum's values are written as
+TASWIniResult InvalidEnumName(std::string_view text, std::vector<char const*> const& names);
+
+// Whether 'text', without the spaces and tabs around it, is 'name' with the ASCII letters' case ignored (never when
+// 'name' is nullptr)
+bool IsEnumName(std::string_view text, char const* name) noexcept;
 
 // 'text' as a message quotes it: in double quotes, with each control character (below 0x20, and 0x7F) as '?', and,
 // when it has more than MaxMessageTextSize bytes, cut to at most that many (not inside a UTF-8 sequence) and
@@ -144,9 +208,59 @@ TASWIniResult ReadFloatingPoint(std::string_view text, float& value, EFloatConve
 TASWIniResult ReadSignedInteger(std::string_view text, long long min, long long max, long long& value);
 TASWIniResult ReadUnsignedInteger(std::string_view text, unsigned long long max, unsigned long long& value);
 
+// The InvalidValue result of an enum with names writing a value that has no name, whose number is 'number'
+TASWIniResult UnnamedEnumValue(std::string_view number);
+
 // A failed result with 'code' and the message "The value <text> <problem>", e.g. ValueFailure(InvalidValue, "maybe",
 // "isn't a bool: it must be true, false, yes, no, on, off, 1 or 0.")
 TASWIniResult ValueFailure(EIniCode code, std::string_view text, std::string_view problem);
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TIntegerConverter
+//
+// Converts any integral type T as a number, as TASWIniConverter<integer types> describes, so bool and the character
+// types too: the integer converters are this one, and the enum converters use it for an enum's underlying type
+/////////////////////////////////////////////////////////////////////////////
+template <typename T>
+struct TIntegerConverter
+{
+    static_assert(std::is_integral_v<T>, "TIntegerConverter is for integral types");
+
+    static TASWIniResult FromText(std::string_view text, T& value, TASWIniValueOptions const& /*options*/)
+    {
+        // Read as the widest type of the same signedness, then checked against T's range
+        if constexpr (std::is_signed_v<T>)
+        {
+            long long read = 0;
+            TASWIniResult result = ReadSignedInteger(text, std::numeric_limits<T>::min(),
+                std::numeric_limits<T>::max(), read);
+            if (result.IsOk())
+                value = static_cast<T>(read);
+
+            return result;
+        }
+        else
+        {
+            unsigned long long read = 0;
+            TASWIniResult result = ReadUnsignedInteger(text, std::numeric_limits<T>::max(), read);
+            if (result.IsOk())
+                value = static_cast<T>(read);
+
+            return result;
+        }
+    }
+
+    static TASWIniResult ToText(T value, std::string& text, TASWIniValueOptions const& /*options*/)
+    {
+        if constexpr (std::is_signed_v<T>)
+            text = IntegerText(static_cast<long long>(value));
+        else
+            text = IntegerText(static_cast<unsigned long long>(value));
+
+        return TASWIniResult();
+    }
+};
 
 } // namespace Detail
 
@@ -191,41 +305,8 @@ struct TASWIniConverter<std::string>
 // std::int32_t). Writes decimal digits, with '-' when negative.
 /////////////////////////////////////////////////////////////////////////////
 template <typename T>
-struct TASWIniConverter<T, std::enable_if_t<Detail::IsConvertibleInteger<T> > >
+struct TASWIniConverter<T, std::enable_if_t<Detail::IsConvertibleInteger<T> > > : Detail::TIntegerConverter<T>
 {
-    static TASWIniResult FromText(std::string_view text, T& value, TASWIniValueOptions const& /*options*/)
-    {
-        // Read as the widest type of the same signedness, then checked against T's range
-        if constexpr (std::is_signed_v<T>)
-        {
-            long long read = 0;
-            TASWIniResult result = Detail::ReadSignedInteger(text, std::numeric_limits<T>::min(),
-                std::numeric_limits<T>::max(), read);
-            if (result.IsOk())
-                value = static_cast<T>(read);
-
-            return result;
-        }
-        else
-        {
-            unsigned long long read = 0;
-            TASWIniResult result = Detail::ReadUnsignedInteger(text, std::numeric_limits<T>::max(), read);
-            if (result.IsOk())
-                value = static_cast<T>(read);
-
-            return result;
-        }
-    }
-
-    static TASWIniResult ToText(T value, std::string& text, TASWIniValueOptions const& /*options*/)
-    {
-        if constexpr (std::is_signed_v<T>)
-            text = Detail::IntegerText(static_cast<long long>(value));
-        else
-            text = Detail::IntegerText(static_cast<unsigned long long>(value));
-
-        return TASWIniResult();
-    }
 };
 
 
@@ -260,6 +341,121 @@ struct TASWIniConverter<float>
 {
     static TASWIniResult FromText(std::string_view text, float& value, TASWIniValueOptions const& options);
     static TASWIniResult ToText(float value, std::string& text, TASWIniValueOptions const& options);
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<enums with names>
+//
+// An enum for which argument-dependent lookup finds ASWIniEnumNames() (see TASWIniEnumName). Reads one of its names,
+// with the ASCII letters' case and the spaces and tabs around the text ignored, or else the number of a listed value
+// (read as TASWIniConverter<integer types> reads a number of the underlying type), so a file that stored the number
+// still reads. Anything else is InvalidValue, a number that isn't a listed value's too, with a message that lists the
+// names. Writes the first name listed for the value; a value with no name is InvalidValue, since it couldn't be read
+// back.
+/////////////////////////////////////////////////////////////////////////////
+template <typename T>
+struct TASWIniConverter<T, std::enable_if_t<Detail::IsNamedEnum<T> > >
+{
+private:
+    typedef std::underlying_type_t<T> TNumber;
+
+    // The names the values in 'names' are written as: the first name listed for each value, in the order listed
+    template <typename TNames>
+    static std::vector<char const*> WrittenNames(TNames const& names)
+    {
+        std::vector<char const*> written;
+        std::vector<T> values;
+        for (auto const& name : names)
+        {
+            if (name.Name != nullptr && std::find(values.begin(), values.end(), name.Value) == values.end())
+            {
+                written.push_back(name.Name);
+                values.push_back(name.Value);
+            }
+        }
+
+        return written;
+    }
+
+public:
+    static TASWIniResult FromText(std::string_view text, T& value, TASWIniValueOptions const& options)
+    {
+        auto const& names = ASWIniEnumNames(T());
+        for (auto const& name : names)
+        {
+            if (Detail::IsEnumName(text, name.Name))
+            {
+                value = name.Value;
+                return TASWIniResult();
+            }
+        }
+
+        // The number of a listed value
+        TNumber number = TNumber();
+        if (Detail::TIntegerConverter<TNumber>::FromText(text, number, options).IsOk())
+        {
+            for (auto const& name : names)
+            {
+                if (name.Name != nullptr && name.Value == static_cast<T>(number))
+                {
+                    value = name.Value;
+                    return TASWIniResult();
+                }
+            }
+        }
+
+        return Detail::InvalidEnumName(text, WrittenNames(names));
+    }
+
+    static TASWIniResult ToText(T value, std::string& text, TASWIniValueOptions const& options)
+    {
+        for (auto const& name : ASWIniEnumNames(T()))
+        {
+            if (name.Name != nullptr && name.Value == value)
+            {
+                text = name.Name;
+                return TASWIniResult();
+            }
+        }
+
+        // The value's number, for the message (writing a number never fails)
+        std::string number;
+        static_cast<void>(Detail::TIntegerConverter<TNumber>::ToText(static_cast<TNumber>(value), number, options));
+
+        return Detail::UnnamedEnumValue(number);
+    }
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<enums without names>
+//
+// An enum for which argument-dependent lookup finds no ASWIniEnumNames() converts as a number of its underlying type,
+// as TASWIniConverter<integer types> describes (an underlying bool or character type is a number too), whether the
+// number is one of its enumerators or not (e.g. bit flags: "5" is the value 5)
+/////////////////////////////////////////////////////////////////////////////
+template <typename T>
+struct TASWIniConverter<T, std::enable_if_t<std::is_enum_v<T> && !Detail::IsNamedEnum<T> > >
+{
+private:
+    typedef std::underlying_type_t<T> TNumber;
+
+public:
+    static TASWIniResult FromText(std::string_view text, T& value, TASWIniValueOptions const& options)
+    {
+        TNumber number = TNumber();
+        TASWIniResult result = Detail::TIntegerConverter<TNumber>::FromText(text, number, options);
+        if (result.IsOk())
+            value = static_cast<T>(number);
+
+        return result;
+    }
+
+    static TASWIniResult ToText(T value, std::string& text, TASWIniValueOptions const& options)
+    {
+        return Detail::TIntegerConverter<TNumber>::ToText(static_cast<TNumber>(value), text, options);
+    }
 };
 
 } // namespace ASWIni

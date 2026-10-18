@@ -29,6 +29,7 @@ limitations under the License.
 #include "ASWUnitTests_TestBase.h"
 //---------------------------------------------------------------------------
 #include "ASWIni_Options.h"
+#include "ASWIni_Platform.h"
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
 
@@ -287,8 +288,19 @@ private:
     typedef TAutoTestGroup<TTest_ASWIni_TextConverter> inherited;
 
 public: // Test methods, each defined with ASW_TEST
+    void Test_Path_FromTextIsUtf8OnEveryPlatform();
+    void Test_Path_FromTextKeepsTheTextExactly();
+    void Test_Path_FromTextRejectsInvalidUtf8();
+    void Test_Path_RoundTripsInAList();
+    void Test_Path_ToTextRejectsWhatWouldNotReadBack();
+    void Test_Path_ToTextWritesUtf8();
     void Test_String_FromTextKeepsTheTextExactly();
     void Test_String_ToTextWritesTheValueExactly();
+#if ASWINI_HAS_U8STRING
+    void Test_U8String_FromTextKeepsTheBytesExactly();
+    void Test_U8String_RoundTripsInAList();
+    void Test_U8String_ToTextWritesTheBytesExactly();
+#endif
 
 public:
     TTest_ASWIni_TextConverter();

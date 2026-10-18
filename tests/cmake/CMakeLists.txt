@@ -44,6 +44,7 @@ add_executable(ASWIniTests
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Document.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_File.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Options.cpp"
+    "${ASWINI_TESTS_DIR}/Test_ASWIni_Platform.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Types.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Utils.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Version.cpp"

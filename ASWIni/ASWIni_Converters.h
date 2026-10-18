@@ -6,10 +6,11 @@ An INI file reader/writer library.
 
 TASWIniConverter<T>, which converts a typed value to and from the text of an
 INI value, as the value options (TASWIniValueOptions) say. The library has
-converters for std::string, bool, the integer types, float, double, enums (by
-name when the application gives the enum names, see TASWIniEnumName, else as
-numbers) and std::vector of any of them (lists, also of lists); an application
-can add its own by specializing TASWIniConverter for its type.
+converters for std::string, std::filesystem::path, std::u8string (C++20),
+bool, the integer types, float, double, enums (by name when the application
+gives the enum names, see TASWIniEnumName, else as numbers) and std::vector of
+any of them (lists, also of lists); an application can add its own by
+specializing TASWIniConverter for its type.
 Conversions don't depend on the C or C++ locale.
 
 Requires C++ 17 or higher.
@@ -37,6 +38,7 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -45,6 +47,7 @@ limitations under the License.
 #include <vector>
 //---------------------------------------------------------------------------
 #include "ASWIni_Options.h"
+#include "ASWIni_Platform.h"
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
 
@@ -310,6 +313,53 @@ struct TASWIniConverter<std::string>
     static TASWIniResult FromText(std::string_view text, std::string& value, TASWIniValueOptions const& options);
     static TASWIniResult ToText(std::string const& value, std::string& text, TASWIniValueOptions const& options);
 };
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<std::filesystem::path>
+//
+// The text, as it is (blanks too), is the path in UTF-8 on every platform, whatever the standard library makes of a
+// narrow string (Windows libraries differ: the ANSI code page or UTF-8). Writes the path as it holds it, separators
+// included ("C:\Temp\app.ini" on Windows stays so). A text that isn't valid UTF-8 is InvalidValue, and so is a path
+// whose UTF-8 form wouldn't read back as the same path (an unpaired surrogate in a Windows path, or bytes that aren't
+// UTF-8 in a POSIX one), so what is written always reads back the same.
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<std::filesystem::path>
+{
+    static TASWIniResult FromText(std::string_view text, std::filesystem::path& value,
+        TASWIniValueOptions const& options);
+    static TASWIniResult ToText(std::filesystem::path const& value, std::string& text,
+        TASWIniValueOptions const& options);
+};
+
+#if ASWINI_HAS_U8STRING
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<std::u8string>
+//
+// C++20 (see ASWINI_HAS_U8STRING). As TASWIniConverter<std::string>: the text's bytes as they are, both ways. Defined
+// here, so it is there when an application is compiled at C++20 and the library at C++17.
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<std::u8string>
+{
+    static TASWIniResult FromText(std::string_view text, std::u8string& value, TASWIniValueOptions const& /*options*/)
+    {
+        value.assign(text.begin(), text.end());
+
+        return TASWIniResult();
+    }
+
+    static TASWIniResult ToText(std::u8string const& value, std::string& text, TASWIniValueOptions const& /*options*/)
+    {
+        text.assign(value.begin(), value.end());
+
+        return TASWIniResult();
+    }
+};
+
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////

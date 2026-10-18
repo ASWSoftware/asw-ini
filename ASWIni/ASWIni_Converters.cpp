@@ -29,6 +29,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -52,6 +53,7 @@ limitations under the License.
 #  endif
 #endif
 //---------------------------------------------------------------------------
+#include "ASWIni_File.h"
 #include "ASWIni_Utils.h"
 //---------------------------------------------------------------------------
 
@@ -1181,6 +1183,40 @@ TASWIniResult TASWIniConverter<std::string>::ToText(std::string const& value, st
     TASWIniValueOptions const& /*options*/)
 {
     text = value;
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<std::filesystem::path>
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniConverter<std::filesystem::path>::FromText(std::string_view text, std::filesystem::path& value,
+    TASWIniValueOptions const& /*options*/)
+{
+    // Windows would make each invalid sequence U+FFFD, and a POSIX system would take the bytes as they are
+    if (!Detail::IsValidUtf8(text))
+        return Detail::ValueFailure(EIniCode::InvalidValue, text, "isn't a path: it isn't valid UTF-8.");
+
+    value = Detail::Utf8ToPath(text);
+
+    return TASWIniResult();
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWIniConverter<std::filesystem::path>::ToText(std::filesystem::path const& value, std::string& text,
+    TASWIniValueOptions const& /*options*/)
+{
+    std::string written = Detail::PathToUtf8(value);
+    if (!Detail::IsValidUtf8(written) || Detail::Utf8ToPath(written) != value)
+    {
+        return Detail::ValueFailure(EIniCode::InvalidValue, written,
+            "is a path that isn't valid Unicode, so it can't be written to read back the same.");
+    }
+
+    text = std::move(written);
 
     return TASWIniResult();
 }

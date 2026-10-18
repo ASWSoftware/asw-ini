@@ -31,6 +31,7 @@ limitations under the License.
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <initializer_list>
 #include <limits>
 #include <string>
@@ -40,6 +41,7 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWIni_Converters.h"
 #include "ASWIni_Document.h"
+#include "ASWIni_File.h"
 //---------------------------------------------------------------------------
 
 // Only the integral types that aren't bool or wide or Unicode characters are converted as integers. Plain char is one
@@ -235,6 +237,9 @@ std::vector<std::vector<std::string> > ListsOfItems(std::size_t maxSize);
 std::uint64_t NextRandom(std::uint64_t& state);
 template <typename T>
 std::string NumberText(T value);
+#if ASWINI_HAS_U8STRING
+std::u8string U8(std::string_view bytes);
+#endif
 template <typename T>
 std::string Written(T const& value, TASWIniValueOptions const& options = TASWIniValueOptions());
 
@@ -402,6 +407,18 @@ std::string NumberText(T value)
     return std::to_string(+value);
 }
 //---------------------------------------------------------------------------
+#if ASWINI_HAS_U8STRING
+/*
+    U8
+
+    'bytes' as a std::u8string (the same bytes); u8"" literals aren't used for non-ASCII test data.
+*/
+std::u8string U8(std::string_view bytes)
+{
+    return std::u8string(bytes.begin(), bytes.end());
+}
+//---------------------------------------------------------------------------
+#endif
 /*
     Written
 
@@ -1952,6 +1969,168 @@ void TTest_ASWIni_TextConverter::TearDown_Test(ITestCase& /*testCase*/)
 // /////// Begin tests after this line ///////////////////////
 
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_FromTextIsUtf8OnEveryPlatform)
+{
+    // Arrange
+    // "cafe" with an e acute (U+00E9), and a grinning face (U+1F600, a surrogate pair in UTF-16)
+    std::string const text = "caf\xC3\xA9 \xF0\x9F\x98\x80";
+    std::filesystem::path value;
+
+    // Act
+    TASWIniResult const result = TASWIniConverter<std::filesystem::path>::FromText(text, value,
+        TASWIniValueOptions());
+
+    // Assert
+    // Not the ANSI code page, as a narrow string is with some Windows standard libraries
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the path should be read: " + result.Message);
+#if defined(_WIN32)
+    CheckTrue(value.wstring() == std::wstring(L"caf\x00E9 \xD83D\xDE00"), __func__, __LINE__,
+        "the path should be the text's characters");
+#else
+    CheckTrue(value.string() == text, __func__, __LINE__, "the path should be the text's bytes");
+#endif
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_FromTextKeepsTheTextExactly)
+{
+    // Arrange
+    // Blanks, quotes and comment prefixes stay, and the separators are the platform's (bcc32c makes each '/' in a
+    // Windows path a '\')
+    std::string const texts[] = {
+        std::string(), " a ", "\"q\"", "x=y ; z",
+#if defined(_WIN32)
+        "C:\\Temp\\App Data\\app.ini", "..\\a, b",
+#else
+        "/home/user/.config/app.ini", "../a, b",
+#endif
+    };
+
+    // Act & Assert
+    // The previous value is replaced
+    for (std::string const& text : texts)
+    {
+        std::filesystem::path value = "previous";
+        TASWIniResult const result = TASWIniConverter<std::filesystem::path>::FromText(text, value,
+            TASWIniValueOptions());
+
+        CheckTrue(result.IsOk(), __func__, __LINE__, "\"" + text + "\" should be read: " + result.Message);
+        CheckEquals(text, ASWIni::Detail::PathToUtf8(value), __func__, __LINE__, "the path should be the text exactly");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_FromTextRejectsInvalidUtf8)
+{
+    // Arrange
+    // A truncated sequence, a byte that is never UTF-8, an encoded surrogate, an overlong form, and a value above
+    // U+10FFFF
+    std::string const texts[] = { "\xC3", "a\xFF" "b", "\xED\xA0\x80", "\xC0\xAF", "\xF4\x90\x80\x80" };
+
+    // Act & Assert
+    for (std::string const& text : texts)
+    {
+        std::filesystem::path value = "previous";
+        TASWIniResult const result = TASWIniConverter<std::filesystem::path>::FromText(text, value,
+            TASWIniValueOptions());
+
+        CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__, "invalid UTF-8 should be InvalidValue");
+        CheckEquals("The value " + ASWIni::Detail::MessageText(text) + " isn't a path: it isn't valid UTF-8.",
+            result.Message, __func__, __LINE__, "the message should quote the text and say why");
+        CheckTrue(value == std::filesystem::path("previous"), __func__, __LINE__,
+            "invalid UTF-8 should leave the path as it was");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_RoundTripsInAList)
+{
+    // Arrange
+    // Recent files: with blanks, the list's delimiter, non-ASCII characters, and an empty path
+#if defined(_WIN32)
+    std::vector<std::filesystem::path> const paths = {
+        std::filesystem::path(L"C:\\My Files\\a, b.ini"), std::filesystem::path(L"D:\\caf\x00E9\\\xD83D\xDE00.txt"),
+        std::filesystem::path(), std::filesystem::path(L" x "),
+    };
+#else
+    std::vector<std::filesystem::path> const paths = {
+        std::filesystem::path("/home/my files/a, b.ini"), std::filesystem::path("/caf\xC3\xA9/\xF0\x9F\x98\x80.txt"),
+        std::filesystem::path(), std::filesystem::path(" x "),
+    };
+#endif
+    std::string text;
+    std::vector<std::filesystem::path> readBack;
+
+    // Act
+    TASWIniResult const written = TASWIniConverter<std::vector<std::filesystem::path> >::ToText(paths, text,
+        TASWIniValueOptions());
+    TASWIniResult const read = TASWIniConverter<std::vector<std::filesystem::path> >::FromText(text, readBack,
+        TASWIniValueOptions());
+
+    // Assert
+    CheckTrue(written.IsOk() && read.IsOk(), __func__, __LINE__, "the list should be written and read: " +
+        written.Message + read.Message);
+    CheckTrue(readBack == paths, __func__, __LINE__, "the list \"" + text + "\" should read back as the paths");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_ToTextRejectsWhatWouldNotReadBack)
+{
+    // Arrange
+    // Windows: a path with an unpaired surrogate (UTF-16 that isn't valid, which NTFS allows), high and low; elsewhere,
+    // a path with bytes that aren't UTF-8
+#if defined(_WIN32)
+    std::wstring high = L"a";
+    high += static_cast<wchar_t>(0xD800);
+    high += L"b";
+    std::wstring low = L"a";
+    low += static_cast<wchar_t>(0xDC00);
+    std::filesystem::path const paths[] = { std::filesystem::path(high), std::filesystem::path(low) };
+#else
+    std::filesystem::path const paths[] = { std::filesystem::path("a\xFF" "b"), std::filesystem::path("\xC3") };
+#endif
+
+    // Act & Assert
+    for (std::filesystem::path const& path : paths)
+    {
+        std::string text = "old";
+        TASWIniResult const result = TASWIniConverter<std::filesystem::path>::ToText(path, text,
+            TASWIniValueOptions());
+
+        CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__,
+            "a path that wouldn't read back should be InvalidValue");
+        CheckContains(result.Message, "is a path that isn't valid Unicode, so it can't be written to read back the "
+            "same.", __func__, __LINE__, "the message should say why");
+        CheckEquals(std::string("old"), text, __func__, __LINE__, "the text should be left as it was");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, Path_ToTextWritesUtf8)
+{
+    // Arrange
+    // A path as the platform holds it: on Windows in UTF-16, with its own separators
+    struct TCase
+    {
+        std::filesystem::path Path;
+        std::string Expected;
+    };
+
+#if defined(_WIN32)
+    TCase const cases[] = {
+        { std::filesystem::path(L"caf\x00E9 \xD83D\xDE00"), "caf\xC3\xA9 \xF0\x9F\x98\x80" },
+        { std::filesystem::path(L"C:\\Temp\\app.ini"), "C:\\Temp\\app.ini" },
+        { std::filesystem::path(), "" },
+    };
+#else
+    TCase const cases[] = {
+        { std::filesystem::path("caf\xC3\xA9 \xF0\x9F\x98\x80"), "caf\xC3\xA9 \xF0\x9F\x98\x80" },
+        { std::filesystem::path("/tmp/app.ini"), "/tmp/app.ini" },
+        { std::filesystem::path(), "" },
+    };
+#endif
+
+    // Act & Assert
+    // Written() starts from "old", so these also check that the text is replaced
+    for (TCase const& c : cases)
+        CheckEquals(c.Expected, Written(c.Path), __func__, __LINE__, "the path should be written as UTF-8");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_TextConverter, String_FromTextKeepsTheTextExactly)
 {
     // Arrange
@@ -1985,6 +2164,62 @@ ASW_TEST(TTest_ASWIni_TextConverter, String_ToTextWritesTheValueExactly)
     }
 }
 //---------------------------------------------------------------------------
+#if ASWINI_HAS_U8STRING
+ASW_TEST(TTest_ASWIni_TextConverter, U8String_FromTextKeepsTheBytesExactly)
+{
+    // Arrange
+    // Blanks, quotes, comment prefixes, NUL and UTF-8 all stay
+    std::string const texts[] = {
+        std::string(), " a ", "\t", "\"q\"", "x=y ; z", std::string("a\0b", 3), "\xC3\xA9t\xC3\xA9",
+    };
+
+    // Act & Assert
+    // The previous value is replaced
+    for (std::string const& text : texts)
+    {
+        std::u8string value = U8("previous");
+        TASWIniResult const result = TASWIniConverter<std::u8string>::FromText(text, value, TASWIniValueOptions());
+
+        CheckTrue(result.IsOk(), __func__, __LINE__, "reading a std::u8string should never fail");
+        CheckTrue(value == U8(text), __func__, __LINE__, "the value should be the text's bytes exactly");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, U8String_RoundTripsInAList)
+{
+    // Arrange
+    std::vector<std::u8string> const values = { U8("a, b"), U8("\xC3\xA9t\xC3\xA9"), U8(""), U8(" \"q\" ") };
+    std::string text;
+    std::vector<std::u8string> readBack;
+
+    // Act
+    TASWIniResult const written = TASWIniConverter<std::vector<std::u8string> >::ToText(values, text,
+        TASWIniValueOptions());
+    TASWIniResult const read = TASWIniConverter<std::vector<std::u8string> >::FromText(text, readBack,
+        TASWIniValueOptions());
+
+    // Assert
+    CheckTrue(written.IsOk() && read.IsOk(), __func__, __LINE__, "the list should be written and read");
+    CheckTrue(readBack == values, __func__, __LINE__, "the list \"" + text + "\" should read back as the values");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_TextConverter, U8String_ToTextWritesTheBytesExactly)
+{
+    // Arrange
+    std::string const values[] = { std::string(), " a ", std::string("a\0b", 3), "\xC3\xA9t\xC3\xA9" };
+
+    // Act & Assert
+    for (std::string const& bytes : values)
+    {
+        std::string text = "previous";
+        TASWIniResult const result = TASWIniConverter<std::u8string>::ToText(U8(bytes), text, TASWIniValueOptions());
+
+        CheckTrue(result.IsOk(), __func__, __LINE__, "writing a std::u8string should never fail");
+        CheckEquals(bytes, text, __func__, __LINE__, "the text should be the value's bytes exactly");
+    }
+}
+//---------------------------------------------------------------------------
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////

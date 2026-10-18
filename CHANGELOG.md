@@ -101,8 +101,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   read back as one CRLF line break), that line gets a CRLF line break instead.
 - `TASWIniConverter<T>` (`ASWIni_Converters.h`), which converts a typed value to and from the text
   of an INI value as `TASWIniOptions::Values` says, the same in any locale: `bool` (reads `true`,
-  `false`, `yes`, `no`, `on`, `off`, `1` and `0` in any case; writes the `Values.BoolFormat` form)
-  and `std::string` (the text as it is). An application adds a converter for its own type by
+  `false`, `yes`, `no`, `on`, `off`, `1` and `0` in any case; writes the `Values.BoolFormat` form),
+  the integer types (every integral type except `bool`, `wchar_t`, `char8_t`, `char16_t` and
+  `char32_t`, so `char`, `std::int8_t` and `std::uint8_t` are numbers; reads decimal or `0x` hex
+  digits after an optional sign, checked against the type's range; writes decimal) and
+  `std::string` (the text as it is). An application adds a converter for its own type by
   specializing the template. A text that isn't a value of the type fails with the new code
   `EIniCode::InvalidValue` (a number outside its type's range with `EIniCode::ValueOutOfRange`),
   with a message that quotes the text, and leaves the value as it was. New source:

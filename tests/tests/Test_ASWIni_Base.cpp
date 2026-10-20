@@ -29,19 +29,33 @@ limitations under the License.
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 #include <type_traits>
 #include <vector>
 //---------------------------------------------------------------------------
+#if defined(_WIN32)
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  include <windows.h>
+#endif
+//---------------------------------------------------------------------------
 #include "ASWIni_Base.h"
+#include "ASWIni_File.h"
 #include "ASWIni_Version.h"
 #include "UT_Helper_FailingAlloc.h"
+#include "UT_Helper_TempDir.h"
 //---------------------------------------------------------------------------
 
 // Neither copyable nor movable
@@ -50,17 +64,26 @@ static_assert(!std::is_move_constructible_v<ASWIni::TASWBaseIni>, "TASWBaseIni s
 static_assert(!std::is_copy_constructible_v<ASWIni::Detail::TMutex>, "TMutex shouldn't be copyable");
 static_assert(!std::is_copy_constructible_v<ASWIni::Detail::TSharedMutex>, "TSharedMutex shouldn't be copyable");
 
+// Load() swaps a document in, and gives the object the file path, after the point where an exception would make it
+// change nothing
+static_assert(std::is_nothrow_move_assignable_v<ASWIni::TASWIniDocument>,
+    "a TASWIniDocument should move without throwing");
+static_assert(std::is_nothrow_move_assignable_v<std::string>, "a std::string should move without throwing");
+
 namespace ASWUnitTests
 {
 
+using ASWIni::Detail::PathToUtf8;
 using ASWIni::EBoolFormat;
 using ASWIni::EIniCode;
 using ASWIni::ESeverity;
+using ASWIni::TASWBaseIni;
 using ASWIni::TASWIniDocument;
 using ASWIni::TASWIniLogCallback;
 using ASWIni::TASWIniMessage;
 using ASWIni::TASWIniOptions;
 using ASWIni::TASWIniResult;
+using ASWIni::TASWIniSavingOptions;
 
 namespace
 {
@@ -90,28 +113,76 @@ constexpr char const* WarningsText =
     "k = 1\n"
     "k = 2\n";
 
+// A text with bytes a text-mode read or write would change, which a load and a save keep: a byte order mark, CRLF,
+// LF and CR line breaks, a tab, a Ctrl+Z, invalid UTF-8, and no line break at the end
+constexpr char const* TrickyText =
+    "\xEF\xBB\xBF; Settings\r\n"
+    "[A]\r\n"
+    "k = v\n"
+    "\tx=1\r"
+    "[B]\r\n"
+    "name = caf\xC3\xA9\r\n"
+    "bad = \xFF\x1A\r\n"
+    "last = no line break";
+
 // How long a test waits for another thread before it counts as stuck
 constexpr std::chrono::seconds ThreadTimeout(10);
 
 
 /////////////////////////////////////////////////////////////////////////////
-// TTestIni
+// TReadCall
 //
-// A TASWBaseIni with Load(), Save() and SaveAs(), which these tests don't use, failing with InvalidArgument
+// The arguments of a call of TSeamIni::ReadFile()
 /////////////////////////////////////////////////////////////////////////////
-class TTestIni : public ASWIni::TASWBaseIni
+struct TReadCall
+{
+    std::string const& FilePath;
+    std::size_t MaxSize;
+    std::string& Contents;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TWriteCall
+//
+// The arguments of a call of TSeamIni::WriteFile()
+/////////////////////////////////////////////////////////////////////////////
+struct TWriteCall
+{
+    std::string const& FilePath;
+    std::string_view Contents;
+    TASWIniSavingOptions const& Options;
+    std::vector<TASWIniMessage>& Warnings;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TSeamIni
+//
+// A TASWBaseIni whose ReadFile() and WriteFile() call OnRead and OnWrite instead of the defaults when they are set, so
+// a test can see their arguments, call the object while a file is read or written, or make them fail
+/////////////////////////////////////////////////////////////////////////////
+class TSeamIni : public TASWBaseIni
 {
 public:
-    TASWIniResult Load(std::string_view filePath) override;
-    TASWIniResult Save() override;
-    TASWIniResult SaveAs(std::string_view filePath) override;
+    std::function<TASWIniResult (TReadCall const& call)> OnRead;
+    std::function<TASWIniResult (TWriteCall const& call)> OnWrite;
+
+protected:
+    TASWIniResult ReadFile(std::string const& filePath, std::size_t maxSize, std::string& contents) override;
+    TASWIniResult WriteFile(std::string const& filePath, std::string_view contents,
+        TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings) override;
+
+public:
+    // TASWBaseIni's WriteFile() with the arguments of 'call', which writes the file
+    TASWIniResult DefaultWrite(TWriteCall const& call);
 };
 
 //---------------------------------------------------------------------------
 
 TASWIniDocument ParsedDocument(std::string_view text, TASWIniOptions const& options = TASWIniOptions());
 TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages);
-TASWIniResult Unused();
+TASWIniResult SeamFailure(EIniCode code, std::string const& filePath, int systemError);
 
 //---------------------------------------------------------------------------
 /*
@@ -144,15 +215,17 @@ TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages)
 }
 //---------------------------------------------------------------------------
 /*
-    Unused
+    SeamFailure
 
-    The result of TTestIni's file operations.
+    A failed result with 'code', 'filePath' and 'systemError', as TSeamIni's OnRead or OnWrite may return it.
 */
-TASWIniResult Unused()
+TASWIniResult SeamFailure(EIniCode code, std::string const& filePath, int systemError)
 {
     TASWIniResult result;
-    result.Code = EIniCode::InvalidArgument;
-    result.Message = "Not used by these tests.";
+    result.Code = code;
+    result.Message = "The seam failed.";
+    result.FilePath = filePath;
+    result.SystemError = systemError;
 
     return result;
 }
@@ -160,23 +233,32 @@ TASWIniResult Unused()
 
 
 /////////////////////////////////////////////////////////////////////////////
-// TTestIni
+// TSeamIni
 /////////////////////////////////////////////////////////////////////////////
 
 //---------------------------------------------------------------------------
-TASWIniResult TTestIni::Load(std::string_view /*filePath*/)
+TASWIniResult TSeamIni::DefaultWrite(TWriteCall const& call)
 {
-    return Unused();
+    return TASWBaseIni::WriteFile(call.FilePath, call.Contents, call.Options, call.Warnings);
 }
 //---------------------------------------------------------------------------
-TASWIniResult TTestIni::Save()
+TASWIniResult TSeamIni::ReadFile(std::string const& filePath, std::size_t maxSize, std::string& contents)
 {
-    return Unused();
+    TReadCall const call = { filePath, maxSize, contents };
+    if (OnRead)
+        return OnRead(call);
+
+    return TASWBaseIni::ReadFile(filePath, maxSize, contents);
 }
 //---------------------------------------------------------------------------
-TASWIniResult TTestIni::SaveAs(std::string_view /*filePath*/)
+TASWIniResult TSeamIni::WriteFile(std::string const& filePath, std::string_view contents,
+    TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings)
 {
-    return Unused();
+    TWriteCall const call = { filePath, contents, options, warnings };
+    if (OnWrite)
+        return OnWrite(call);
+
+    return DefaultWrite(call);
 }
 //---------------------------------------------------------------------------
 
@@ -220,7 +302,7 @@ void TTest_ASWIni_BaseAccess::TearDown_Test(ITestCase& /*testCase*/)
 ASW_TEST(TTest_ASWIni_BaseAccess, Edits_FailureChangesNothing)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     TASWIniDocument document = ParsedDocument(SampleText);
 
@@ -247,7 +329,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Edits_FailureChangesNothing)
 ASW_TEST(TTest_ASWIni_BaseAccess, Edits_MatchTheDocument)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     TASWIniDocument document = ParsedDocument(SampleText);
     std::vector<TASWIniResult> results;
@@ -293,7 +375,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Edits_MatchTheDocument)
 ASW_TEST(TTest_ASWIni_BaseAccess, GetDocument_IsACopy)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
 
     // Act
@@ -312,7 +394,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, GetDocument_IsACopy)
 ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_FailureChangesNothing)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     static_cast<void>(ini.SetText("Window", "Width", "800"));
     std::string const before = ini.ToText();
@@ -336,7 +418,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_FailureChangesNothing)
 ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_ReplacesTheDocument)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.SetText("Old", "Key", "Value"));
 
     // Act
@@ -360,7 +442,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_ReplacesTheDocument)
 ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_UsesTheOptions)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     TASWIniOptions options;
     options.Reading.InlineComments = true;
     static_cast<void>(ini.SetOptions(options));
@@ -459,7 +541,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Locks_WorkLikeStandardMutexes)
 ASW_TEST(TTest_ASWIni_BaseAccess, Lookups_MatchTheDocument)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     TASWIniDocument const document = ParsedDocument(SampleText);
     std::string text = "unchanged";
@@ -491,7 +573,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Lookups_MatchTheDocument)
 ASW_TEST(TTest_ASWIni_BaseAccess, New_IsEmptyWithTheDefaultOptions)
 {
     // Arrange & Act
-    TTestIni ini;
+    TASWBaseIni ini;
 
     // Assert
     TASWIniOptions const defaults;
@@ -523,7 +605,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_EditChangesNothing)
     // fails the edit, or, when the standard library copes with it (bcc32c's has a few such allocations), doesn't.
     for (std::size_t number = 1; number < 1000; ++number)
     {
-        TTestIni ini;
+        TASWBaseIni ini;
         static_cast<void>(ini.LoadText(SampleText));
         std::string const which = " (allocation " + std::to_string(number) + ")";
         TASWIniResult result;
@@ -571,7 +653,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_LoadTextChangesNothing)
     // As OutOfMemory_EditChangesNothing does
     for (std::size_t number = 1; number < 10000; ++number)
     {
-        TTestIni ini;
+        TASWBaseIni ini;
         static_cast<void>(ini.SetText("Old", "Key", "Value"));
         std::string const before = ini.ToText();
         std::string const which = " (allocation " + std::to_string(number) + ")";
@@ -620,7 +702,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_SetOptionsChangesNothing)
     // As OutOfMemory_EditChangesNothing does
     for (std::size_t number = 1; number < 10000; ++number)
     {
-        TTestIni ini;
+        TASWBaseIni ini;
         static_cast<void>(ini.LoadText(SampleText));
         std::string const which = " (allocation " + std::to_string(number) + ")";
         TASWIniResult result;
@@ -660,7 +742,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_SetOptionsChangesNothing)
 ASW_TEST(TTest_ASWIni_BaseAccess, Remove_ReturnsWhetherAnythingWasRemoved)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
 
     // Act
@@ -682,7 +764,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Remove_ReturnsWhetherAnythingWasRemoved)
 ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_InvalidOptionsChangeNothing)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     TASWIniOptions options;
     options.Reading.InlineComments = true;
@@ -702,7 +784,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_InvalidOptionsChangeNothing)
 ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_ReadsTheTextAgain)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     static_cast<void>(ini.SetText("Window", "Width", "800"));
     std::string const before = ini.ToText();
@@ -728,7 +810,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_ReadsTheTextAgain)
 ASW_TEST(TTest_ASWIni_BaseAccess, TypedValues_UseTheValueOptions)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     TASWIniOptions options;
     options.Values.BoolFormat = EBoolFormat::OnOff;
@@ -787,7 +869,7 @@ void TTest_ASWIni_BaseCallback::TearDown_Test(ITestCase& /*testCase*/)
 ASW_TEST(TTest_ASWIni_BaseCallback, Callback_ExceptionIsDropped)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<TASWIniMessage> messages;
     auto const throwing = [&messages](TASWIniMessage const& message)
         {
@@ -814,7 +896,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayCallTheObject)
     // A lock held while the callback runs would make these calls deadlock (the CI's test timeout turns that into a
     // failure). The SetOptions() it calls reads the text again, which reports the warning again, to the callback,
     // while it is still running.
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<std::string> seen;
     auto const reentrant = [&ini, &seen](TASWIniMessage const& message)
         {
@@ -851,7 +933,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayCallTheObject)
 ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayReplaceItself)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<TASWIniMessage> second;
     std::size_t firstCount = 0;
     auto const first = [&ini, &second, &firstCount](TASWIniMessage const& /*message*/)
@@ -872,7 +954,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayReplaceItself)
 ASW_TEST(TTest_ASWIni_BaseCallback, FailedEdit_IsReportedAsAnError)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
@@ -904,7 +986,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, FailedEdit_IsReportedAsAnError)
 ASW_TEST(TTest_ASWIni_BaseCallback, GetValue_WarningIsReported)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
@@ -928,7 +1010,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, GetValue_WarningIsReported)
 ASW_TEST(TTest_ASWIni_BaseCallback, LoadText_WarningsAreReportedInOrder)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
 
@@ -956,7 +1038,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, LoadText_WarningsAreReportedInOrder)
 ASW_TEST(TTest_ASWIni_BaseCallback, Lookups_ReportNothing)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText(SampleText));
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
@@ -984,7 +1066,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, OutOfMemory_IsReportedAsAnError)
     if (!CanFailAllocations())
         Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
 
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
 
@@ -1009,7 +1091,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, OutOfMemory_IsReportedAsAnError)
 ASW_TEST(TTest_ASWIni_BaseCallback, SetLogCallback_EmptyTurnsReportingOff)
 {
     // Arrange
-    TTestIni ini;
+    TASWBaseIni ini;
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
     static_cast<void>(ini.RenameSection("Missing", "Other"));
@@ -1029,7 +1111,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, SetOptions_WarningsAreReported)
 {
     // Arrange
     // With '=' as the only separator, "a: 1" is a malformed line
-    TTestIni ini;
+    TASWBaseIni ini;
     static_cast<void>(ini.LoadText("[A]\na: 1\n"));
     std::vector<TASWIniMessage> messages;
     ini.SetLogCallback(Recorder(messages));
@@ -1052,8 +1134,969 @@ ASW_TEST(TTest_ASWIni_BaseCallback, SetOptions_WarningsAreReported)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_BaseFile
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_BaseFile::TTest_ASWIni_BaseFile()
+    : inherited("ASWIni_BaseFile_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_BaseFile::~TTest_ASWIni_BaseFile()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseFile::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseFile::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseFile::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseFile::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, EmptyPath_IsInvalidArgument)
+{
+    // Arrange
+    TSeamIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::string const before = ini.ToText();
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    int seamCalls = 0;
+    auto const read = [&seamCalls](TReadCall const& /*call*/)
+        {
+            ++seamCalls;
+
+            return TASWIniResult();
+        };
+    auto const write = [&seamCalls](TWriteCall const& /*call*/)
+        {
+            ++seamCalls;
+
+            return TASWIniResult();
+        };
+    ini.OnRead = read;
+    ini.OnWrite = write;
+
+    // Act
+    TASWIniResult const load = ini.Load("");
+    TASWIniResult const saveAs = ini.SaveAs("");
+
+    // Assert
+    CheckEquals(EIniCode::InvalidArgument, load.Code, __func__, __LINE__,
+        "Load() of an empty path should be InvalidArgument");
+    CheckEquals(EIniCode::InvalidArgument, saveAs.Code, __func__, __LINE__,
+        "SaveAs() of an empty path should be InvalidArgument");
+    CheckEquals(0, seamCalls, __func__, __LINE__, "no file should be read or written");
+    CheckEquals(before, ini.ToText(), __func__, __LINE__, "the document should be unchanged");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(std::string(), ini.GetFilePath(), __func__, __LINE__, "there should still be no file path");
+    CheckEquals(std::size_t(2), messages.size(), __func__, __LINE__, "both failures should be reported");
+    for (TASWIniMessage const& message : messages)
+        CheckEquals(ESeverity::Error, message.Severity, __func__, __LINE__, "a failure should be an Error");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, FileOperations_DontOverlap)
+{
+    // Arrange
+    // While a load reads (or a save writes) the file, it starts a save (or a load) on another thread and gives it time
+    // to get to its own file access, which has to wait until the first operation is done
+    TSeamIni ini;
+    std::atomic<int> inside{ 0 };
+    std::atomic<bool> overlapped{ false };
+    std::function<void()> during;
+    auto const access = [&]()
+        {
+            if (inside.fetch_add(1) != 0)
+                overlapped = true;
+
+            if (during)
+            {
+                std::function<void()> const start = during;
+                during = nullptr;
+                start();
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+
+            --inside;
+        };
+    auto const read = [&access](TReadCall const& call)
+        {
+            access();
+            call.Contents = SampleText;
+
+            return TASWIniResult();
+        };
+    auto const write = [&access](TWriteCall const& /*call*/)
+        {
+            access();
+
+            return TASWIniResult();
+        };
+    ini.OnRead = read;
+    ini.OnWrite = write;
+    std::thread other;
+    auto const saveAs = [&ini]()
+        {
+            static_cast<void>(ini.SaveAs("app.ini"));
+        };
+    auto const load = [&ini]()
+        {
+            static_cast<void>(ini.Load("app.ini"));
+        };
+    auto const startSaveAs = [&other, &saveAs]()
+        {
+            other = std::thread(saveAs);
+        };
+    auto const startLoad = [&other, &load]()
+        {
+            other = std::thread(load);
+        };
+
+    // Act
+    during = startSaveAs;
+    TASWIniResult const loaded = ini.Load("app.ini");
+    other.join();
+    bool const saveWaited = !overlapped;
+    during = startLoad;
+    TASWIniResult const saved = ini.Save();
+    other.join();
+    bool const loadWaited = !overlapped;
+
+    // Assert
+    CheckTrue(loaded.IsOk() && saved.IsOk(), __func__, __LINE__, "the file should be loaded and saved");
+    CheckTrue(saveWaited, __func__, __LINE__, "a save should wait for a load to finish");
+    CheckTrue(loadWaited, __func__, __LINE__, "a load should wait for a save to finish");
+    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__, "the file path should be set");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Load_FileErrorsChangeNothing)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const large = folder.Path() / "large.ini";
+    std::filesystem::path const utf16 = folder.Path() / "utf16.ini";
+    AssertTrue(WriteTestFile(large, std::string(101, ';')), __func__, __LINE__, "the large file should be written");
+    AssertTrue(WriteTestFile(utf16, std::string("\xFF\xFE[\0A\0]\0", 8)), __func__, __LINE__,
+        "the UTF-16 file should be written");
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Reading.MaxFileSize = 100;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::string const before = ini.ToText();
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const results[] = {
+        ini.Load(PathToUtf8(large)), ini.Load(PathToUtf8(folder.Path())), ini.Load(PathToUtf8(utf16)),
+    };
+
+    // Assert
+    // Windows can't open a folder as a file (AccessDenied); elsewhere it opens, but isn't a file (OpenFailed)
+    CheckEquals(EIniCode::FileTooLarge, results[0].Code, __func__, __LINE__,
+        "a file larger than MaxFileSize should be FileTooLarge");
+    CheckTrue(results[1].Code == EIniCode::AccessDenied || results[1].Code == EIniCode::OpenFailed, __func__,
+        __LINE__, "a folder should be AccessDenied or OpenFailed");
+    CheckEquals(EIniCode::UnsupportedEncoding, results[2].Code, __func__, __LINE__,
+        "a UTF-16 file should be UnsupportedEncoding");
+    CheckEquals(PathToUtf8(utf16), results[2].FilePath, __func__, __LINE__,
+        "the failure to parse the file should name it");
+    CheckEquals(before, ini.ToText(), __func__, __LINE__, "the document should be unchanged");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(std::string(), ini.GetFilePath(), __func__, __LINE__, "there should still be no file path");
+    CheckEquals(std::size_t(3), messages.size(), __func__, __LINE__, "each failure should be reported");
+    for (std::size_t i = 0; i < messages.size() && i < 3; ++i)
+    {
+        std::string const which = " (load " + std::to_string(i) + ")";
+        CheckEquals(ESeverity::Error, messages[i].Severity, __func__, __LINE__,
+            "the failure should be an Error" + which);
+        CheckEquals(results[i].Code, messages[i].Code, __func__, __LINE__, "the message should have the code" + which);
+        CheckNotEmpty(messages[i].FilePath, __func__, __LINE__, "the message should name the file" + which);
+        CheckEquals(results[i].FilePath, messages[i].FilePath, __func__, __LINE__,
+            "the message should have the result's file path" + which);
+        CheckEquals(results[i].SystemError, messages[i].SystemError, __func__, __LINE__,
+            "the message should have the result's system error" + which);
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Load_MissingFileEmptiesTheDocument)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::string const path = PathToUtf8(folder.Path() / "app.ini");
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Reading.InlineComments = true;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const result = ini.Load(path);
+
+    // Assert
+    CheckEquals(EIniCode::FileNotFound, result.Code, __func__, __LINE__, "a missing file should be FileNotFound");
+    CheckNotEquals(0, result.SystemError, __func__, __LINE__, "the system's error code should be kept");
+    CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "the document should be emptied");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the emptied document shouldn't be modified");
+    CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the missing file should become the file path");
+    CheckTrue(ini.GetOptions().Reading.InlineComments, __func__, __LINE__, "the options should be kept");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the missing file should be reported once");
+    if (messages.size() == 1)
+    {
+        CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "a missing file should be a Warning");
+        CheckEquals(EIniCode::FileNotFound, messages[0].Code, __func__, __LINE__, "the warning should be FileNotFound");
+        CheckEquals(result.Message, messages[0].Text, __func__, __LINE__, "the warning should have the result's text");
+        CheckEquals(path, messages[0].FilePath, __func__, __LINE__, "the warning should name the file");
+        CheckEquals(result.SystemError, messages[0].SystemError, __func__, __LINE__,
+            "the warning should have the system error");
+    }
+
+    // Act
+    static_cast<void>(ini.SetText("General", "Name", "My App"));
+    TASWIniResult const saved = ini.Save();
+
+    // Assert
+    std::string contents;
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "Save() should create the file: " + saved.Message);
+    CheckTrue(ReadTestFile(folder.Path() / "app.ini", contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Load_MissingFolderIsCreatedBySave)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "Company" / "App" / "app.ini";
+    TASWBaseIni ini;
+
+    // Act
+    TASWIniResult const loaded = ini.Load(PathToUtf8(file));
+    static_cast<void>(ini.SetText("General", "Name", "My App"));
+    TASWIniResult const saved = ini.Save();
+
+    // Assert
+    std::string contents;
+    CheckEquals(EIniCode::FileNotFound, loaded.Code, __func__, __LINE__, "a missing folder should be FileNotFound");
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "Save() should create the folders and the file: " + saved.Message);
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Load_ReadsTheFile)
+{
+    // Arrange
+    // The path as an application may give it, with '/' on Windows too
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    AssertTrue(WriteTestFile(folder.Path() / "app.ini", WarningsText), __func__, __LINE__,
+        "the test file should be written");
+    std::string const path = PathToUtf8(folder.Path()) + "/app.ini";
+    TASWBaseIni ini;
+    static_cast<void>(ini.SetText("Old", "Key", "Value"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const result = ini.Load(path);
+    TASWIniResult const failedEdit = ini.RenameSection("Missing", "Other");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be loaded: " + result.Message);
+    CheckEquals(std::string(), result.FilePath, __func__, __LINE__, "a result that is Ok should be only that");
+    CheckEquals(std::string(WarningsText), ini.ToText(), __func__, __LINE__, "the document should have the file's text");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
+    CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the file path should be the path as it was given");
+    CheckEquals(EIniCode::NotFound, failedEdit.Code, __func__, __LINE__, "the rename should fail");
+    CheckEquals(std::size_t(4), messages.size(), __func__, __LINE__,
+        "the file's three warnings and the failed edit should be reported");
+    for (TASWIniMessage const& message : messages)
+        CheckEquals(path, message.FilePath, __func__, __LINE__, "each message should name the file: " + message.Text);
+
+    if (messages.size() == 4)
+    {
+        CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "the first should be a Warning");
+        CheckEquals(EIniCode::MalformedLine, messages[0].Code, __func__, __LINE__, "the first should be MalformedLine");
+        CheckEquals(ESeverity::Error, messages[3].Severity, __func__, __LINE__, "the failed edit should be an Error");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Load_ReadsWithoutTheLock)
+{
+    // Arrange
+    // A lookup or an edit made while the file is read would wait forever if the document's lock were held (the CI's
+    // test timeout turns that into a failure)
+    TSeamIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    std::string widthDuringLoad;
+    TASWIniResult editDuringLoad;
+    auto const read = [&](TReadCall const& call)
+        {
+            static_cast<void>(ini.TryGetText("Window", "Width", widthDuringLoad));
+            editDuringLoad = ini.SetText("Window", "Width", "800");
+            call.Contents = "[Loaded]\nKey = 1\n";
+
+            return TASWIniResult();
+        };
+    ini.OnRead = read;
+
+    // Act
+    TASWIniResult const result = ini.Load("app.ini");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be loaded: " + result.Message);
+    CheckEquals(std::string("640"), widthDuringLoad, __func__, __LINE__,
+        "a lookup during the load should see the old document");
+    CheckTrue(editDuringLoad.IsOk(), __func__, __LINE__, "an edit during the load should succeed");
+    CheckEquals(std::string("[Loaded]\nKey = 1\n"), ini.ToText(), __func__, __LINE__,
+        "the loaded file should replace the edited document");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_LoadChangesNothing)
+{
+    // Arrange
+    if (!CanFailAllocations())
+        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    AssertTrue(WriteTestFile(folder.Path() / "app.ini", SampleText), __func__, __LINE__,
+        "the test file should be written");
+    std::string const path = PathToUtf8(folder.Path() / "app.ini");
+    std::size_t failures = 0;
+
+    // Act & Assert
+    // Each allocation of the load fails in turn, on a new object, until the load makes no more. A failed allocation
+    // fails the load, or, when the standard library copes with it (bcc32c's has a few such allocations), doesn't.
+    for (std::size_t number = 1; number < 10000; ++number)
+    {
+        TASWBaseIni ini;
+        static_cast<void>(ini.SetText("Old", "Key", "Value"));
+        std::string const before = ini.ToText();
+        std::string const which = " (allocation " + std::to_string(number) + ")";
+        TASWIniResult result;
+        bool failed = false;
+        {
+            TFailingAlloc failingAlloc(number);
+            result = ini.Load(path);
+            failed = failingAlloc.HasFailed();
+        }
+
+        if (result.IsOk())
+        {
+            CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__,
+                "a load that succeeded should have loaded the file" + which);
+            CheckEquals(path, ini.GetFilePath(), __func__, __LINE__,
+                "a load that succeeded should set the file path" + which);
+            CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified" + which);
+        }
+        else
+        {
+            ++failures;
+            CheckTrue(failed, __func__, __LINE__, "the load should only fail when an allocation fails" + which);
+            CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
+                "a failed allocation should be UnexpectedException" + which);
+            CheckEquals(before, ini.ToText(), __func__, __LINE__, "a failed load should change nothing" + which);
+            CheckEquals(std::string(), ini.GetFilePath(), __func__, __LINE__,
+                "a failed load should keep the file path" + which);
+            CheckTrue(ini.IsModified(), __func__, __LINE__, "a failed load should keep the modified flag" + which);
+        }
+
+        if (!failed)
+            break;
+    }
+
+    CheckGreaterThan(failures, std::size_t(0), __func__, __LINE__, "at least one allocation should have failed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_SaveChangesNothing)
+{
+    // Arrange
+    if (!CanFailAllocations())
+        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    std::size_t failures = 0;
+
+    // Act & Assert
+    // As OutOfMemory_LoadChangesNothing does, with two allocations in a row failing: bcc32c's library (Dinkumware)
+    // retries a string allocation that fails, and a save only allocates strings. The save is atomic, so a failed one
+    // leaves the file as it was.
+    for (std::size_t number = 1; number < 10000; ++number)
+    {
+        AssertTrue(WriteTestFile(file, SampleText), __func__, __LINE__, "the test file should be written");
+        TASWBaseIni ini;
+        static_cast<void>(ini.Load(PathToUtf8(file)));
+        static_cast<void>(ini.SetText("Window", "Width", "800"));
+        std::string const text = ini.ToText();
+        std::string const which = " (allocation " + std::to_string(number) + ")";
+        TASWIniResult result;
+        bool failed = false;
+        {
+            TFailingAlloc failingAlloc(number, 2);
+            result = ini.Save();
+            failed = failingAlloc.HasFailed();
+        }
+
+        std::string contents;
+        CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable" + which);
+        if (result.IsOk())
+        {
+            CheckEquals(text, contents, __func__, __LINE__, "a save that succeeded should write the text" + which);
+            CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified" + which);
+        }
+        else
+        {
+            ++failures;
+            CheckTrue(failed, __func__, __LINE__, "the save should only fail when an allocation fails" + which);
+            CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
+                "a failed allocation should be UnexpectedException" + which);
+            CheckEquals(std::string(SampleText), contents, __func__, __LINE__,
+                "a failed save should leave the file as it was" + which);
+            CheckTrue(ini.IsModified(), __func__, __LINE__, "a failed save should keep the modified flag" + which);
+        }
+
+        if (!failed)
+            break;
+    }
+
+    CheckGreaterThan(failures, std::size_t(0), __func__, __LINE__, "at least one allocation should have failed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, SaveAs_SetsTheFilePath)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::string const first = PathToUtf8(folder.Path() / "first.ini");
+    std::string const inMissingFolder = PathToUtf8(folder.Path() / "No" / "second.ini");
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Saving.CreateFolders = false;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.LoadText(SampleText));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const saved = ini.SaveAs(first);
+    std::string const pathAfterSave = ini.GetFilePath();
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    TASWIniResult const failed = ini.SaveAs(inMissingFolder);
+    std::string const pathAfterFailure = ini.GetFilePath();
+    bool const modifiedAfterFailure = ini.IsModified();
+    TASWIniResult const savedAgain = ini.Save();
+
+    // Assert
+    std::string contents;
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "SaveAs() should write the file: " + saved.Message);
+    CheckEquals(first, pathAfterSave, __func__, __LINE__, "the file should become the file path");
+    CheckEquals(EIniCode::FileNotFound, failed.Code, __func__, __LINE__,
+        "a missing folder without CreateFolders should be FileNotFound");
+    CheckEquals(first, pathAfterFailure, __func__, __LINE__, "a failed SaveAs() should keep the file path");
+    CheckTrue(modifiedAfterFailure, __func__, __LINE__, "a failed SaveAs() should keep the modified flag");
+    CheckTrue(savedAgain.IsOk(), __func__, __LINE__, "Save() should write the file path: " + savedAgain.Message);
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified");
+    CheckTrue(ReadTestFile(folder.Path() / "first.ini", contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "only the failure should be reported");
+    if (messages.size() == 1)
+    {
+        CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "the failure should be an Error");
+        CheckEquals(failed.FilePath, messages[0].FilePath, __func__, __LINE__,
+            "the failure should name the file it couldn't write");
+        CheckNotEquals(first, messages[0].FilePath, __func__, __LINE__,
+            "the failure shouldn't name the object's file path");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Save_EditDuringSaveKeepsTheModifiedFlag)
+{
+    // Arrange
+    // WriteFile() makes an edit before it writes the text Save() made, so the file doesn't have the edit
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    TSeamIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::function<void()> edit;
+    auto const write = [&](TWriteCall const& call)
+        {
+            edit();
+
+            return ini.DefaultWrite(call);
+        };
+    ini.OnWrite = write;
+    auto const setKey = [&ini]()
+        {
+            static_cast<void>(ini.SetText("Window", "Height", "600"));
+        };
+    auto const removeKey = [&ini]()
+        {
+            static_cast<void>(ini.RemoveKey("Window.Tools", "Visible"));
+        };
+    auto const removeSection = [&ini]()
+        {
+            static_cast<void>(ini.RemoveSection("General"));
+        };
+    auto const failedEdit = [&ini]()
+        {
+            static_cast<void>(ini.RenameSection("Missing", "Other"));
+        };
+    std::string contents;
+
+    // Act
+    edit = setKey;
+    std::string const textOfFirstSave = ini.ToText();
+    TASWIniResult const first = ini.SaveAs(PathToUtf8(file));
+
+    // Assert
+    CheckTrue(first.IsOk(), __func__, __LINE__, "the file should be saved: " + first.Message);
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "a key set during the save should keep the modified flag");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(textOfFirstSave, contents, __func__, __LINE__, "the file should have the text before the edit");
+    CheckEquals(std::string("600"), ini.GetValue("Window", "Height", ""), __func__, __LINE__,
+        "the document should have the edit");
+
+    // Act
+    edit = removeKey;
+    std::string const textOfSecondSave = ini.ToText();
+    TASWIniResult const second = ini.Save();
+
+    // Assert
+    CheckTrue(second.IsOk(), __func__, __LINE__, "the file should be saved: " + second.Message);
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "a key removed during the save should keep the modified flag");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(textOfSecondSave, contents, __func__, __LINE__, "the file should have the text before the removal");
+
+    // Act
+    edit = removeSection;
+    TASWIniResult const third = ini.Save();
+
+    // Assert
+    CheckTrue(third.IsOk(), __func__, __LINE__, "the file should be saved: " + third.Message);
+    CheckTrue(ini.IsModified(), __func__, __LINE__,
+        "a section removed during the save should keep the modified flag");
+
+    // Act
+    edit = failedEdit;
+    TASWIniResult const fourth = ini.Save();
+
+    // Assert
+    CheckTrue(fourth.IsOk(), __func__, __LINE__, "the file should be saved: " + fourth.Message);
+    CheckFalse(ini.IsModified(), __func__, __LINE__,
+        "an edit that failed during the save changed nothing, so the flag should be cleared");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Save_NoFilePathFails)
+{
+    // Arrange
+    TASWBaseIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const result = ini.Save();
+
+    // Assert
+    CheckEquals(EIniCode::NoFilePath, result.Code, __func__, __LINE__, "Save() without a file path should fail");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the failure should be reported");
+    if (messages.size() == 1)
+    {
+        CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "the failure should be an Error");
+        CheckEquals(EIniCode::NoFilePath, messages[0].Code, __func__, __LINE__, "the message should be NoFilePath");
+        CheckEquals(result.Message, messages[0].Text, __func__, __LINE__, "the message should have the result's text");
+        CheckEquals(std::string(), messages[0].FilePath, __func__, __LINE__, "the message should name no file");
+    }
+}
+//---------------------------------------------------------------------------
+#if defined(_WIN32)
+ASW_TEST(TTest_ASWIni_BaseFile, Save_ReadOnlyFileChangesNothing)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "readonly.ini";
+    AssertTrue(WriteTestFile(file, SampleText), __func__, __LINE__, "the test file should be written");
+    std::string const path = PathToUtf8(file);
+    TASWBaseIni ini;
+    static_cast<void>(ini.Load(path));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    AssertTrue(::SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY) != 0, __func__, __LINE__,
+        "the file should be made read-only");
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const result = ini.Save();
+    std::string contents;
+    bool const read = ReadTestFile(file, contents);
+
+    // So the folder can be deleted
+    ::SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+
+    // Assert
+    CheckEquals(EIniCode::ReplaceFailed, result.Code, __func__, __LINE__, "the code should be ReplaceFailed");
+    CheckEquals(static_cast<int>(ERROR_ACCESS_DENIED), result.SystemError, __func__, __LINE__,
+        "the system error should be access denied");
+    CheckTrue(read, __func__, __LINE__, "the file should still be readable");
+    CheckEquals(std::string(SampleText), contents, __func__, __LINE__, "the file should be unchanged");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the file path should be unchanged");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the failure should be reported");
+    if (messages.size() == 1)
+    {
+        CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "the failure should be an Error");
+        CheckEquals(path, messages[0].FilePath, __func__, __LINE__, "the message should name the file");
+        CheckEquals(result.SystemError, messages[0].SystemError, __func__, __LINE__,
+            "the message should have the system error");
+    }
+}
+#endif
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Save_RoundTripsByteForByte)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const source = folder.Path() / "source.ini";
+    std::filesystem::path const copy = folder.Path() / "copy.ini";
+    AssertTrue(WriteTestFile(source, TrickyText), __func__, __LINE__, "the test file should be written");
+    TASWBaseIni ini;
+
+    // Act
+    TASWIniResult const loaded = ini.Load(PathToUtf8(source));
+    TASWIniResult const saved = ini.Save();
+    TASWIniResult const savedAs = ini.SaveAs(PathToUtf8(copy));
+
+    // Assert
+    std::string sourceContents;
+    std::string copyContents;
+    CheckTrue(loaded.IsOk(), __func__, __LINE__, "the file should be loaded: " + loaded.Message);
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "the file should be saved: " + saved.Message);
+    CheckTrue(savedAs.IsOk(), __func__, __LINE__, "the copy should be saved: " + savedAs.Message);
+    CheckTrue(ReadTestFile(source, sourceContents), __func__, __LINE__, "the file should be readable");
+    CheckTrue(ReadTestFile(copy, copyContents), __func__, __LINE__, "the copy should be readable");
+    CheckEquals(std::string(TrickyText), sourceContents, __func__, __LINE__,
+        "the saved file should have the bytes it was loaded from");
+    CheckEquals(std::string(TrickyText), copyContents, __func__, __LINE__,
+        "the copy should have the bytes the file was loaded from");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Save_WarningsAreReported)
+{
+    // Arrange
+    // A folder where the backup should go, so the backup fails; and WriteFile() adds a warning that names no file
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    AssertTrue(WriteTestFile(file, SampleText), __func__, __LINE__, "the test file should be written");
+    std::error_code error;
+    AssertTrue(std::filesystem::create_directory(folder.Path() / "app.ini.bak", error), __func__, __LINE__,
+        "the folder where the backup should go should be created");
+    std::string const path = PathToUtf8(file);
+    TSeamIni ini;
+    TASWIniOptions options;
+    options.Saving.Backup = true;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.Load(path));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    auto const write = [&ini](TWriteCall const& call)
+        {
+            TASWIniMessage warning;
+            warning.Severity = ESeverity::Warning;
+            warning.Code = EIniCode::TempFileCleanupFailed;
+            warning.Text = "A warning that names no file.";
+            call.Warnings.push_back(warning);
+
+            return ini.DefaultWrite(call);
+        };
+
+    // Act
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    TASWIniResult const saved = ini.Save();
+    std::size_t const messagesOfFirstSave = messages.size();
+    ini.OnWrite = write;
+    TASWIniResult const savedAgain = ini.Save();
+
+    // Assert
+    std::string contents;
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "a failed backup shouldn't fail the save: " + saved.Message);
+    CheckTrue(savedAgain.IsOk(), __func__, __LINE__, "the second save should succeed: " + savedAgain.Message);
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+    CheckEquals(std::size_t(1), messagesOfFirstSave, __func__, __LINE__, "the failed backup should be reported");
+    CheckEquals(std::size_t(3), messages.size(), __func__, __LINE__,
+        "the second save should report its two warnings");
+    if (messages.size() == 3)
+    {
+        CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "the backup should be a Warning");
+        CheckEquals(EIniCode::BackupFailed, messages[0].Code, __func__, __LINE__, "the warning should be BackupFailed");
+        CheckEquals(path + ".bak", messages[0].FilePath, __func__, __LINE__,
+            "the warning should keep the file it names, the backup");
+        CheckEquals(EIniCode::TempFileCleanupFailed, messages[1].Code, __func__, __LINE__,
+            "WriteFile()'s warning should be reported in order");
+        CheckEquals(path, messages[1].FilePath, __func__, __LINE__,
+            "a warning that names no file should name the saved file");
+        CheckEquals(EIniCode::BackupFailed, messages[2].Code, __func__, __LINE__,
+            "the second failed backup should be reported");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Save_WritesAndClearsTheModifiedFlag)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    AssertTrue(WriteTestFile(file, SampleText), __func__, __LINE__, "the test file should be written");
+    TASWBaseIni ini;
+    static_cast<void>(ini.Load(PathToUtf8(file)));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::string contents;
+
+    // Act
+    TASWIniResult const saved = ini.Save();
+
+    // Assert
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "the file should be saved: " + saved.Message);
+    CheckEquals(std::string(), saved.FilePath, __func__, __LINE__, "a result that is Ok should be only that");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+    CheckContains(contents, std::string("Width = 800"), __func__, __LINE__, "the file should have the edit");
+
+    // Act
+    // A document that isn't modified is saved too
+    AssertTrue(WriteTestFile(file, "Changed by another program"), __func__, __LINE__, "the file should be changed");
+    TASWIniResult const savedAgain = ini.Save();
+
+    // Assert
+    CheckTrue(savedAgain.IsOk(), __func__, __LINE__, "the file should be saved again: " + savedAgain.Message);
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text again");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Seams_ExceptionIsUnexpectedException)
+{
+    // Arrange
+    TSeamIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::string const before = ini.ToText();
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    auto const read = [](TReadCall const& /*call*/) -> TASWIniResult
+        {
+            throw std::runtime_error("The disk is gone.");
+        };
+    auto const write = [](TWriteCall const& /*call*/) -> TASWIniResult
+        {
+            throw 42;
+        };
+    ini.OnRead = read;
+    ini.OnWrite = write;
+
+    // Act
+    TASWIniResult const load = ini.Load("app.ini");
+    TASWIniResult const saveAs = ini.SaveAs("app.ini");
+
+    // Assert
+    CheckEquals(EIniCode::UnexpectedException, load.Code, __func__, __LINE__,
+        "an exception from ReadFile() should be UnexpectedException");
+    CheckContains(load.Message, std::string("The disk is gone."), __func__, __LINE__,
+        "the message should say what was thrown");
+    CheckEquals(EIniCode::UnexpectedException, saveAs.Code, __func__, __LINE__,
+        "an exception from WriteFile() should be UnexpectedException");
+    CheckEquals(before, ini.ToText(), __func__, __LINE__, "the document should be unchanged");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(std::string(), ini.GetFilePath(), __func__, __LINE__, "there should still be no file path");
+    CheckEquals(std::size_t(2), messages.size(), __func__, __LINE__, "both failures should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Seams_FailuresChangeNothing)
+{
+    // Arrange
+    // The seams return 'next'; a failure without a file path gets the path of the file the operation was about
+    TSeamIni ini;
+    TASWIniResult next;
+    auto const read = [&next](TReadCall const& call)
+        {
+            call.Contents = "[New]\n";
+
+            return next;
+        };
+    auto const write = [&next](TWriteCall const& /*call*/)
+        {
+            return next;
+        };
+    ini.OnRead = read;
+    ini.OnWrite = write;
+    static_cast<void>(ini.LoadText(SampleText));
+    static_cast<void>(ini.SaveAs("app.ini"));
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    std::string const before = ini.ToText();
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+
+    // Act
+    next = SeamFailure(EIniCode::WriteFailed, "", 0);
+    TASWIniResult const writeFailed = ini.Save();
+    next = SeamFailure(EIniCode::ReplaceFailed, "app.ini.tmp", 5);
+    TASWIniResult const replaceFailed = ini.SaveAs("other.ini");
+    next = SeamFailure(EIniCode::ReadFailed, "", 0);
+    TASWIniResult const readFailed = ini.Load("other.ini");
+
+    // Assert
+    CheckEquals(EIniCode::WriteFailed, writeFailed.Code, __func__, __LINE__, "Save() should fail as WriteFile() did");
+    CheckEquals(std::string("app.ini"), writeFailed.FilePath, __func__, __LINE__,
+        "the failed Save() should name the file path");
+    CheckEquals(EIniCode::ReplaceFailed, replaceFailed.Code, __func__, __LINE__,
+        "SaveAs() should fail as WriteFile() did");
+    CheckEquals(std::string("app.ini.tmp"), replaceFailed.FilePath, __func__, __LINE__,
+        "a failure that names a file should keep it");
+    CheckEquals(EIniCode::ReadFailed, readFailed.Code, __func__, __LINE__, "Load() should fail as ReadFile() did");
+    CheckEquals(std::string("other.ini"), readFailed.FilePath, __func__, __LINE__,
+        "the failed Load() should name the file it read");
+    CheckEquals(before, ini.ToText(), __func__, __LINE__, "the document should be unchanged");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
+    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__, "the file path should be unchanged");
+    CheckEquals(std::size_t(3), messages.size(), __func__, __LINE__, "each failure should be reported");
+    if (messages.size() == 3)
+    {
+        CheckEquals(std::string("app.ini"), messages[0].FilePath, __func__, __LINE__,
+            "the failed Save() should be reported with the file path");
+        CheckEquals(std::string("app.ini.tmp"), messages[1].FilePath, __func__, __LINE__,
+            "the failed SaveAs() should be reported with the file it names");
+        CheckEquals(5, messages[1].SystemError, __func__, __LINE__, "the system error should be reported");
+        CheckEquals(std::string("other.ini"), messages[2].FilePath, __func__, __LINE__,
+            "the failed Load() should be reported with the file it read, not the file path");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Seams_FileNotFoundIsAMissingFile)
+{
+    // Arrange
+    // ReadFile() fails with FileNotFound for a file it names itself, and gives contents that aren't used
+    TSeamIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    auto const read = [](TReadCall const& call)
+        {
+            call.Contents = "[Unused]\n";
+
+            return SeamFailure(EIniCode::FileNotFound, "elsewhere.ini", 2);
+        };
+    ini.OnRead = read;
+
+    // Act
+    TASWIniResult const result = ini.Load("app.ini");
+
+    // Assert
+    CheckEquals(EIniCode::FileNotFound, result.Code, __func__, __LINE__, "Load() should fail as ReadFile() did");
+    CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "the document should be emptied");
+    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__,
+        "the file Load() was given should become the file path");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the missing file should be reported once");
+    if (messages.size() == 1)
+    {
+        CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "a missing file should be a Warning");
+        CheckEquals(std::string("elsewhere.ini"), messages[0].FilePath, __func__, __LINE__,
+            "the warning should name the file ReadFile() named");
+        CheckEquals(2, messages[0].SystemError, __func__, __LINE__, "the warning should have the system error");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, Seams_GetTheirArguments)
+{
+    // Arrange
+    TSeamIni ini;
+    TASWIniOptions options;
+    options.Reading.MaxFileSize = 1000;
+    options.Saving.AtomicSave = false;
+    options.Saving.Backup = true;
+    options.Saving.BackupSuffix = ".old";
+    static_cast<void>(ini.SetOptions(options));
+    std::string readPath;
+    std::size_t readMaxSize = 0;
+    std::string writePath;
+    std::string writeText;
+    TASWIniSavingOptions writeOptions;
+    auto const read = [&](TReadCall const& call)
+        {
+            readPath = call.FilePath;
+            readMaxSize = call.MaxSize;
+            call.Contents = SampleText;
+
+            return TASWIniResult();
+        };
+    auto const write = [&](TWriteCall const& call)
+        {
+            writePath = call.FilePath;
+            writeText = std::string(call.Contents);
+            writeOptions = call.Options;
+
+            return TASWIniResult();
+        };
+    ini.OnRead = read;
+    ini.OnWrite = write;
+
+    // Act
+    TASWIniResult const loaded = ini.Load("Folder/app.ini");
+    static_cast<void>(ini.SetText("Window", "Width", "800"));
+    TASWIniResult const saved = ini.Save();
+
+    // Assert
+    CheckTrue(loaded.IsOk() && saved.IsOk(), __func__, __LINE__, "the file should be loaded and saved");
+    CheckEquals(std::string("Folder/app.ini"), readPath, __func__, __LINE__, "ReadFile() should get the path as given");
+    CheckEquals(std::size_t(1000), readMaxSize, __func__, __LINE__, "ReadFile() should get MaxFileSize");
+    CheckEquals(std::string("Folder/app.ini"), writePath, __func__, __LINE__, "WriteFile() should get the file path");
+    CheckEquals(ini.ToText(), writeText, __func__, __LINE__, "WriteFile() should get the document's text");
+    CheckTrue(writeOptions.Backup && !writeOptions.AtomicSave && writeOptions.BackupSuffix == ".old", __func__,
+        __LINE__, "WriteFile() should get the saving options");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseAccess, "Base")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseCallback, "Base")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseFile, "Base")

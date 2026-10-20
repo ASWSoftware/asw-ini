@@ -5,9 +5,10 @@ Author: Anthony S. West - ASW Software
 An INI file reader/writer library.
 
 TASWBaseIni, the thread-safe INI object: a TASWIniDocument behind a
-reader/writer lock, its options and the log callback its warnings and
-errors go to, with the operations of IASWIni. An application's settings
-class derives from it. Detail::TMutex and Detail::TSharedMutex, its locks.
+reader/writer lock, its options, the file it is loaded from and saved to,
+and the log callback its warnings and errors go to, with the operations of
+IASWIni. An application's settings class derives from it. Detail::TMutex
+and Detail::TSharedMutex, its locks.
 
 Requires C++ 17 or higher.
 
@@ -32,6 +33,7 @@ limitations under the License.
 #ifndef ASWIni_BaseH
 #define ASWIni_BaseH
 //---------------------------------------------------------------------------
+#include <cstddef>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -129,12 +131,13 @@ public:
 /////////////////////////////////////////////////////////////////////////////
 // TASWBaseIni
 //
-// The thread-safe INI object: a TASWIniDocument (empty, with the default options, until a text is loaded), its file
-// path and the log callback, with IASWIni's operations, which any thread may call at any time. Each operation is
-// complete in itself: a lookup sees the document before or after an edit, never during one. Lookups share a
-// reader/writer lock; edits take it alone. Warnings and errors are collected while the lock is held, and reported
-// after it is released (see TASWIniLogCallback). An application's settings class derives from it. Neither copyable
-// nor movable.
+// The thread-safe INI object: a TASWIniDocument (empty, with the default options, until a text or a file is loaded),
+// its file path and the log callback, with IASWIni's operations, which any thread may call at any time. Each
+// operation is complete in itself: a lookup sees the document before or after an edit or a load, never during one.
+// Lookups share a reader/writer lock; edits take it alone. Load() reads and parses the file without that lock, and
+// Save() writes it without that lock, so lookups and edits go on meanwhile; a second lock keeps loads, saves and
+// SetOptions() from overlapping. Warnings and errors are collected while a lock is held, and reported after it is
+// released (see TASWIniLogCallback). An application's settings class derives from it. Neither copyable nor movable.
 /////////////////////////////////////////////////////////////////////////////
 class TASWBaseIni : public IASWIni
 {
@@ -146,8 +149,10 @@ private:
     TASWIniDocument m_Document;
     std::string m_FilePath; // UTF-8
     TLogCallbackPtr m_LogCallback; // nullptr when there is none
+    unsigned long long m_EditCount = 0; // Counts the edits that succeeded, so Save() can tell whether one was made
 
-    // Held for the whole of LoadText() and SetOptions(), so they never overlap; taken before m_Mutex, never after it
+    // Held for the whole of Load(), LoadText(), Save(), SaveAs() and SetOptions(), so they never overlap; taken before
+    // m_Mutex, never after it
     Detail::TMutex m_FileMutex;
 
 private:
@@ -161,13 +166,38 @@ private:
     template <typename TEdit>
     TASWIniResult Edit(TEdit const& edit);
 
+    // Load()'s work, which may throw: adds the warnings to 'messages', and sets 'missing' when the file doesn't exist
+    // and the document was emptied
+    TASWIniResult LoadFile(std::string_view filePath, std::vector<TASWIniMessage>& messages, bool& missing);
+
     // Reports each of 'messages', in order (with no lock held)
     void ReportAll(std::vector<TASWIniMessage> const& messages) const noexcept;
 
+    // The work of Save() (when 'filePath' is nullptr) and SaveAs(*filePath), which may throw: adds the warnings to
+    // 'messages'
+    TASWIniResult SaveFile(std::string_view const* filePath, std::vector<TASWIniMessage>& messages);
+
+    // Save() (when 'filePath' is nullptr) or SaveAs(*filePath): SaveFile() with an exception caught, and its warnings
+    // and failure reported
+    TASWIniResult SaveTo(std::string_view const* filePath);
+
 protected:
+    // Reads the whole file 'filePath' (UTF-8) into 'contents', failing with FileTooLarge if it has more than 'maxSize'
+    // bytes, as Detail::ReadWholeFile() does (the default). Load() calls it with the file lock held but not the
+    // document's lock, so it may call the object's lookups and edits, but not Load(), LoadText(), Save(), SaveAs() or
+    // SetOptions(). A derived class may override it, e.g. for a test to make a failure the file system can't give
+    // reliably. A FileNotFound result is a missing file (see Load()). May throw; Load() catches it.
+    virtual TASWIniResult ReadFile(std::string const& filePath, std::size_t maxSize, std::string& contents);
+
     // Calls the log callback with 'message' (FilePath set to the file path when it is empty), unless there is none.
     // An exception the callback throws is dropped.
     void Report(TASWIniMessage const& message) const noexcept override;
+
+    // Writes 'contents' to the file 'filePath' (UTF-8) as the saving options 'options' say, adding warnings (e.g.
+    // BackupFailed) to 'warnings', as Detail::WriteWholeFile() does (the default). Save() and SaveAs() call it as
+    // Load() calls ReadFile(). May throw; Save() and SaveAs() catch it.
+    virtual TASWIniResult WriteFile(std::string const& filePath, std::string_view contents,
+        TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings);
 
 public:
     // An empty document with the default options, no file path and no log callback
@@ -187,11 +217,14 @@ public:
     bool HasKey(std::string_view section, std::string_view key) const override;
     bool HasSection(std::string_view section) const override;
     bool IsModified() const override;
+    TASWIniResult Load(std::string_view filePath) override;
     TASWIniResult LoadText(std::string_view text) override;
     bool RemoveKey(std::string_view section, std::string_view key) override;
     bool RemoveSection(std::string_view section) override;
     TASWIniResult RenameKey(std::string_view section, std::string_view key, std::string_view newKey) override;
     TASWIniResult RenameSection(std::string_view section, std::string_view newSection) override;
+    TASWIniResult Save() override;
+    TASWIniResult SaveAs(std::string_view filePath) override;
     TASWIniResult SetFileComment(std::string_view text) override;
     TASWIniResult SetKeyComment(std::string_view section, std::string_view key, std::string_view text) override;
     void SetLogCallback(TASWIniLogCallback callback) override;

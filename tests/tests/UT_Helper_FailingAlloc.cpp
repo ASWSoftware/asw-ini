@@ -47,14 +47,18 @@ namespace ASWUnitTests
 namespace
 {
 
-// The allocations left until the one that fails, counted on g_ArmedThread; 0 when no TFailingAlloc is armed
+// The allocations left until the first that fails, counted on g_ArmedThread; 0 when no TFailingAlloc is armed
 std::atomic<std::size_t> g_Countdown{ 0 };
 
-// Whether the armed allocation failed
+// Whether an armed allocation failed
 std::atomic<bool> g_Failed{ false };
 
 // The thread whose allocations count; set before g_Countdown
 std::thread::id g_ArmedThread;
+
+// The allocations that fail in a row from the first one, less those that have; set before g_Countdown, and then only
+// used by g_ArmedThread
+std::size_t g_FailuresLeft = 0;
 
 #if !defined(ASWINI_TESTS_SANITIZER)
 
@@ -66,7 +70,7 @@ bool ShouldFailAllocation() noexcept;
 /*
     ShouldFailAllocation
 
-    Whether the allocation being made should fail: it is the armed thread's, and the one a TFailingAlloc was armed
+    Whether the allocation being made should fail: it is the armed thread's, and one of those a TFailingAlloc was armed
     for (which then counts as failed). Called by the replaced operator new.
 */
 bool ShouldFailAllocation() noexcept
@@ -75,12 +79,17 @@ bool ShouldFailAllocation() noexcept
         return false;
 
     // Only the armed thread gets here, so the count can't change between the load and the store
-    std::size_t const left = g_Countdown.load(std::memory_order_relaxed) - 1;
-    g_Countdown.store(left, std::memory_order_relaxed);
-    if (left != 0)
+    std::size_t const left = g_Countdown.load(std::memory_order_relaxed);
+    if (left > 1)
+    {
+        g_Countdown.store(left - 1, std::memory_order_relaxed);
         return false;
+    }
 
+    // The countdown stays at 1 until the last allocation in a row has failed
     g_Failed.store(true, std::memory_order_relaxed);
+    if (--g_FailuresLeft == 0)
+        g_Countdown.store(0, std::memory_order_relaxed);
 
     return true;
 }
@@ -109,11 +118,12 @@ bool CanFailAllocations() noexcept
 /////////////////////////////////////////////////////////////////////////////
 
 //---------------------------------------------------------------------------
-TFailingAlloc::TFailingAlloc(std::size_t number) noexcept
+TFailingAlloc::TFailingAlloc(std::size_t number, std::size_t count) noexcept
 {
     g_Failed.store(false, std::memory_order_relaxed);
     g_ArmedThread = std::this_thread::get_id();
-    g_Countdown.store(number, std::memory_order_release);
+    g_FailuresLeft = count;
+    g_Countdown.store(count != 0 ? number : 0, std::memory_order_release);
 }
 //---------------------------------------------------------------------------
 TFailingAlloc::~TFailingAlloc()

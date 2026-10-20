@@ -31,23 +31,24 @@ namespace ASWUnitTests
 /////////////////////////////////////////////////////////////////////////////
 // TFailingAlloc
 //
-// Makes one allocation of the current thread fail with std::bad_alloc, to test what code does when memory runs out.
-// The test executable replaces the global operator new and delete (UT_Helper_FailingAlloc.cpp) with ones that use
-// malloc() and free(), and that fail only while a TFailingAlloc is armed. Not in a sanitizer build, whose runtime has
-// its own operator new (see CanFailAllocations()). Only allocations made through the executable's operator new count:
-// code in a standard library DLL (e.g. MinGW's libstdc++-6.dll) calls its own. One object at a time.
+// Makes an allocation of the current thread (or a few in a row) fail with std::bad_alloc, to test what code does when
+// memory runs out. The test executable replaces the global operator new and delete (UT_Helper_FailingAlloc.cpp) with
+// ones that use malloc() and free(), and that fail only while a TFailingAlloc is armed. Not in a sanitizer build, whose
+// runtime has its own operator new (see CanFailAllocations()). Only allocations made through the executable's operator
+// new count: code in a standard library DLL (e.g. MinGW's libstdc++-6.dll) calls its own. One object at a time.
 /////////////////////////////////////////////////////////////////////////////
 class TFailingAlloc
 {
 public:
-    // Makes allocation number 'number' (1 for the next one) of the current thread fail, once
-    explicit TFailingAlloc(std::size_t number) noexcept;
+    // Makes allocation number 'number' (1 for the next one) of the current thread fail, once, and the 'count' - 1
+    // allocations after it too (e.g. 2, so an allocation that a standard library retries fails again)
+    explicit TFailingAlloc(std::size_t number, std::size_t count = 1) noexcept;
     TFailingAlloc(TFailingAlloc const&) = delete;
     ~TFailingAlloc();
 
     TFailingAlloc& operator=(TFailingAlloc const&) = delete;
 
-    // Whether the allocation failed (false when there were fewer allocations)
+    // Whether an allocation failed (false when there were fewer allocations)
     bool HasFailed() const noexcept;
 };
 

@@ -138,8 +138,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   doubles written on another platform reads back 1 unit in the last place off. The macro
   `ASWINI_STD_FLOAT_CHARCONV` (defined as 0 when building the library) chooses the C runtime for
   another standard library without floating-point `<charconv>`.
-- `IASWIni` (`ASWIni_Interface.h`), the interface of an INI object (which `TASWBaseIni` will
-  implement), so code that only reads and writes values can take an `IASWIni&`. Its string-based
+- `IASWIni` (`ASWIni_Interface.h`), the interface of an INI object (which `TASWBaseIni`
+  implements), so code that only reads and writes values can take an `IASWIni&`. Its string-based
   operations are each thread-safe and complete in themselves, and give out copies: the lookups,
   edits and comments of `TASWIniDocument`, with `TryGetText()` and `SetText()` for a value's text,
   `GetDocument()` (a copy), `ToText()`, `LoadText()`, `Load()`, `Save()`, `SaveAs()`, the options
@@ -155,19 +155,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   application's converter, is returned as `EIniCode::UnexpectedException`. New source:
   `ASWIni_Interface.cpp`.
 - `TASWBaseIni` (`ASWIni_Base.h`), the thread-safe INI object that implements `IASWIni`, which an
-  application's settings class derives from: a `TASWIniDocument` behind a reader/writer lock, so
-  any thread may call its operations at any time; lookups share the lock and edits take it alone.
-  `LoadText()` parses a text without holding the lock and then swaps it in, `SetOptions()` reads
-  the text again with the new options, and `GetDocument()` gives a copy of the document. Every
-  failed operation and every warning (e.g. of `LoadText()`) is reported to the log callback, after
-  the lock is released, so the callback may call the object, even `SetLogCallback()`; an exception
-  it throws is dropped. An exception inside an operation that returns a `TASWIniResult` (in
-  practice `std::bad_alloc`) is returned as `EIniCode::UnexpectedException`, with nothing changed.
-  `Load()`, `Save()` and `SaveAs()` are still to come, so for now a derived class provides them.
-  On RAD Studio Win32 (bcc32c) the locks are Windows slim reader/writer locks, since that
-  compiler's `std::mutex` and `std::shared_mutex` wait on a kernel mutex for every lock (about
-  1000 times slower when threads contend); `ASWINI_WINDOWS_LOCKS` says which are used. The
-  `ASWIni::ASWIni` CMake target now links to `Threads::Threads`, and the installed package finds
-  it. New source: `ASWIni_Base.cpp`.
+  application's settings class derives from: a `TASWIniDocument` behind a reader/writer lock, so any
+  thread may call its operations at any time; lookups share the lock and edits take it alone.
+  `Load()` reads and parses a file, and `LoadText()` a text, without holding the lock, and then
+  swaps the new document in. A load that fails changes nothing, except for a missing file (an
+  application's first run): it empties the document and becomes the file path, so `Save()` creates
+  it, and is reported as a warning. `Save()` and `SaveAs()` write the text without holding the lock
+  (atomically, by default), even when the document isn't modified, and clear the modified flag
+  unless an edit was made meanwhile; `SaveAs()` makes the file the file path when it succeeds.
+  Loads, saves and `SetOptions()`, which reads the text again with the new options, never overlap.
+  `GetDocument()` gives a copy of the document. A derived class may override the protected
+  `ReadFile()` and `WriteFile()`, which read and write the file. Every failed operation and every
+  warning (e.g. of `Load()` or `Save()`, with the file's path) is reported to the log callback,
+  after the locks are released, so the callback may call the object, even `Save()` or
+  `SetLogCallback()`; an exception it throws is dropped. An exception inside an operation that
+  returns a `TASWIniResult` (in practice `std::bad_alloc`) is returned as
+  `EIniCode::UnexpectedException`, with nothing changed. On RAD Studio Win32 (bcc32c) the locks are
+  Windows slim reader/writer locks, since that compiler's `std::mutex` and `std::shared_mutex` wait
+  on a kernel mutex for every lock (about 1000 times slower when threads contend);
+  `ASWINI_WINDOWS_LOCKS` says which are used. The `ASWIni::ASWIni` CMake target now links to
+  `Threads::Threads`, and the installed package finds it. New source: `ASWIni_Base.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

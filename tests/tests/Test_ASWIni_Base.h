@@ -99,6 +99,52 @@ public:
     void TearDown_Test(ITestCase& testCase) override;
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_BaseFile
+//
+// TASWBaseIni's Load(), Save() and SaveAs(): with files, their failures and what they report, the modified flag, and
+// the ReadFile() and WriteFile() seams
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_BaseFile : public TAutoTestGroup<TTest_ASWIni_BaseFile>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_BaseFile> inherited;
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_EmptyPath_IsInvalidArgument();
+    void Test_FileOperations_DontOverlap();
+    void Test_Load_FileErrorsChangeNothing();
+    void Test_Load_MissingFileEmptiesTheDocument();
+    void Test_Load_MissingFolderIsCreatedBySave();
+    void Test_Load_ReadsTheFile();
+    void Test_Load_ReadsWithoutTheLock();
+    void Test_OutOfMemory_LoadChangesNothing();
+    void Test_OutOfMemory_SaveChangesNothing();
+    void Test_SaveAs_SetsTheFilePath();
+    void Test_Save_EditDuringSaveKeepsTheModifiedFlag();
+    void Test_Save_NoFilePathFails();
+#if defined(_WIN32)
+    void Test_Save_ReadOnlyFileChangesNothing();
+#endif
+    void Test_Save_RoundTripsByteForByte();
+    void Test_Save_WarningsAreReported();
+    void Test_Save_WritesAndClearsTheModifiedFlag();
+    void Test_Seams_ExceptionIsUnexpectedException();
+    void Test_Seams_FailuresChangeNothing();
+    void Test_Seams_FileNotFoundIsAMissingFile();
+    void Test_Seams_GetTheirArguments();
+
+public:
+    TTest_ASWIni_BaseFile();
+    ~TTest_ASWIni_BaseFile() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------

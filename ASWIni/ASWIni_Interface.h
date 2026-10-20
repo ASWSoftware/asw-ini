@@ -246,9 +246,9 @@ public:
 
     // Writes ToText() to the file path, as the options' Saving group says (atomically by default, so a failed save
     // leaves the file as it was), even when the document isn't modified; its warnings (e.g. BackupFailed) are
-    // reported. Clears the modified flag, unless an edit changed the document while the file was being written. Fails
-    // with NoFilePath when there is no file path (see SaveAs()), or the file errors (e.g. AccessDenied,
-    // WriteFailed); then the document, the file path and the modified flag stay as they were.
+    // reported. Clears the modified flag, unless an edit succeeded while the file was being written. Fails with
+    // NoFilePath when there is no file path (see SaveAs()), or the file errors (e.g. AccessDenied, WriteFailed); then
+    // the document, the file path and the modified flag stay as they were.
     virtual TASWIniResult Save() = 0;
 
     // As Save(), to file 'filePath' (UTF-8), which becomes the file path when it succeeds. Fails with

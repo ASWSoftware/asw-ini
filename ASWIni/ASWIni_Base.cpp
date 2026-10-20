@@ -24,6 +24,7 @@ limitations under the License.
 // Module header
 #include "ASWIni_Base.h"
 //---------------------------------------------------------------------------
+#include <cstddef>
 #include <exception>
 #include <memory>
 #include <mutex>
@@ -33,6 +34,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 //---------------------------------------------------------------------------
+#include "ASWIni_File.h"
 #include "ASWIni_Version.h"
 //---------------------------------------------------------------------------
 #if ASWINI_WINDOWS_LOCKS
@@ -67,13 +69,73 @@ namespace ASWIni
 namespace
 {
 
+// The message of the InvalidArgument result of Load() or SaveAs() with an empty file path
+constexpr char const* EmptyFilePathText = "The file path is empty.";
+
 #if ASWINI_WINDOWS_LOCKS
-
 static_assert(sizeof(SRWLOCK) == sizeof(void*), "an SRWLOCK should fit in the void* the locks keep it in");
+#endif
 
+TASWIniResult Failure(EIniCode code, char const* message);
+TASWIniMessage MissingFileWarning(TASWIniResult const& result);
+void SetFilePaths(std::string const& filePath, TASWIniResult& result, std::vector<TASWIniMessage>& messages);
+
+#if ASWINI_WINDOWS_LOCKS
 SRWLOCK* SlimLock(void*& lock) noexcept;
+#endif
 
 //---------------------------------------------------------------------------
+/*
+    Failure
+
+    A failed result with 'code' and 'message'.
+*/
+TASWIniResult Failure(EIniCode code, char const* message)
+{
+    TASWIniResult result;
+    result.Code = code;
+    result.Message = message;
+
+    return result;
+}
+//---------------------------------------------------------------------------
+/*
+    MissingFileWarning
+
+    The Warning message Load() reports for 'result', its FileNotFound result (the file it emptied the document for
+    doesn't exist), with the result's code, text, file path and system error.
+*/
+TASWIniMessage MissingFileWarning(TASWIniResult const& result)
+{
+    TASWIniMessage message;
+    message.Severity = ESeverity::Warning;
+    message.Code = result.Code;
+    message.Text = result.Message;
+    message.FilePath = result.FilePath;
+    message.SystemError = result.SystemError;
+
+    return message;
+}
+//---------------------------------------------------------------------------
+/*
+    SetFilePaths
+
+    Sets the file path of 'result', when it failed, and of each of 'messages' to 'filePath', the file they are about,
+    where they have none, so their reports don't take the object's file path, which may be another file by then.
+*/
+void SetFilePaths(std::string const& filePath, TASWIniResult& result, std::vector<TASWIniMessage>& messages)
+{
+    if (!result.IsOk() && result.FilePath.empty())
+        result.FilePath = filePath;
+
+    for (TASWIniMessage& message : messages)
+    {
+        if (message.FilePath.empty())
+            message.FilePath = filePath;
+    }
+}
+//---------------------------------------------------------------------------
+#if ASWINI_WINDOWS_LOCKS
 /*
     SlimLock
 
@@ -84,7 +146,6 @@ SRWLOCK* SlimLock(void*& lock) noexcept
     return reinterpret_cast<SRWLOCK*>(&lock);
 }
 //---------------------------------------------------------------------------
-
 #endif
 
 } // namespace
@@ -236,6 +297,8 @@ TASWIniResult TASWBaseIni::Edit(TEdit const& edit)
     {
         std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
         result = edit(m_Document);
+        if (result.IsOk())
+            ++m_EditCount;
     }
     catch (...)
     {
@@ -337,6 +400,72 @@ bool TASWBaseIni::IsModified() const
     return m_Document.IsModified();
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::Load(std::string_view filePath)
+{
+    std::vector<TASWIniMessage> messages;
+    TASWIniResult result;
+    bool missing = false;
+
+    try
+    {
+        result = LoadFile(filePath, messages, missing);
+    }
+    catch (...)
+    {
+        result = CaughtException();
+    }
+
+    ReportAll(messages);
+
+    // A missing file is in 'messages', as a Warning
+    if (!result.IsOk() && !missing)
+        ReportFailure(result);
+
+    return result;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::LoadFile(std::string_view filePath, std::vector<TASWIniMessage>& messages, bool& missing)
+{
+    if (filePath.empty())
+        return Failure(EIniCode::InvalidArgument, EmptyFilePathText);
+
+    std::string path(filePath);
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    TASWIniOptions options;
+    {
+        std::shared_lock<Detail::TSharedMutex> lock(m_Mutex);
+        options = m_Document.GetOptions();
+    }
+
+    // Read and parsed without the lock, as LoadText() parses; an edit made meanwhile is replaced by the file
+    std::string text;
+    TASWIniDocument document;
+    TASWIniResult result = ReadFile(path, options.Reading.MaxFileSize, text);
+    bool const notFound = result.Code == EIniCode::FileNotFound;
+    if (result.IsOk())
+        result = document.Parse(text, options, messages);
+    else if (notFound)
+        static_cast<void>(document.Reset(options)); // The options are the document's, so they are valid
+
+    SetFilePaths(path, result, messages);
+    if (!result.IsOk() && !notFound)
+        return result;
+
+    // An application's first run has no file: the document is emptied and gets the path, so Save() creates the file
+    if (notFound)
+        messages.push_back(MissingFileWarning(result));
+
+    {
+        std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
+        m_Document = std::move(document);
+        m_FilePath = std::move(path);
+    }
+
+    missing = notFound;
+
+    return result;
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::LoadText(std::string_view text)
 {
     std::vector<TASWIniMessage> messages;
@@ -374,18 +503,29 @@ TASWIniResult TASWBaseIni::LoadText(std::string_view text)
     return result;
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::ReadFile(std::string const& filePath, std::size_t maxSize, std::string& contents)
+{
+    return Detail::ReadWholeFile(Detail::Utf8ToPath(filePath), maxSize, contents);
+}
+//---------------------------------------------------------------------------
 bool TASWBaseIni::RemoveKey(std::string_view section, std::string_view key)
 {
     std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
+    bool const removed = m_Document.RemoveKey(section, key);
+    if (removed)
+        ++m_EditCount;
 
-    return m_Document.RemoveKey(section, key);
+    return removed;
 }
 //---------------------------------------------------------------------------
 bool TASWBaseIni::RemoveSection(std::string_view section)
 {
     std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
+    bool const removed = m_Document.RemoveSection(section);
+    if (removed)
+        ++m_EditCount;
 
-    return m_Document.RemoveSection(section);
+    return removed;
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::RenameKey(std::string_view section, std::string_view key, std::string_view newKey)
@@ -446,6 +586,77 @@ void TASWBaseIni::ReportAll(std::vector<TASWIniMessage> const& messages) const n
 {
     for (TASWIniMessage const& message : messages)
         Report(message);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::Save()
+{
+    return SaveTo(nullptr);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::SaveAs(std::string_view filePath)
+{
+    return SaveTo(&filePath);
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::SaveFile(std::string_view const* filePath, std::vector<TASWIniMessage>& messages)
+{
+    if (filePath != nullptr && filePath->empty())
+        return Failure(EIniCode::InvalidArgument, EmptyFilePathText);
+
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    std::string path;
+    std::string text;
+    TASWIniSavingOptions options;
+    unsigned long long editCount = 0;
+    {
+        std::shared_lock<Detail::TSharedMutex> lock(m_Mutex);
+        path = filePath != nullptr ? std::string(*filePath) : m_FilePath;
+        if (path.empty())
+            return Failure(EIniCode::NoFilePath, "There is no file path to save to; Load() or SaveAs() sets one.");
+
+        text = m_Document.ToText();
+        options = m_Document.GetOptions().Saving;
+        editCount = m_EditCount;
+    }
+
+    // Written without the lock, so lookups and edits go on meanwhile
+    TASWIniResult result = WriteFile(path, text, options, messages);
+    SetFilePaths(path, result, messages);
+    if (!result.IsOk())
+        return result;
+
+    std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
+
+    // An edit made while the file was being written isn't in the file
+    if (m_EditCount == editCount)
+        m_Document.ClearModified();
+
+    if (filePath != nullptr)
+        m_FilePath = std::move(path);
+
+    return result;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::SaveTo(std::string_view const* filePath)
+{
+    std::vector<TASWIniMessage> messages;
+    TASWIniResult result;
+
+    try
+    {
+        result = SaveFile(filePath, messages);
+    }
+    catch (...)
+    {
+        result = CaughtException();
+    }
+
+    ReportAll(messages);
+
+    if (!result.IsOk())
+        ReportFailure(result);
+
+    return result;
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::SetFileComment(std::string_view text)
@@ -544,6 +755,12 @@ bool TASWBaseIni::TryGetText(std::string_view section, std::string_view key, std
     text = line->GetValue();
 
     return true;
+}
+//---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::WriteFile(std::string const& filePath, std::string_view contents,
+    TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings)
+{
+    return Detail::WriteWholeFile(Detail::Utf8ToPath(filePath), contents, options, warnings);
 }
 //---------------------------------------------------------------------------
 

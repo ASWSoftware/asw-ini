@@ -4,6 +4,10 @@
 
 @PACKAGE_INIT@
 
+# ASWIni::ASWIni links to Threads::Threads
+include(CMakeFindDependencyMacro)
+find_dependency(Threads)
+
 include("${CMAKE_CURRENT_LIST_DIR}/ASWIniTargets.cmake")
 
 check_required_components(ASWIni)

@@ -178,7 +178,7 @@ class TFakeIni : public ASWIni::IASWIni
 {
 protected:
     // Adds 'message' to Reported
-    void Report(TASWIniMessage const& message) const override;
+    void Report(TASWIniMessage const& message) const noexcept override;
 
 public: // What the tests set and check
     std::map<std::pair<std::string, std::string>, std::string> Texts; // The value texts by section and key
@@ -383,7 +383,7 @@ TASWIniResult TFakeIni::RenameSection(std::string_view /*section*/, std::string_
     return TASWIniResult();
 }
 //---------------------------------------------------------------------------
-void TFakeIni::Report(TASWIniMessage const& message) const
+void TFakeIni::Report(TASWIniMessage const& message) const noexcept
 {
     Reported.push_back(message);
 }

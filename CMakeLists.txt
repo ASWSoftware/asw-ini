@@ -35,6 +35,8 @@ set(ASWINI_SANITIZE "" CACHE STRING
 set_property(CACHE ASWINI_SANITIZE PROPERTY STRINGS "" thread address)
 
 add_library(ASWIni STATIC
+    ASWIni/ASWIni_Base.cpp
+    ASWIni/ASWIni_Base.h
     ASWIni/ASWIni_Converters.cpp
     ASWIni/ASWIni_Converters.h
     ASWIni/ASWIni_Document.cpp
@@ -67,6 +69,11 @@ set_target_properties(ASWIni PROPERTIES
 
 # The installed target's include folder comes from install(TARGETS) below.
 target_include_directories(ASWIni PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/ASWIni>")
+
+# TASWBaseIni's locks: std::mutex and std::shared_mutex need the threading library on Linux with an older glibc (and
+# on some MinGW-w64 distributions). PUBLIC, since a static library's dependencies are linked by its consumers.
+find_package(Threads REQUIRED)
+target_link_libraries(ASWIni PUBLIC Threads::Threads)
 
 if(ASWINI_WARNINGS)
     if(MSVC)

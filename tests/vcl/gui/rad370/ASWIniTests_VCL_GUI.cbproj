@@ -188,6 +188,10 @@
         <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
     </PropertyGroup>
     <ItemGroup>
+        <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Base.cpp">
+            <DependentOn>..\..\..\..\ASWIni\ASWIni_Base.h</DependentOn>
+            <BuildOrder>64</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Converters.cpp">
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Converters.h</DependentOn>
             <BuildOrder>58</BuildOrder>
@@ -224,6 +228,10 @@
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Version.h</DependentOn>
             <BuildOrder>2</BuildOrder>
         </CppCompile>
+        <CppCompile Include="..\..\..\tests\Test_ASWIni_Base.cpp">
+            <DependentOn>..\..\..\tests\Test_ASWIni_Base.h</DependentOn>
+            <BuildOrder>65</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Converters.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Converters.h</DependentOn>
             <BuildOrder>59</BuildOrder>
@@ -259,6 +267,10 @@
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Version.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Version.h</DependentOn>
             <BuildOrder>3</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\tests\UT_Helper_FailingAlloc.cpp">
+            <DependentOn>..\..\..\tests\UT_Helper_FailingAlloc.h</DependentOn>
+            <BuildOrder>66</BuildOrder>
         </CppCompile>
         <CppCompile Include="..\..\..\tests\UT_Helper_TempDir.cpp">
             <DependentOn>..\..\..\tests\UT_Helper_TempDir.h</DependentOn>

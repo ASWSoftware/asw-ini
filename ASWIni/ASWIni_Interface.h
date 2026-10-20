@@ -117,10 +117,6 @@ private:
         }
     }
 
-    // Reports 'result', which failed, as an Error message with its code, text, file path, line and system error. A
-    // message that can't be made (std::bad_alloc) is dropped.
-    void ReportFailure(TASWIniResult const& result) const noexcept;
-
     // Reports that GetValue() couldn't convert the value of key 'key' of section 'section': a Warning message with the
     // code and text of 'result', the converter's failure, and the section and key. A message that can't be made
     // (std::bad_alloc) is dropped.
@@ -166,8 +162,12 @@ protected:
     IASWIni() = default;
 
     // Sends 'message' to the log callback, with FilePath set to GetFilePath() when it is empty. Never called with a
-    // lock of the object held. Doesn't throw.
-    virtual void Report(TASWIniMessage const& message) const = 0;
+    // lock of the object held.
+    virtual void Report(TASWIniMessage const& message) const noexcept = 0;
+
+    // Reports 'result', which failed, as an Error message with its code, text, file path, line and system error. A
+    // message that can't be made (std::bad_alloc) is dropped.
+    void ReportFailure(TASWIniResult const& result) const noexcept;
 
 public:
     IASWIni(IASWIni const&) = delete;

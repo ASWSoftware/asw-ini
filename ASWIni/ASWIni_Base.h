@@ -1,0 +1,208 @@
+/* **************************************************************************
+ASWIni_Base.h
+Author: Anthony S. West - ASW Software
+
+An INI file reader/writer library.
+
+TASWBaseIni, the thread-safe INI object: a TASWIniDocument behind a
+reader/writer lock, its options and the log callback its warnings and
+errors go to, with the operations of IASWIni. An application's settings
+class derives from it. Detail::TMutex and Detail::TSharedMutex, its locks.
+
+Requires C++ 17 or higher.
+
+Copyright 2026 ASW Software
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+************************************************************************** */
+
+#pragma once
+
+#ifndef ASWIni_BaseH
+#define ASWIni_BaseH
+//---------------------------------------------------------------------------
+#include <memory>
+#include <mutex>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <vector>
+//---------------------------------------------------------------------------
+#include "ASWIni_Document.h"
+#include "ASWIni_Interface.h"
+#include "ASWIni_Options.h"
+#include "ASWIni_Types.h"
+//---------------------------------------------------------------------------
+
+// Whether the locks (Detail::TMutex, Detail::TSharedMutex) are Windows slim reader/writer locks (1) or the standard
+// library's mutexes (0). RAD Studio Win32's (bcc32c) std::mutex and std::shared_mutex wait on a kernel mutex for every
+// lock, which is about 1000 times slower than a slim reader/writer lock when threads contend for it. Set by the
+// compiler, not by the application, since the locks' layout depends on it.
+#if defined(__BORLANDC__) && !defined(_WIN64)
+#  define ASWINI_WINDOWS_LOCKS 1
+#else
+#  define ASWINI_WINDOWS_LOCKS 0
+#endif
+//---------------------------------------------------------------------------
+
+namespace ASWIni
+{
+
+// The internals of TASWBaseIni
+namespace Detail
+{
+
+/////////////////////////////////////////////////////////////////////////////
+// TMutex
+//
+// A mutex, locked as a std::mutex is (std::lock_guard, std::unique_lock): a std::mutex, or a Windows slim
+// reader/writer lock (see ASWINI_WINDOWS_LOCKS). In a ThreadSanitizer build its destructor tells ThreadSanitizer that
+// the mutex is gone: libstdc++'s std::mutex never destroys its pthread mutex, so ThreadSanitizer would take a later
+// mutex at the same address (e.g. another object's, on a reused stack) for this one, and report lock-order inversions
+// between unrelated objects. Neither copyable nor movable.
+/////////////////////////////////////////////////////////////////////////////
+class TMutex
+{
+private:
+#if ASWINI_WINDOWS_LOCKS
+    void* m_Lock = nullptr; // An SRWLOCK, whose initial value (SRWLOCK_INIT) is a null pointer
+#else
+    std::mutex m_Mutex;
+#endif
+
+public:
+    TMutex() = default;
+    TMutex(TMutex const&) = delete;
+    TMutex& operator=(TMutex const&) = delete;
+    ~TMutex();
+
+    // The names std::lock_guard and std::unique_lock call
+    void lock();
+    void unlock() noexcept;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TSharedMutex
+//
+// A reader/writer mutex, locked as a std::shared_mutex is (std::lock_guard and std::unique_lock for writing,
+// std::shared_lock for reading): a std::shared_mutex, or a Windows slim reader/writer lock (see ASWINI_WINDOWS_LOCKS).
+// In a ThreadSanitizer build its destructor tells ThreadSanitizer that the mutex is gone, as TMutex's does (with
+// glibc, libstdc++'s std::shared_mutex never destroys its pthread rwlock either). Neither copyable nor movable.
+/////////////////////////////////////////////////////////////////////////////
+class TSharedMutex
+{
+private:
+#if ASWINI_WINDOWS_LOCKS
+    void* m_Lock = nullptr; // An SRWLOCK, whose initial value (SRWLOCK_INIT) is a null pointer
+#else
+    std::shared_mutex m_Mutex;
+#endif
+
+public:
+    TSharedMutex() = default;
+    TSharedMutex(TSharedMutex const&) = delete;
+    TSharedMutex& operator=(TSharedMutex const&) = delete;
+    ~TSharedMutex();
+
+    // The names std::lock_guard, std::unique_lock and std::shared_lock call
+    void lock();
+    void lock_shared();
+    void unlock() noexcept;
+    void unlock_shared() noexcept;
+};
+
+} // namespace Detail
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWBaseIni
+//
+// The thread-safe INI object: a TASWIniDocument (empty, with the default options, until a text is loaded), its file
+// path and the log callback, with IASWIni's operations, which any thread may call at any time. Each operation is
+// complete in itself: a lookup sees the document before or after an edit, never during one. Lookups share a
+// reader/writer lock; edits take it alone. Warnings and errors are collected while the lock is held, and reported
+// after it is released (see TASWIniLogCallback). An application's settings class derives from it. Neither copyable
+// nor movable.
+/////////////////////////////////////////////////////////////////////////////
+class TASWBaseIni : public IASWIni
+{
+private:
+    typedef std::shared_ptr<TASWIniLogCallback const> TLogCallbackPtr;
+
+private:
+    mutable Detail::TSharedMutex m_Mutex; // Guards the members after it
+    TASWIniDocument m_Document;
+    std::string m_FilePath; // UTF-8
+    TLogCallbackPtr m_LogCallback; // nullptr when there is none
+
+    // Held for the whole of LoadText() and SetOptions(), so they never overlap; taken before m_Mutex, never after it
+    Detail::TMutex m_FileMutex;
+
+private:
+    // The UnexpectedException result of the exception being handled (call it in a catch block): its message is "An
+    // unexpected exception was thrown: " and what() for a std::exception. Without a message when it can't be made.
+    static TASWIniResult CaughtException() noexcept;
+
+private:
+    // Applies 'edit', a function that takes a TASWIniDocument& and returns a TASWIniResult, to the document under the
+    // lock; an exception becomes CaughtException(). Reports a failed result.
+    template <typename TEdit>
+    TASWIniResult Edit(TEdit const& edit);
+
+    // Reports each of 'messages', in order (with no lock held)
+    void ReportAll(std::vector<TASWIniMessage> const& messages) const noexcept;
+
+protected:
+    // Calls the log callback with 'message' (FilePath set to the file path when it is empty), unless there is none.
+    // An exception the callback throws is dropped.
+    void Report(TASWIniMessage const& message) const noexcept override;
+
+public:
+    // An empty document with the default options, no file path and no log callback
+    TASWBaseIni() = default;
+
+    TASWIniResult AddSection(std::string_view section) override;
+    TASWIniDocument GetDocument() const override;
+    std::string GetFileComment() const override;
+    std::string GetFilePath() const override;
+    std::string GetKeyComment(std::string_view section, std::string_view key) const override;
+    std::vector<std::string> GetKeyNames(std::string_view section) const override;
+    TASWIniOptions GetOptions() const override;
+    std::string GetSectionComment(std::string_view section) const override;
+    std::vector<std::string> GetSectionNames(std::string_view prefix = std::string_view()) const override;
+    TASWIniValueOptions GetValueOptions() const override;
+    std::string_view GetVersionStr() const noexcept override;
+    bool HasKey(std::string_view section, std::string_view key) const override;
+    bool HasSection(std::string_view section) const override;
+    bool IsModified() const override;
+    TASWIniResult LoadText(std::string_view text) override;
+    bool RemoveKey(std::string_view section, std::string_view key) override;
+    bool RemoveSection(std::string_view section) override;
+    TASWIniResult RenameKey(std::string_view section, std::string_view key, std::string_view newKey) override;
+    TASWIniResult RenameSection(std::string_view section, std::string_view newSection) override;
+    TASWIniResult SetFileComment(std::string_view text) override;
+    TASWIniResult SetKeyComment(std::string_view section, std::string_view key, std::string_view text) override;
+    void SetLogCallback(TASWIniLogCallback callback) override;
+    TASWIniResult SetOptions(TASWIniOptions const& options) override;
+    TASWIniResult SetSectionComment(std::string_view section, std::string_view text) override;
+    TASWIniResult SetText(std::string_view section, std::string_view key, std::string_view text) override;
+    std::string ToText() const override;
+    bool TryGetText(std::string_view section, std::string_view key, std::string& text) const override;
+};
+
+} // namespace ASWIni
+
+//---------------------------------------------------------------------------
+#endif // #ifndef ASWIni_BaseH

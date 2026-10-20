@@ -154,5 +154,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   operations that return a `TASWIniResult` don't throw: an exception, e.g. one thrown by an
   application's converter, is returned as `EIniCode::UnexpectedException`. New source:
   `ASWIni_Interface.cpp`.
+- `TASWBaseIni` (`ASWIni_Base.h`), the thread-safe INI object that implements `IASWIni`, which an
+  application's settings class derives from: a `TASWIniDocument` behind a reader/writer lock, so
+  any thread may call its operations at any time; lookups share the lock and edits take it alone.
+  `LoadText()` parses a text without holding the lock and then swaps it in, `SetOptions()` reads
+  the text again with the new options, and `GetDocument()` gives a copy of the document. Every
+  failed operation and every warning (e.g. of `LoadText()`) is reported to the log callback, after
+  the lock is released, so the callback may call the object, even `SetLogCallback()`; an exception
+  it throws is dropped. An exception inside an operation that returns a `TASWIniResult` (in
+  practice `std::bad_alloc`) is returned as `EIniCode::UnexpectedException`, with nothing changed.
+  `Load()`, `Save()` and `SaveAs()` are still to come, so for now a derived class provides them.
+  On RAD Studio Win32 (bcc32c) the locks are Windows slim reader/writer locks, since that
+  compiler's `std::mutex` and `std::shared_mutex` wait on a kernel mutex for every lock (about
+  1000 times slower when threads contend); `ASWINI_WINDOWS_LOCKS` says which are used. The
+  `ASWIni::ASWIni` CMake target now links to `Threads::Threads`, and the installed package finds
+  it. New source: `ASWIni_Base.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

@@ -80,6 +80,7 @@ private:
 public: // Test methods, each defined with ASW_TEST
     void Test_Callback_ExceptionIsDropped();
     void Test_Callback_MayCallTheObject();
+    void Test_Callback_MayLoadAndSave();
     void Test_Callback_MayReplaceItself();
     void Test_FailedEdit_IsReportedAsAnError();
     void Test_GetValue_WarningIsReported();
@@ -138,6 +139,35 @@ public: // Test methods, each defined with ASW_TEST
 public:
     TTest_ASWIni_BaseFile();
     ~TTest_ASWIni_BaseFile() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_BaseThreads
+//
+// TASWBaseIni used from several threads at once: seeded stress tests, bounded by their number of operations, of
+// edits, lookups, loads, saves, SetOptions() and SetLogCallback() running together. Without ThreadSanitizer they show
+// crashes and broken invariants; with it (the CI's Linux Clang job), also the data races.
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_BaseThreads : public TAutoTestGroup<TTest_ASWIni_BaseThreads>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_BaseThreads> inherited;
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Edits_LookupsNeverSeeAValueGoBack();
+    void Test_LoadsAndSaves_EverySavedFileIsWhole();
+    void Test_SetLogCallback_EachFailureIsReportedOnce();
+    void Test_SetOptions_LookupsSeeTheOldOrTheNewOptions();
+
+public:
+    TTest_ASWIni_BaseThreads();
+    ~TTest_ASWIni_BaseThreads() override;
 
     void SetUp_Group() override;
     void SetUp_Test(ITestCase& testCase) override;

@@ -167,9 +167,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `GetDocument()` gives a copy of the document. A derived class may override the protected
   `ReadFile()` and `WriteFile()`, which read and write the file. Every failed operation and every
   warning (e.g. of `Load()` or `Save()`, with the file's path) is reported to the log callback,
-  after the locks are released, so the callback may call the object, even `Save()` or
-  `SetLogCallback()`; an exception it throws is dropped. An exception inside an operation that
-  returns a `TASWIniResult` (in practice `std::bad_alloc`) is returned as
+  after the locks are released, so the callback may call the object, even `Load()`, `Save()` or
+  `SetLogCallback()`; an exception it throws is dropped. Any thread may replace the callback at any
+  time; a report already under way may still go to the callback it replaced. An exception inside an
+  operation that returns a `TASWIniResult` (in practice `std::bad_alloc`) is returned as
   `EIniCode::UnexpectedException`, with nothing changed. On RAD Studio Win32 (bcc32c) the locks are
   Windows slim reader/writer locks, since that compiler's `std::mutex` and `std::shared_mutex` wait
   on a kernel mutex for every lock (about 1000 times slower when threads contend);

@@ -15,9 +15,13 @@ and sets comments, changing only the lines an edit is about. The value converter
 (`ASWIni_Converters.h`) turn a value's text into a typed value and back, the same in any locale:
 strings, file paths (UTF-8 on every platform), booleans, every integer type with range checks,
 `float` and `double`, enums (by name, or as numbers) and lists of any of them, with your own types
-added by specializing `TASWIniConverter`. Loading and saving files, and the settings classes come
-next. [CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may change in any way
-until 1.0.0.
+added by specializing `TASWIniConverter`. `TASWBaseIni` (`ASWIni_Base.h`) is the INI object an
+application uses, from any number of threads: it loads a file and saves it back (atomically, with an
+optional backup), reads and writes typed values (`GetValue()`, `TryGetValue()` and `SetValue()`),
+and reports warnings and errors to a log callback. Code that only reads and writes values can take
+its interface, `IASWIni` (`ASWIni_Interface.h`). The settings classes, which declare an
+application's settings in one place, come next. [CHANGELOG.md](CHANGELOG.md) lists what each change
+adds. The interface may change in any way until 1.0.0.
 
 ## Design
 

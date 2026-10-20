@@ -29,9 +29,12 @@ limitations under the License.
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <mutex>
+#include <random>
 #include <shared_mutex>
 #include <stdexcept>
 #include <string>
@@ -52,6 +55,7 @@ limitations under the License.
 #endif
 //---------------------------------------------------------------------------
 #include "ASWIni_Base.h"
+#include "ASWIni_Converters.h"
 #include "ASWIni_File.h"
 #include "ASWIni_Version.h"
 #include "UT_Helper_FailingAlloc.h"
@@ -128,6 +132,30 @@ constexpr char const* TrickyText =
 // How long a test waits for another thread before it counts as stuck
 constexpr std::chrono::seconds ThreadTimeout(10);
 
+// The seed of the random numbers of the first thread of a thread test (each next thread's is one more)
+constexpr std::uint32_t ThreadsSeed = 20261020;
+
+// The Id of the next TLifeId
+std::atomic<std::uint32_t> g_NextLifeId{ 1 };
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TLifeId
+//
+// A number of its own (a copy gets a new one) from its construction until its destructor sets it to 0, so code that
+// reads it before and after a wait can tell whether the object was destroyed meanwhile, even when another one has
+// taken its memory. Its stores are volatile, so the compiler can't leave out the destructor's as a store to an
+// object that ends.
+/////////////////////////////////////////////////////////////////////////////
+struct TLifeId
+{
+    volatile std::uint32_t Id;
+
+    TLifeId() noexcept;
+    TLifeId(TLifeId const& /*other*/) noexcept;
+    ~TLifeId();
+};
+
 
 /////////////////////////////////////////////////////////////////////////////
 // TReadCall
@@ -178,12 +206,72 @@ public:
     TASWIniResult DefaultWrite(TWriteCall const& call);
 };
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TThreadFailures
+//
+// The problems the threads of a test find, which any thread may add. The test checks them on its own thread when the
+// threads are done, since the checks aren't made to be called from several threads at once.
+/////////////////////////////////////////////////////////////////////////////
+class TThreadFailures
+{
+private:
+    mutable std::mutex m_Mutex;
+    std::size_t m_Count = 0;
+    std::string m_First;
+
+public:
+    // Adds 'problem'
+    void Add(std::string const& problem);
+
+    // "" when no problem was added; else how many there were, the seed of the threads' random numbers, and the first
+    std::string Summary() const;
+};
+
 //---------------------------------------------------------------------------
 
+TASWIniLogCallback CountingCallback(std::atomic<int>& count);
+void MaybeYield(std::mt19937& generator);
 TASWIniDocument ParsedDocument(std::string_view text, TASWIniOptions const& options = TASWIniOptions());
 TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages);
+void RunTogether(std::vector<std::function<void()> > const& work, TThreadFailures& failures);
 TASWIniResult SeamFailure(EIniCode code, std::string const& filePath, int systemError);
+std::string ValuesProblem(TASWIniDocument const& document, std::size_t writers, int largest);
+std::string WriterKey(std::size_t index);
 
+//---------------------------------------------------------------------------
+/*
+    CountingCallback
+
+    A log callback that adds 1 to 'count' for each message, from any thread. It gives up its time slice and then counts
+    the message only if it still exists, so a callback destroyed while it runs (e.g. replaced by SetLogCallback()) is
+    a message that isn't counted, and a use after free that AddressSanitizer reports.
+*/
+TASWIniLogCallback CountingCallback(std::atomic<int>& count)
+{
+    TLifeId const life;
+    auto const counter = [&count, life](TASWIniMessage const& /*message*/)
+        {
+            std::uint32_t const id = life.Id;
+            std::this_thread::yield();
+            if (id != 0 && life.Id == id)
+                ++count;
+        };
+
+    return counter;
+}
+//---------------------------------------------------------------------------
+/*
+    MaybeYield
+
+    Gives up the rest of the thread's time slice now and then (in 1 of 4 calls, as 'generator' picks them), so the
+    threads of a test interleave in more ways.
+*/
+void MaybeYield(std::mt19937& generator)
+{
+    if (generator() % 4 == 0)
+        std::this_thread::yield();
+}
 //---------------------------------------------------------------------------
 /*
     ParsedDocument
@@ -215,6 +303,50 @@ TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages)
 }
 //---------------------------------------------------------------------------
 /*
+    RunTogether
+
+    Runs each function of 'work' on a thread of its own, all of them starting together, and waits for them to finish.
+    An exception a function throws, or a thread that can't be started, is added to 'failures'.
+*/
+void RunTogether(std::vector<std::function<void()> > const& work, TThreadFailures& failures)
+{
+    std::atomic<bool> start{ false };
+    auto const run = [&start, &failures](std::function<void()> const& function)
+        {
+            while (!start)
+                std::this_thread::yield();
+
+            try
+            {
+                function();
+            }
+            catch (std::exception const& e)
+            {
+                failures.Add(std::string("a thread threw: ") + e.what());
+            }
+            catch (...)
+            {
+                failures.Add("a thread threw an exception that isn't a std::exception");
+            }
+        };
+
+    std::vector<std::thread> threads;
+    try
+    {
+        for (std::function<void()> const& function : work)
+            threads.emplace_back(run, std::cref(function));
+    }
+    catch (std::exception const& e)
+    {
+        failures.Add(std::string("a thread couldn't be started: ") + e.what());
+    }
+
+    start = true;
+    for (std::thread& thread : threads)
+        thread.join();
+}
+//---------------------------------------------------------------------------
+/*
     SeamFailure
 
     A failed result with 'code', 'filePath' and 'systemError', as TSeamIni's OnRead or OnWrite may return it.
@@ -228,6 +360,73 @@ TASWIniResult SeamFailure(EIniCode code, std::string const& filePath, int system
     result.SystemError = systemError;
 
     return result;
+}
+//---------------------------------------------------------------------------
+/*
+    ValuesProblem
+
+    What is wrong with 'document', a copy of a thread test's object or a file it saved: "" when its text reads back as
+    it is, with no warnings, and each of the keys WriterKey(0) to WriterKey(writers - 1) of the section "Values" is an
+    int from 0 to 'largest'.
+*/
+std::string ValuesProblem(TASWIniDocument const& document, std::size_t writers, int largest)
+{
+    std::string const text = document.ToText();
+    TASWIniDocument reread;
+    std::vector<TASWIniMessage> warnings;
+    TASWIniResult const result = reread.Parse(text, document.GetOptions(), warnings);
+    if (!result.IsOk() || !warnings.empty() || reread.ToText() != text)
+        return "the text should read back as it is, with no warnings";
+
+    for (std::size_t i = 0; i < writers; ++i)
+    {
+        ASWIni::TASWIniDocumentLine const* const line = document.FindKey("Values", WriterKey(i));
+        int value = -1;
+        bool converts = false;
+        if (line != nullptr)
+        {
+            TASWIniResult const converted = ASWIni::TASWIniConverter<int>::FromText(line->GetValue(), value,
+                document.GetOptions().Values);
+            converts = converted.IsOk();
+        }
+
+        if (!converts || value < 0 || value > largest)
+            return WriterKey(i) + " should be a number from 0 to " + std::to_string(largest);
+    }
+
+    return std::string();
+}
+//---------------------------------------------------------------------------
+/*
+    WriterKey
+
+    The key the writer thread number 'index' of a thread test counts up.
+*/
+std::string WriterKey(std::size_t index)
+{
+    return "Writer" + std::to_string(index);
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TLifeId
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TLifeId::TLifeId() noexcept
+    : Id(g_NextLifeId++)
+{
+}
+//---------------------------------------------------------------------------
+TLifeId::TLifeId(TLifeId const& /*other*/) noexcept
+    : Id(g_NextLifeId++)
+{
+}
+//---------------------------------------------------------------------------
+TLifeId::~TLifeId()
+{
+    Id = 0;
 }
 //---------------------------------------------------------------------------
 
@@ -259,6 +458,30 @@ TASWIniResult TSeamIni::WriteFile(std::string const& filePath, std::string_view 
         return OnWrite(call);
 
     return DefaultWrite(call);
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TThreadFailures
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+void TThreadFailures::Add(std::string const& problem)
+{
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    if (m_Count++ == 0)
+        m_First = problem;
+}
+//---------------------------------------------------------------------------
+std::string TThreadFailures::Summary() const
+{
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    if (m_Count == 0)
+        return std::string();
+
+    return std::to_string(m_Count) + " problem(s), with the threads seeded from " + std::to_string(ThreadsSeed) +
+        "; the first: " + m_First;
 }
 //---------------------------------------------------------------------------
 
@@ -930,6 +1153,88 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayCallTheObject)
     }
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayLoadAndSave)
+{
+    // Arrange
+    // The callback calls Save() for a warning of Load(), and Load() for a warning of SetOptions() and of Save(), which
+    // would deadlock if the file lock were held while reporting (the CI's test timeout turns that into a failure). The
+    // file has three warnings, which the callback's Load() reports again, while the callback is still running.
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    AssertTrue(WriteTestFile(file, WarningsText), __func__, __LINE__, "the test file should be written");
+    std::string const path = PathToUtf8(file);
+    TSeamIni ini;
+    std::vector<TASWIniMessage> messages;
+    std::vector<TASWIniResult> inCallback;
+    std::function<void()> next;
+    auto const callback = [&messages, &next](TASWIniMessage const& message)
+        {
+            messages.push_back(message);
+            if (!next)
+                return;
+
+            std::function<void()> const action = next;
+            next = nullptr;
+            action();
+        };
+    ini.SetLogCallback(callback);
+    auto const save = [&ini, &inCallback]()
+        {
+            inCallback.push_back(ini.Save());
+        };
+    auto const load = [&ini, &inCallback, &path]()
+        {
+            inCallback.push_back(ini.Load(path));
+        };
+    bool warnOnWrite = false;
+    auto const write = [&ini, &warnOnWrite](TWriteCall const& call)
+        {
+            if (warnOnWrite)
+            {
+                TASWIniMessage warning;
+                warning.Severity = ESeverity::Warning;
+                warning.Code = EIniCode::TempFileCleanupFailed;
+                warning.Text = "A warning of the save.";
+                call.Warnings.push_back(warning);
+            }
+
+            return ini.DefaultWrite(call);
+        };
+    ini.OnWrite = write;
+
+    // Act
+    next = save;
+    TASWIniResult const loaded = ini.Load(path);
+    std::size_t const messagesOfLoad = messages.size();
+    next = load;
+    TASWIniResult const optionsSet = ini.SetOptions(ini.GetOptions());
+    std::size_t const messagesOfSetOptions = messages.size() - messagesOfLoad;
+    next = load;
+    warnOnWrite = true;
+    TASWIniResult const saved = ini.Save();
+    std::size_t const messagesOfSave = messages.size() - messagesOfLoad - messagesOfSetOptions;
+
+    // Assert
+    std::string contents;
+    CheckTrue(loaded.IsOk() && optionsSet.IsOk() && saved.IsOk(), __func__, __LINE__,
+        "Load(), SetOptions() and Save() should succeed");
+    CheckEquals(std::size_t(3), inCallback.size(), __func__, __LINE__,
+        "the callback should have saved once and loaded twice");
+    for (TASWIniResult const& result : inCallback)
+        CheckTrue(result.IsOk(), __func__, __LINE__, "each call in the callback should succeed: " + result.Message);
+
+    CheckEquals(std::size_t(3), messagesOfLoad, __func__, __LINE__,
+        "Load() should report the file's three warnings, and the callback's Save() nothing");
+    CheckEquals(std::size_t(6), messagesOfSetOptions, __func__, __LINE__,
+        "SetOptions() should report the three warnings, and the callback's Load() them again");
+    CheckEquals(std::size_t(4), messagesOfSave, __func__, __LINE__,
+        "Save() should report its warning, and the callback's Load() the file's three");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
+    CheckEquals(std::string(WarningsText), contents, __func__, __LINE__, "the saves should write the text as it was");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the loaded document shouldn't be modified");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayReplaceItself)
 {
     // Arrange
@@ -1428,7 +1733,8 @@ ASW_TEST(TTest_ASWIni_BaseFile, Load_ReadsTheFile)
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be loaded: " + result.Message);
     CheckEquals(std::string(), result.FilePath, __func__, __LINE__, "a result that is Ok should be only that");
-    CheckEquals(std::string(WarningsText), ini.ToText(), __func__, __LINE__, "the document should have the file's text");
+    CheckEquals(std::string(WarningsText), ini.ToText(), __func__, __LINE__,
+        "the document should have the file's text");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
     CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the file path should be the path as it was given");
     CheckEquals(EIniCode::NotFound, failedEdit.Code, __func__, __LINE__, "the rename should fail");
@@ -2094,9 +2400,475 @@ ASW_TEST(TTest_ASWIni_BaseFile, Seams_GetTheirArguments)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_BaseThreads
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_BaseThreads::TTest_ASWIni_BaseThreads()
+    : inherited("ASWIni_BaseThreads_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_BaseThreads::~TTest_ASWIni_BaseThreads()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseThreads::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseThreads::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseThreads::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_BaseThreads::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseThreads, Edits_LookupsNeverSeeAValueGoBack)
+{
+    // Arrange
+    // Writers count their own keys up. Readers check that each value converts and never goes back, and that a copy
+    // of the document reads back as it is, while comments are set and a scratch section is added and removed.
+    std::size_t const writers = 4;
+    std::size_t const readers = 3;
+    int const iterations = 2000;
+    TASWBaseIni ini;
+    for (std::size_t i = 0; i < writers; ++i)
+        static_cast<void>(ini.SetValue("Values", WriterKey(i), 0));
+
+    std::atomic<int> reports{ 0 };
+    ini.SetLogCallback(CountingCallback(reports));
+    TThreadFailures failures;
+    auto const writer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int value = 1; value <= iterations; ++value)
+            {
+                TASWIniResult const result = ini.SetValue("Values", WriterKey(index), value);
+                if (!result.IsOk())
+                    failures.Add("SetValue() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    auto const reader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            std::vector<int> last(writers, 0);
+            for (int i = 0; i < iterations; ++i)
+            {
+                std::size_t const key = generator() % writers;
+                int value = -1;
+                TASWIniResult const result = ini.TryGetValue("Values", WriterKey(key), value);
+                if (!result.IsOk())
+                    failures.Add("each value should convert: " + result.Message);
+                else if (value < last[key] || value > iterations)
+                    failures.Add(WriterKey(key) + " shouldn't go back: " + std::to_string(value) + " after " +
+                        std::to_string(last[key]));
+                else
+                    last[key] = value;
+
+                if (i % 50 == 0)
+                {
+                    std::string const problem = ValuesProblem(ini.GetDocument(), writers, iterations);
+                    if (!problem.empty())
+                        failures.Add("in a copy of the document, " + problem);
+                }
+
+                MaybeYield(generator);
+            }
+        };
+    auto const commenter = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < iterations; ++i)
+            {
+                std::string const text = "Comment " + std::to_string(i);
+                TASWIniResult result;
+                switch (generator() % 3)
+                {
+                    case 0:
+                        result = ini.SetFileComment(text);
+                        break;
+
+                    case 1:
+                        result = ini.SetSectionComment("Values", text);
+                        break;
+
+                    default:
+                        result = ini.SetKeyComment("Values", WriterKey(generator() % writers), text);
+                        break;
+                }
+
+                if (!result.IsOk())
+                    failures.Add("setting a comment should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    auto const scratch = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < iterations; ++i)
+            {
+                TASWIniResult const added = ini.AddSection("Scratch");
+                TASWIniResult const set = ini.SetValue("Scratch", "Round", i);
+                bool const removed = ini.RemoveSection("Scratch");
+                if (!added.IsOk() || !set.IsOk() || !removed)
+                    failures.Add("the scratch section should be added, set and removed: " + added.Message +
+                        set.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    std::vector<std::function<void()> > work;
+    for (std::size_t i = 0; i < writers; ++i)
+        work.push_back(std::bind(writer, i));
+
+    for (std::size_t i = 0; i < readers; ++i)
+        work.push_back(std::bind(reader, writers + i));
+
+    work.push_back(std::bind(commenter, writers + readers));
+    work.push_back(std::bind(scratch, writers + readers + 1));
+
+    // Act
+    RunTogether(work, failures);
+
+    // Assert
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    for (std::size_t i = 0; i < writers; ++i)
+        CheckEquals(iterations, ini.GetValue("Values", WriterKey(i), -1), __func__, __LINE__,
+            "each key should have its writer's last value");
+
+    CheckFalse(ini.HasSection("Scratch"), __func__, __LINE__, "the scratch section should be removed");
+    CheckEquals(std::string(), ValuesProblem(ini.GetDocument(), writers, iterations), __func__, __LINE__,
+        "the document should read back as it is");
+    CheckEquals(0, reports.load(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseThreads, LoadsAndSaves_EverySavedFileIsWhole)
+{
+    // Arrange
+    // Writers count their own keys up while other threads save the object to one file, load it from that file and
+    // look up values, and WriteFile() reads each saved file back. A load replaces the document with the file, so a
+    // value may go back, but it is always a number in range. The writers and the reader go on until the file threads
+    // are done (at least 'iterations' times, at most 'largest'), since a file operation takes much longer than an edit.
+    std::size_t const writers = 2;
+    int const iterations = 300;
+    int const largest = 1000000;
+    int const fileOperations = 8;
+    std::atomic<int> fileThreadsLeft{ 3 };
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const file = folder.Path() / "app.ini";
+    std::string const path = PathToUtf8(file);
+    TSeamIni ini;
+    for (std::size_t i = 0; i < writers; ++i)
+        static_cast<void>(ini.SetValue("Values", WriterKey(i), 0));
+
+    AssertTrue(ini.SaveAs(path).IsOk(), __func__, __LINE__, "the file should be saved");
+    std::atomic<int> reports{ 0 };
+    ini.SetLogCallback(CountingCallback(reports));
+    TThreadFailures failures;
+    auto const write = [&](TWriteCall const& call)
+        {
+            TASWIniResult const result = ini.DefaultWrite(call);
+            if (!result.IsOk())
+                return result;
+
+            std::string contents;
+            if (!ReadTestFile(file, contents) || contents != call.Contents)
+            {
+                failures.Add("a saved file should have the text that was saved");
+            }
+            else
+            {
+                std::string const problem = ValuesProblem(ParsedDocument(contents), writers, largest);
+                if (!problem.empty())
+                    failures.Add("in a saved file, " + problem);
+            }
+
+            return result;
+        };
+    ini.OnWrite = write;
+    auto const writer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int value = 1; value <= largest; ++value)
+            {
+                TASWIniResult const result = ini.SetValue("Values", WriterKey(index), value);
+                if (!result.IsOk())
+                    failures.Add("SetValue() should succeed: " + result.Message);
+
+                if (value >= iterations && fileThreadsLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    auto const saver = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < fileOperations; ++i)
+            {
+                TASWIniResult const result = ini.Save();
+                if (!result.IsOk())
+                    failures.Add("Save() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+
+            --fileThreadsLeft;
+        };
+    auto const loader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < fileOperations; ++i)
+            {
+                TASWIniResult const result = ini.Load(path);
+                if (!result.IsOk())
+                    failures.Add("Load() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+
+            --fileThreadsLeft;
+        };
+    auto const reader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < largest; ++i)
+            {
+                std::size_t const key = generator() % writers;
+                int value = -1;
+                TASWIniResult const result = ini.TryGetValue("Values", WriterKey(key), value);
+                if (!result.IsOk() || value < 0 || value > largest)
+                    failures.Add(WriterKey(key) + " should be a number in range: " + result.Message);
+
+                if (ini.GetFilePath() != path)
+                    failures.Add("the file path should stay the same");
+
+                if (i >= iterations && fileThreadsLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    std::vector<std::function<void()> > work;
+    for (std::size_t i = 0; i < writers; ++i)
+        work.push_back(std::bind(writer, i));
+
+    work.push_back(std::bind(saver, writers));
+    work.push_back(std::bind(saver, writers + 1));
+    work.push_back(std::bind(loader, writers + 2));
+    work.push_back(std::bind(reader, writers + 3));
+
+    // Act
+    // Then each key is set to a value of its own, and the object is saved and loaded again
+    RunTogether(work, failures);
+    for (std::size_t i = 0; i < writers; ++i)
+        static_cast<void>(ini.SetValue("Values", WriterKey(i), static_cast<int>(i) + 10));
+
+    TASWIniResult const saved = ini.Save();
+    TASWBaseIni reloaded;
+    TASWIniResult const loaded = reloaded.Load(path);
+
+    // Assert
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    CheckTrue(saved.IsOk() && loaded.IsOk(), __func__, __LINE__, "the last save and load should succeed");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the saved object shouldn't be modified");
+    CheckEquals(ini.ToText(), reloaded.ToText(), __func__, __LINE__, "the file should load as the object saved it");
+    for (std::size_t i = 0; i < writers; ++i)
+        CheckEquals(static_cast<int>(i) + 10, reloaded.GetValue("Values", WriterKey(i), -1), __func__, __LINE__,
+            "each key should have its last value");
+
+    CheckEquals(0, reports.load(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseThreads, SetLogCallback_EachFailureIsReportedOnce)
+{
+    // Arrange
+    // Threads make edits that fail, each of which is reported, while another thread switches between two callbacks
+    // (until the failing threads are done: at least 'iterations' times, at most 'largest') and a writer counts its key
+    // up; each failure goes to one of the callbacks, once, and a callback isn't destroyed while it runs
+    std::size_t const failers = 3;
+    int const iterations = 2000;
+    int const largest = 1000000;
+    std::atomic<int> failersLeft{ static_cast<int>(failers) };
+    TASWBaseIni ini;
+    std::atomic<int> firstCount{ 0 };
+    std::atomic<int> secondCount{ 0 };
+    TASWIniLogCallback const first = CountingCallback(firstCount);
+    TASWIniLogCallback const second = CountingCallback(secondCount);
+    ini.SetLogCallback(first);
+    TThreadFailures failures;
+    auto const failer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < iterations; ++i)
+            {
+                TASWIniResult const result = ini.RenameSection("Missing", "Other");
+                if (result.Code != EIniCode::NotFound)
+                    failures.Add("renaming a missing section should be NotFound: " + result.Message);
+
+                MaybeYield(generator);
+            }
+
+            --failersLeft;
+        };
+    auto const switcher = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < largest; ++i)
+            {
+                ini.SetLogCallback(i % 2 == 0 ? second : first);
+                if (i >= iterations && failersLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    auto const writer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int value = 1; value <= iterations; ++value)
+            {
+                TASWIniResult const result = ini.SetValue("Values", WriterKey(0), value);
+                if (!result.IsOk())
+                    failures.Add("SetValue() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    std::vector<std::function<void()> > work;
+    for (std::size_t i = 0; i < failers; ++i)
+        work.push_back(std::bind(failer, i));
+
+    work.push_back(std::bind(switcher, failers));
+    work.push_back(std::bind(writer, failers + 1));
+
+    // Act
+    RunTogether(work, failures);
+
+    // Assert
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    CheckEquals(static_cast<int>(failers) * iterations, firstCount.load() + secondCount.load(), __func__, __LINE__,
+        "each failure should be reported once");
+    CheckEquals(iterations, ini.GetValue("Values", WriterKey(0), -1), __func__, __LINE__,
+        "the key should have the writer's last value");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseThreads, SetOptions_LookupsSeeTheOldOrTheNewOptions)
+{
+    // Arrange
+    // A thread switches between two sets of options, which read "Name" differently (inline comments off and on) and
+    // write a bool differently, while a writer counts its key up and sets a bool, and readers check that "Name" is one
+    // of its two readings, the bool converts and the count never goes back. Many other keys make reading the text
+    // again take long enough that an edit made meanwhile would be lost without the lock.
+    std::size_t const readers = 3;
+    int const iterations = 1000;
+    std::string text = "[Values]\nName = My App ; note\nFlag = true\nWriter0 = 0\n\n[Other]\n";
+    for (int i = 0; i < 200; ++i)
+        text += "Key" + std::to_string(i) + " = " + std::to_string(i) + "\n";
+
+    TASWBaseIni ini;
+    static_cast<void>(ini.LoadText(text));
+    TASWIniOptions const plain;
+    TASWIniOptions withInline;
+    withInline.Reading.InlineComments = true;
+    withInline.Values.BoolFormat = EBoolFormat::OnOff;
+    std::atomic<int> reports{ 0 };
+    ini.SetLogCallback(CountingCallback(reports));
+    TThreadFailures failures;
+    auto const switcher = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < iterations; ++i)
+            {
+                TASWIniResult const result = ini.SetOptions(i % 2 == 0 ? withInline : plain);
+                if (!result.IsOk())
+                    failures.Add("SetOptions() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    auto const writer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int value = 1; value <= iterations; ++value)
+            {
+                TASWIniResult const count = ini.SetValue("Values", WriterKey(0), value);
+                TASWIniResult const flag = ini.SetValue("Values", "Flag", value % 2 == 0);
+                if (!count.IsOk() || !flag.IsOk())
+                    failures.Add("SetValue() should succeed: " + count.Message + flag.Message);
+
+                MaybeYield(generator);
+            }
+        };
+    auto const reader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            int last = 0;
+            for (int i = 0; i < iterations; ++i)
+            {
+                std::string name;
+                if (!ini.TryGetText("Values", "Name", name) || (name != "My App ; note" && name != "My App"))
+                    failures.Add("Name should be read with the old or the new options: \"" + name + "\"");
+
+                bool flag = false;
+                TASWIniResult const flagResult = ini.TryGetValue("Values", "Flag", flag);
+                if (!flagResult.IsOk())
+                    failures.Add("the bool should convert: " + flagResult.Message);
+
+                int value = -1;
+                TASWIniResult const countResult = ini.TryGetValue("Values", WriterKey(0), value);
+                if (!countResult.IsOk() || value < last || value > iterations)
+                    failures.Add("the count should convert and never go back: " + std::to_string(value) + " after " +
+                        std::to_string(last));
+                else
+                    last = value;
+
+                MaybeYield(generator);
+            }
+        };
+    std::vector<std::function<void()> > work;
+    work.push_back(std::bind(switcher, 0));
+    work.push_back(std::bind(writer, 1));
+    for (std::size_t i = 0; i < readers; ++i)
+        work.push_back(std::bind(reader, 2 + i));
+
+    // Act
+    // The last options set are the plain ones
+    RunTogether(work, failures);
+
+    // Assert
+    std::string name;
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    CheckFalse(ini.GetOptions().Reading.InlineComments, __func__, __LINE__, "the last options set should be kept");
+    CheckTrue(ini.TryGetText("Values", "Name", name), __func__, __LINE__, "the key should exist");
+    CheckEquals(std::string("My App ; note"), name, __func__, __LINE__,
+        "the text should be read with the last options");
+    CheckEquals(iterations, ini.GetValue("Values", WriterKey(0), -1), __func__, __LINE__,
+        "the key should have the writer's last value");
+    CheckEquals(0, reports.load(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseAccess, "Base")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseCallback, "Base")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseFile, "Base")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_BaseThreads, "Base")

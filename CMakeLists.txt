@@ -41,6 +41,8 @@ add_library(ASWIni STATIC
     ASWIni/ASWIni_Document.h
     ASWIni/ASWIni_File.cpp
     ASWIni/ASWIni_File.h
+    ASWIni/ASWIni_Interface.cpp
+    ASWIni/ASWIni_Interface.h
     ASWIni/ASWIni_Options.cpp
     ASWIni/ASWIni_Options.h
     ASWIni/ASWIni_Platform.cpp

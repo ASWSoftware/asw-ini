@@ -72,8 +72,8 @@ enum class EIniCode : int
     BackupFailed = 20, // The backup copy couldn't be made; the file was saved anyway
     TempFileCleanupFailed = 21, // A temporary file of a failed save couldn't be deleted
 
-    // Errors added after the warnings: an edit of a TASWIniDocument failed
-    NotFound = 22, // The section or key to rename, or to set the comment of, doesn't exist
+    // Errors added after the warnings: an edit of a TASWIniDocument failed, or a value wasn't there
+    NotFound = 22, // The section or key to rename, to set the comment of, or to read (TryGetValue()) doesn't exist
     AlreadyExists = 23, // A section or key can't be renamed to the name of another one that exists
 
     // Errors added for values: a value couldn't be converted to or from its text

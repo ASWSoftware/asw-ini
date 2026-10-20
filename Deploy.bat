@@ -58,6 +58,10 @@ call :CopyFile "ASWIni\ASWIni_File.cpp" "%TARGET_DIR%\ASWIni\ASWIni_File.cpp"
 if errorlevel 1 exit /b 1
 call :CopyFile "ASWIni\ASWIni_File.h" "%TARGET_DIR%\ASWIni\ASWIni_File.h"
 if errorlevel 1 exit /b 1
+call :CopyFile "ASWIni\ASWIni_Interface.cpp" "%TARGET_DIR%\ASWIni\ASWIni_Interface.cpp"
+if errorlevel 1 exit /b 1
+call :CopyFile "ASWIni\ASWIni_Interface.h" "%TARGET_DIR%\ASWIni\ASWIni_Interface.h"
+if errorlevel 1 exit /b 1
 call :CopyFile "ASWIni\ASWIni_Options.cpp" "%TARGET_DIR%\ASWIni\ASWIni_Options.cpp"
 if errorlevel 1 exit /b 1
 call :CopyFile "ASWIni\ASWIni_Options.h" "%TARGET_DIR%\ASWIni\ASWIni_Options.h"

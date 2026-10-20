@@ -138,5 +138,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   doubles written on another platform reads back 1 unit in the last place off. The macro
   `ASWINI_STD_FLOAT_CHARCONV` (defined as 0 when building the library) chooses the C runtime for
   another standard library without floating-point `<charconv>`.
+- `IASWIni` (`ASWIni_Interface.h`), the interface of an INI object (which `TASWBaseIni` will
+  implement), so code that only reads and writes values can take an `IASWIni&`. Its string-based
+  operations are each thread-safe and complete in themselves, and give out copies: the lookups,
+  edits and comments of `TASWIniDocument`, with `TryGetText()` and `SetText()` for a value's text,
+  `GetDocument()` (a copy), `ToText()`, `LoadText()`, `Load()`, `Save()`, `SaveAs()`, the options
+  and `SetLogCallback()` (a `TASWIniLogCallback`). The typed `GetValue()`, `TryGetValue()` and
+  `SetValue()` are built on them with `TASWIniConverter<T>` and the value options, or options given
+  for one call. `GetValue()` gives the default for a missing key, and for a value that doesn't
+  convert, which it reports to the log callback as a warning. `TryGetValue()` returns why it
+  couldn't read the value (`EIniCode::NotFound` for a missing key, or the converter's code, with a
+  message that names the section and key), reports nothing and leaves the value as it was.
+  `SetValue()` fails, and reports it, when the converter can't write the value. A text (a string
+  literal, a `char` array or pointer, or a `std::string_view`) is read and set as it is. The
+  operations that return a `TASWIniResult` don't throw: an exception, e.g. one thrown by an
+  application's converter, is returned as `EIniCode::UnexpectedException`. New source:
+  `ASWIni_Interface.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

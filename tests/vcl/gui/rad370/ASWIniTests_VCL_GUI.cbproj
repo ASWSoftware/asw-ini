@@ -216,6 +216,10 @@
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Platform.h</DependentOn>
             <BuildOrder>60</BuildOrder>
         </CppCompile>
+        <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Settings.cpp">
+            <DependentOn>..\..\..\..\ASWIni\ASWIni_Settings.h</DependentOn>
+            <BuildOrder>67</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\..\..\ASWIni\ASWIni_Types.cpp">
             <DependentOn>..\..\..\..\ASWIni\ASWIni_Types.h</DependentOn>
             <BuildOrder>47</BuildOrder>
@@ -255,6 +259,10 @@
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Platform.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Platform.h</DependentOn>
             <BuildOrder>61</BuildOrder>
+        </CppCompile>
+        <CppCompile Include="..\..\..\tests\Test_ASWIni_Settings.cpp">
+            <DependentOn>..\..\..\tests\Test_ASWIni_Settings.h</DependentOn>
+            <BuildOrder>68</BuildOrder>
         </CppCompile>
         <CppCompile Include="..\..\..\tests\Test_ASWIni_Types.cpp">
             <DependentOn>..\..\..\tests\Test_ASWIni_Types.h</DependentOn>

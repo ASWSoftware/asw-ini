@@ -176,5 +176,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   on a kernel mutex for every lock (about 1000 times slower when threads contend);
   `ASWINI_WINDOWS_LOCKS` says which are used. The `ASWIni::ASWIni` CMake target now links to
   `Threads::Threads`, and the installed package finds it. New source: `ASWIni_Base.cpp`.
+- `TASWIniSection` and `TASWIniSetting<T>` (`ASWIni_Settings.h`), which declare an application's
+  settings in one place, e.g. as members of its settings class (derived from `TASWBaseIni`). A
+  section has its owner, name and comment; a setting has its section, key, type (any type
+  `TASWIniConverter` converts), default value, comment and options (`TASWIniSettingOptions<T>`: a
+  range with `SetRange()`, `SetMin()` or `SetMax()`, for a type that `operator<` compares; a
+  validator, which returns what is wrong with a value; and value options of its own, e.g. a `bool`
+  written as `1` and `0`). A setting holds no value of its own: `Get()` reads the owner's document,
+  giving the default value for a missing key, and for a value that doesn't convert, is out of the
+  range or that the validator refuses (reported as a warning that names the default). `Set()`
+  writes the document, adding a missing key with the setting's comment above it in the same edit,
+  and fails, reports it and changes nothing for a value out of the range (`ValueOutOfRange`) or
+  one the validator refuses (`InvalidValue`). `Reset()` sets the default value, and `IsPresent()`
+  says whether the key is in the document. Any thread may call them, as the owner's operations.
+  New source: `ASWIni_Settings.cpp`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

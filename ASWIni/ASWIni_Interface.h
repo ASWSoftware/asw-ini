@@ -55,6 +55,19 @@ namespace ASWIni
 // (Load() and Save() too). An exception it throws is dropped.
 typedef std::function<void (TASWIniMessage const& message)> TASWIniLogCallback;
 
+//---------------------------------------------------------------------------
+
+// Helpers of IASWIni's templates, and of the settings' (ASWIni_Settings.h)
+namespace Detail
+{
+
+// A failed result with 'code' and the message "The key <key> of the section <section> <action>: <problem>", e.g.
+// "The key "Width" of the section "Window" can't be read: The value "wide" isn't an integer."
+TASWIniResult KeyFailure(std::string_view section, std::string_view key, char const* action, EIniCode code,
+    std::string_view problem);
+
+} // namespace Detail
+
 
 /////////////////////////////////////////////////////////////////////////////
 // IASWIni
@@ -80,11 +93,6 @@ private:
     using TIfNotText = std::enable_if_t<!std::is_convertible_v<T const&, char const*> >;
 
 private:
-    // A failed result with 'code' and the message "The key <key> of the section <section> <action>: <problem>", e.g.
-    // "The key "Width" of the section "Window" can't be read: The value "wide" isn't an integer."
-    static TASWIniResult KeyFailure(std::string_view section, std::string_view key, char const* action, EIniCode code,
-        std::string_view problem);
-
     // The NotFound result of TryGetValue() for key 'key' of section 'section', which doesn't exist
     static TASWIniResult KeyNotFound(std::string_view section, std::string_view key);
 
@@ -103,17 +111,17 @@ private:
             TASWIniValueOptions const valueOptions = options != nullptr ? *options : GetValueOptions();
             TASWIniResult const result = TASWIniConverter<T>::FromText(text, value, valueOptions);
             if (!result.IsOk())
-                return KeyFailure(section, key, action, result.Code, result.Message);
+                return Detail::KeyFailure(section, key, action, result.Code, result.Message);
 
             return result;
         }
         catch (std::exception const& e)
         {
-            return KeyFailure(section, key, action, EIniCode::UnexpectedException, e.what());
+            return Detail::KeyFailure(section, key, action, EIniCode::UnexpectedException, e.what());
         }
         catch (...)
         {
-            return KeyFailure(section, key, action, EIniCode::UnexpectedException, UnknownExceptionText);
+            return Detail::KeyFailure(section, key, action, EIniCode::UnexpectedException, UnknownExceptionText);
         }
     }
 
@@ -138,15 +146,15 @@ private:
             if (result.IsOk())
                 return SetText(section, key, text);
 
-            result = KeyFailure(section, key, action, result.Code, result.Message);
+            result = Detail::KeyFailure(section, key, action, result.Code, result.Message);
         }
         catch (std::exception const& e)
         {
-            result = KeyFailure(section, key, action, EIniCode::UnexpectedException, e.what());
+            result = Detail::KeyFailure(section, key, action, EIniCode::UnexpectedException, e.what());
         }
         catch (...)
         {
-            result = KeyFailure(section, key, action, EIniCode::UnexpectedException, UnknownExceptionText);
+            result = Detail::KeyFailure(section, key, action, EIniCode::UnexpectedException, UnknownExceptionText);
         }
 
         ReportFailure(result);

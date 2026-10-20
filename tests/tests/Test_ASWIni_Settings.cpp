@@ -1,0 +1,716 @@
+/* **************************************************************************
+Test_ASWIni_Settings.cpp
+Author: Anthony S. West - ASW Software
+
+See header for info.
+
+Copyright 2026 ASW Software
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+************************************************************************** */
+
+//---------------------------------------------------------------------------
+// Module header
+#include "Test_ASWIni_Settings.h"
+//---------------------------------------------------------------------------
+#include "ASWUnitTests_Registry.h"
+//---------------------------------------------------------------------------
+#include <cstddef>
+#include <filesystem>
+#include <stdexcept>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <vector>
+//---------------------------------------------------------------------------
+#include "ASWIni_Base.h"
+#include "ASWIni_Converters.h"
+#include "ASWIni_Settings.h"
+#include "UT_Helper_FailingAlloc.h"
+//---------------------------------------------------------------------------
+
+// Neither copyable nor movable: settings and sections are bound to their owner by address
+static_assert(!std::is_copy_constructible_v<ASWIni::TASWIniSection>, "TASWIniSection shouldn't be copyable");
+static_assert(!std::is_move_constructible_v<ASWIni::TASWIniSection>, "TASWIniSection shouldn't be movable");
+static_assert(!std::is_copy_constructible_v<ASWIni::TASWIniSetting<int> >, "TASWIniSetting shouldn't be copyable");
+static_assert(!std::is_move_constructible_v<ASWIni::TASWIniSetting<int> >, "TASWIniSetting shouldn't be movable");
+
+// A range needs operator<
+static_assert(ASWIni::Detail::IsLessComparable<int>, "an int should have operator<");
+static_assert(ASWIni::Detail::IsLessComparable<std::string>, "a std::string should have operator<");
+
+namespace ASWUnitTests
+{
+
+namespace
+{
+
+// An enum with names, of which Unnamed has none
+enum class ELevel : int
+{
+    Low = 0,
+    High = 1,
+    Unnamed = 2,
+};
+
+auto const& ASWIniEnumNames(ELevel)
+{
+    static constexpr ASWIni::TASWIniEnumName<ELevel> names[] = { { ELevel::Low, "Low" }, { ELevel::High, "High" } };
+
+    return names;
+}
+
+// An application's type with a converter of its own (below) and no operator<
+struct TTemperature
+{
+    explicit TTemperature(int degrees)
+        : Degrees(degrees)
+    {
+    }
+
+    int Degrees;
+};
+
+} // namespace
+
+} // namespace ASWUnitTests
+
+//---------------------------------------------------------------------------
+
+namespace ASWIni
+{
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<TTemperature>
+//
+// The degrees as an int
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<ASWUnitTests::TTemperature>
+{
+    static TASWIniResult FromText(std::string_view text, ASWUnitTests::TTemperature& value,
+        TASWIniValueOptions const& options)
+    {
+        return TASWIniConverter<int>::FromText(text, value.Degrees, options);
+    }
+
+    static TASWIniResult ToText(ASWUnitTests::TTemperature const& value, std::string& text,
+        TASWIniValueOptions const& options)
+    {
+        return TASWIniConverter<int>::ToText(value.Degrees, text, options);
+    }
+};
+
+} // namespace ASWIni
+
+//---------------------------------------------------------------------------
+
+static_assert(!ASWIni::Detail::IsLessComparable<ASWUnitTests::TTemperature>, "TTemperature should have no operator<");
+
+namespace ASWUnitTests
+{
+
+using ASWIni::EBoolFormat;
+using ASWIni::EIniCode;
+using ASWIni::ELineEnding;
+using ASWIni::ESeverity;
+using ASWIni::TASWBaseIni;
+using ASWIni::TASWIniConverter;
+using ASWIni::TASWIniLogCallback;
+using ASWIni::TASWIniMessage;
+using ASWIni::TASWIniOptions;
+using ASWIni::TASWIniResult;
+using ASWIni::TASWIniSection;
+using ASWIni::TASWIniSetting;
+using ASWIni::TASWIniSettingOptions;
+using ASWIni::TASWIniValueOptions;
+
+namespace
+{
+
+TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages);
+void UseLf(TASWBaseIni& ini);
+
+//---------------------------------------------------------------------------
+/*
+    Recorder
+
+    A log callback that adds each message to 'messages'.
+*/
+TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages)
+{
+    auto const record = [&messages](TASWIniMessage const& message)
+        {
+            messages.push_back(message);
+        };
+
+    return record;
+}
+//---------------------------------------------------------------------------
+/*
+    UseLf
+
+    Gives 'ini' options that write every line with LF, so its text is the same on every platform.
+*/
+void UseLf(TASWBaseIni& ini)
+{
+    TASWIniOptions options = ini.GetOptions();
+    options.Writing.LineEnding = ELineEnding::LF;
+    static_cast<void>(ini.SetOptions(options));
+}
+//---------------------------------------------------------------------------
+
+} // namespace
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_SettingsAccess
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsAccess::TTest_ASWIni_SettingsAccess()
+    : inherited("ASWIni_SettingsAccess_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsAccess::~TTest_ASWIni_SettingsAccess()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsAccess::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsAccess::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsAccess::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsAccess::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Get_InvalidValueGivesTheDefault)
+{
+    // Arrange
+    std::string const text = "[General]\nWidth = wide\nLevel = 9\n";
+    TASWBaseIni ini;
+    static_cast<void>(ini.LoadText(text));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const width(general, "Width", 640);
+    TASWIniSetting<ELevel> const level(general, "Level", ELevel::Unnamed);
+    int number = 0;
+    std::string const widthProblem = TASWIniConverter<int>::FromText("wide", number, TASWIniValueOptions()).Message;
+    ELevel read = ELevel::Low;
+    std::string const levelProblem = TASWIniConverter<ELevel>::FromText("9", read, TASWIniValueOptions()).Message;
+
+    // Act
+    int const widthValue = width.Get();
+    ELevel const levelValue = level.Get();
+
+    // Assert
+    CheckEquals(640, widthValue, __func__, __LINE__, "a value that doesn't convert should give the default");
+    CheckTrue(levelValue == ELevel::Unnamed, __func__, __LINE__, "a name that isn't the enum's should give the default");
+    AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__, "each value should be reported once");
+    CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "a value refused is a Warning");
+    CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "the code should be the converter's");
+    CheckEquals(widthProblem + " The default value \"640\" is used.", messages[0].Text, __func__, __LINE__,
+        "the text should give the converter's problem and the default value");
+    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals(std::string("Width"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(levelProblem + " The default value is used.", messages[1].Text, __func__, __LINE__,
+        "a default value that can't be written should be left out of the text");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "Get() shouldn't change the document");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "Get() shouldn't set the modified flag");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Get_ReadsTheDocument)
+{
+    // Arrange
+    TASWBaseIni ini;
+    static_cast<void>(ini.LoadText("[values]\nnumber = 0x10\nEnabled = on\nName =  spaced  \nLevel = high\n"
+        "Items = 1, 2, 3\n"));
+    TASWIniSection const values(ini, "Values");
+    TASWIniSetting<int> const number(values, "Number", 0);
+    TASWIniSetting<bool> const enabled(values, "Enabled", false);
+    TASWIniSetting<std::string> const name(values, "Name", "none");
+    TASWIniSetting<ELevel> const level(values, "Level", ELevel::Low);
+    TASWIniSetting<std::vector<int> > const items(values, "Items", std::vector<int>());
+
+    // Act & Assert
+    CheckEquals(16, number.Get(), __func__, __LINE__, "the value should be read, with the names' case ignored");
+    CheckTrue(enabled.Get(), __func__, __LINE__, "a bool should be read in any of its forms");
+    CheckEquals(std::string("spaced"), name.Get(), __func__, __LINE__, "a text should be the document's value");
+    CheckTrue(level.Get() == ELevel::High, __func__, __LINE__, "an enum should be read by name");
+    CheckTrue(items.Get() == std::vector<int>{ 1, 2, 3 }, __func__, __LINE__, "a list should be read");
+    CheckTrue(number.IsPresent(), __func__, __LINE__, "a key in the document should be present");
+
+    static_cast<void>(ini.SetText("Values", "Number", "5"));
+    CheckEquals(5, number.Get(), __func__, __LINE__, "a raw edit of the key should be seen at once");
+
+    CheckTrue(ini.RemoveKey("Values", "Number"), __func__, __LINE__, "the key should be removed");
+    CheckEquals(0, number.Get(), __func__, __LINE__, "a removed key should give the default");
+    CheckFalse(number.IsPresent(), __func__, __LINE__, "a removed key shouldn't be present");
+
+    static_cast<void>(ini.LoadText(""));
+    CheckFalse(enabled.Get(), __func__, __LINE__, "a document loaded again should be read");
+    CheckEquals(std::string("none"), name.Get(), __func__, __LINE__, "an empty document should give the defaults");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, New_GivesTheDefaults)
+{
+    // Arrange
+    TASWBaseIni ini;
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General", "The general settings");
+    TASWIniSetting<int> const width(general, "Width", 640, "In pixels");
+    TASWIniSetting<std::string> const name(general, "Name", "app");
+
+    // Act
+    int const widthValue = width.Get();
+    std::string const nameValue = name.Get();
+
+    // Assert
+    CheckEquals(640, widthValue, __func__, __LINE__, "a missing key should give the default");
+    CheckEquals(std::string("app"), nameValue, __func__, __LINE__, "a missing key should give the default");
+    CheckFalse(width.IsPresent(), __func__, __LINE__, "a missing key shouldn't be present");
+    CheckTrue(&general.GetOwner() == &ini, __func__, __LINE__, "the section should keep its owner");
+    CheckEquals(std::string("General"), general.GetName(), __func__, __LINE__, "the section should keep its name");
+    CheckEquals(std::string("The general settings"), general.GetComment(), __func__, __LINE__,
+        "the section should keep its comment");
+    CheckEquals(std::string("General"), width.GetSectionName(), __func__, __LINE__,
+        "the setting should keep its section's name");
+    CheckEquals(std::string("Width"), width.GetKey(), __func__, __LINE__, "the setting should keep its key");
+    CheckEquals(std::string("In pixels"), width.GetComment(), __func__, __LINE__,
+        "the setting should keep its comment");
+    CheckEquals(std::string(), name.GetComment(), __func__, __LINE__, "a setting without a comment should have none");
+    CheckEquals(640, width.GetDefault(), __func__, __LINE__, "the setting should keep its default");
+    CheckTrue(width.GetOptions().GetMin() == nullptr && width.GetOptions().GetMax() == nullptr, __func__, __LINE__,
+        "a setting should have no range by default");
+    CheckFalse(static_cast<bool>(width.GetOptions().GetValidator()), __func__, __LINE__,
+        "a setting should have no validator by default");
+    CheckTrue(width.GetOptions().GetValues() == nullptr, __func__, __LINE__,
+        "a setting should use its owner's value options by default");
+    CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "declaring settings shouldn't change the document");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "declaring settings shouldn't set the modified flag");
+    CheckTrue(messages.empty(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, OutOfMemory_SetChangesNothing)
+{
+    // Arrange
+    if (!CanFailAllocations())
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
+
+    std::string const text = "[General]\nKept = 1\n";
+    std::size_t failures = 0;
+
+    // Act & Assert
+    // Each allocation of a Set() that adds a key with its comment fails in turn, on a new object, until the Set()
+    // makes no more. A failed allocation fails the Set(), or, when the standard library copes with it (bcc32c's has a
+    // few such allocations), doesn't.
+    for (std::size_t number = 1; number < 1000; ++number)
+    {
+        TASWBaseIni ini;
+        UseLf(ini);
+        static_cast<void>(ini.LoadText(text));
+        TASWIniSection const general(ini, "General");
+        TASWIniSetting<int> added(general, "Added", 0, "A comment");
+        std::string const which = " (allocation " + std::to_string(number) + ")";
+        TASWIniResult result;
+        bool failed = false;
+        {
+            TFailingAlloc failingAlloc(number);
+            result = added.Set(5);
+            failed = failingAlloc.HasFailed();
+        }
+
+        if (result.IsOk())
+        {
+            CheckEquals(text + "; A comment\nAdded = 5\n", ini.ToText(), __func__, __LINE__,
+                "a Set() that succeeded should be complete" + which);
+        }
+        else
+        {
+            ++failures;
+            CheckTrue(failed, __func__, __LINE__, "Set() should only fail when an allocation fails" + which);
+            CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
+                "a failed allocation should be UnexpectedException" + which);
+            CheckEquals(text, ini.ToText(), __func__, __LINE__, "a failed Set() should change nothing" + which);
+            CheckFalse(ini.IsModified(), __func__, __LINE__,
+                "a failed Set() shouldn't set the modified flag" + which);
+        }
+
+        if (!failed)
+            break;
+    }
+
+    CheckGreaterThan(failures, std::size_t(0), __func__, __LINE__, "at least one allocation should have failed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Range_ChecksGetAndSet)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    static_cast<void>(ini.LoadText("[General]\nLevel = 7\n"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> level(general, "Level", 2, "", TASWIniSettingOptions<int>().SetRange(0, 4));
+    TASWIniSetting<unsigned> lowest(general, "Lowest", 1, "", TASWIniSettingOptions<unsigned>().SetMin(1));
+    TASWIniSetting<double> highest(general, "Highest", 0.5, "", TASWIniSettingOptions<double>().SetMax(1.0));
+
+    // Act
+    int const read = level.Get();
+    TASWIniResult const belowRange = level.Set(-1);
+    TASWIniResult const aboveRange = level.Set(5);
+    TASWIniResult const top = level.Set(4);
+    TASWIniResult const bottom = level.Set(0);
+    TASWIniResult const belowMin = lowest.Set(0);
+    TASWIniResult const aboveMax = highest.Set(1.5);
+
+    // Assert
+    AssertTrue(level.GetOptions().GetMin() != nullptr && level.GetOptions().GetMax() != nullptr, __func__, __LINE__,
+        "the setting should keep its range");
+    CheckEquals(0, *level.GetOptions().GetMin(), __func__, __LINE__, "the range should start at its Min");
+    CheckEquals(4, *level.GetOptions().GetMax(), __func__, __LINE__, "the range should end at its Max");
+    CheckTrue(lowest.GetOptions().GetMax() == nullptr, __func__, __LINE__, "a range with only a Min has no Max");
+    CheckEquals(2, read, __func__, __LINE__, "a value out of the range should give the default");
+    CheckEquals(EIniCode::ValueOutOfRange, belowRange.Code, __func__, __LINE__, "a value below should be refused");
+    CheckEquals(EIniCode::ValueOutOfRange, aboveRange.Code, __func__, __LINE__, "a value above should be refused");
+    CheckEquals(std::string("The key \"Level\" of the section \"General\" can't be set: The value \"5\" is out of the "
+        "setting's range: it must be 0 to 4."), aboveRange.Message, __func__, __LINE__,
+        "the message should name the key and give the range");
+    CheckTrue(top.IsOk() && bottom.IsOk(), __func__, __LINE__, "the range's ends should be in it");
+    CheckEquals(0, level.Get(), __func__, __LINE__, "the last value set should be read");
+    CheckEquals(EIniCode::ValueOutOfRange, belowMin.Code, __func__, __LINE__, "a value below Min should be refused");
+    CheckEndsWith(belowMin.Message, std::string("\"0\" is out of the setting's range: it must be at least 1."),
+        __func__, __LINE__, "a range with only a Min should say so");
+    CheckEquals(EIniCode::ValueOutOfRange, aboveMax.Code, __func__, __LINE__, "a value above Max should be refused");
+    CheckEndsWith(aboveMax.Message, std::string("\"1.5\" is out of the setting's range: it must be at most 1."),
+        __func__, __LINE__, "a range with only a Max should say so");
+    CheckEquals(std::string("[General]\nLevel = 0\n"), ini.ToText(), __func__, __LINE__,
+        "only the values in the range should be written");
+    AssertEquals(5, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the Warning of Get() and each failed Set() should be reported");
+    CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "Get() should report a Warning");
+    CheckEquals(EIniCode::ValueOutOfRange, messages[0].Code, __func__, __LINE__, "Get() should report the code");
+    CheckEquals(std::string("The value \"7\" is out of the setting's range: it must be 0 to 4. The default value \"2\" "
+        "is used."), messages[0].Text, __func__, __LINE__, "Get()'s Warning should give the range and the default");
+    CheckEquals(ESeverity::Error, messages[2].Severity, __func__, __LINE__, "a failed Set() should be an Error");
+    CheckEquals(aboveRange.Message, messages[2].Text, __func__, __LINE__, "the Error should have the result's text");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Reset_SetsTheDefault)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    static_cast<void>(ini.LoadText("[General]\nWidth = 800\n"));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> width(general, "Width", 640);
+
+    // Act
+    TASWIniResult const result = width.Reset();
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "Reset() should succeed");
+    CheckEquals(640, width.Get(), __func__, __LINE__, "the value should be the default");
+    CheckEquals(std::string("[General]\nWidth = 640\n"), ini.ToText(), __func__, __LINE__,
+        "the default should be written to the document");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Set_AddsTheKeyWithItsComment)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    static_cast<void>(ini.LoadText("[General]\n; The user's note\nKept = 1\nPlain = 2\n"));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> kept(general, "Kept", 0, "The code's comment");
+    TASWIniSetting<int> plain(general, "Plain", 0, "Plain's comment");
+    TASWIniSetting<int> added(general, "Added", 0, "First line\nSecond line");
+    TASWIniSetting<int> bare(general, "Bare", 0);
+    TASWIniSection const other(ini, "Other");
+    TASWIniSetting<int> elsewhere(other, "Key", 0, "In a new section");
+
+    // Act
+    TASWIniResult const keptResult = kept.Set(10);
+    TASWIniResult const plainResult = plain.Set(20);
+    TASWIniResult const addedResult = added.Set(30);
+    TASWIniResult const bareResult = bare.Set(40);
+    TASWIniResult const elsewhereResult = elsewhere.Set(50);
+
+    // Assert
+    CheckTrue(keptResult.IsOk() && plainResult.IsOk() && addedResult.IsOk() && bareResult.IsOk() &&
+        elsewhereResult.IsOk(), __func__, __LINE__, "each Set() should succeed");
+    CheckEquals(std::string("[General]\n; The user's note\nKept = 10\nPlain = 20\n; First line\n; Second line\n"
+        "Added = 30\nBare = 40\n\n[Other]\n; In a new section\nKey = 50\n"), ini.ToText(), __func__, __LINE__,
+        "a key Set() adds should get the setting's comment, and a key that exists should keep its own");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Set_CommentThatCantBeWrittenChangesNothing)
+{
+    // Arrange
+    // ";x" written after ";" is ";;x", which reads back as the comment "x" after the longer prefix ";;"
+    std::string const text = "[General]\nExisting = 1\n";
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { ";", ";;" };
+    options.Writing.CommentPrefix = ";";
+    options.Writing.LineEnding = ELineEnding::LF;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.LoadText(text));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> added(general, "Added", 0, ";x");
+    TASWIniSetting<int> existing(general, "Existing", 0, ";x");
+
+    // Act
+    TASWIniResult const addedResult = added.Set(5);
+    std::string const textAfterAdded = ini.ToText();
+    bool const modifiedAfterAdded = ini.IsModified();
+    TASWIniResult const existingResult = existing.Set(2);
+
+    // Assert
+    CheckEquals(EIniCode::InvalidArgument, addedResult.Code, __func__, __LINE__,
+        "a new key whose comment can't be written should fail");
+    CheckEquals(text, textAfterAdded, __func__, __LINE__, "the failed Set() shouldn't add the key without its comment");
+    CheckFalse(modifiedAfterAdded, __func__, __LINE__, "the failed Set() shouldn't set the modified flag");
+    AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "the failure should be reported once");
+    CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "the failure should be an Error");
+    CheckEquals(addedResult.Message, messages[0].Text, __func__, __LINE__, "the Error should have the result's text");
+    CheckTrue(existingResult.IsOk(), __func__, __LINE__, "a key that exists doesn't get the comment, so it is set");
+    CheckEquals(std::string("[General]\nExisting = 2\n"), ini.ToText(), __func__, __LINE__,
+        "only the value of the key that exists should change");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Set_FailuresAreReported)
+{
+    // Arrange
+    TASWBaseIni ini;
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<ELevel> level(general, "Level", ELevel::Low);
+    TASWIniSetting<int> badKey(general, "a=b", 0);
+    auto const throwStd = [](int const& /*value*/) -> std::string
+        {
+            throw std::runtime_error("broken");
+        };
+    auto const throwInt = [](int const& /*value*/) -> std::string
+        {
+            throw 42;
+        };
+    TASWIniSetting<int> stdThrower(general, "StdThrower", 0, "", TASWIniSettingOptions<int>().SetValidator(throwStd));
+    TASWIniSetting<int> intThrower(general, "IntThrower", 0, "", TASWIniSettingOptions<int>().SetValidator(throwInt));
+    std::string unnamedText;
+    std::string const unnamedProblem = TASWIniConverter<ELevel>::ToText(ELevel::Unnamed, unnamedText,
+        TASWIniValueOptions()).Message;
+
+    // Act
+    TASWIniResult const unnamed = level.Set(ELevel::Unnamed);
+    TASWIniResult const invalidKey = badKey.Set(1);
+    TASWIniResult const stdException = stdThrower.Set(1);
+    TASWIniResult const otherException = intThrower.Set(1);
+
+    // Assert
+    CheckEquals(EIniCode::InvalidValue, unnamed.Code, __func__, __LINE__, "a value that can't be written should fail");
+    CheckEquals("The key \"Level\" of the section \"General\" can't be set: " + unnamedProblem, unnamed.Message,
+        __func__, __LINE__, "the message should name the key and give the converter's problem");
+    CheckEquals(EIniCode::InvalidArgument, invalidKey.Code, __func__, __LINE__,
+        "a key that can't be written should fail as SetText() does");
+    CheckEquals(EIniCode::UnexpectedException, stdException.Code, __func__, __LINE__,
+        "a validator's exception should be UnexpectedException");
+    CheckEquals(std::string("The key \"StdThrower\" of the section \"General\" can't be set: broken"),
+        stdException.Message, __func__, __LINE__, "the message should name the key and give what() of the exception");
+    CheckEquals(EIniCode::UnexpectedException, otherException.Code, __func__, __LINE__,
+        "an exception that isn't a std::exception should be UnexpectedException");
+    CheckContains(otherException.Message, std::string("isn't a std::exception"), __func__, __LINE__,
+        "the message should say what was thrown");
+    CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "the failures should change nothing");
+    AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each failure should be reported once");
+    CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a failure should be an Error");
+    CheckEquals(unnamed.Message, messages[0].Text, __func__, __LINE__, "the Error should have the result's text");
+    CheckEquals(invalidKey.Message, messages[1].Text, __func__, __LINE__, "SetText()'s failure should be reported");
+    CheckEquals(stdException.Message, messages[2].Text, __func__, __LINE__, "the exception should be reported");
+    CheckEquals(otherException.Message, messages[3].Text, __func__, __LINE__, "the exception should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Set_WritesTheDocument)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    TASWIniSection const values(ini, "Values");
+    TASWIniSetting<int> number(values, "Number", 0);
+    TASWIniSetting<unsigned> count(values, "Count", 0);
+    TASWIniSetting<bool> enabled(values, "Enabled", false);
+    TASWIniSetting<double> ratio(values, "Ratio", 0.0);
+    TASWIniSetting<std::string> name(values, "Name", "");
+    TASWIniSetting<ELevel> level(values, "Level", ELevel::Low);
+    TASWIniSetting<std::vector<int> > items(values, "Items", std::vector<int>());
+    TASWIniSetting<std::filesystem::path> file(values, "File", std::filesystem::path());
+
+    // Act
+    bool const allOk = number.Set(-42).IsOk() && count.Set(7).IsOk() && enabled.Set(true).IsOk() &&
+        ratio.Set(0.5).IsOk() && name.Set("some name").IsOk() && level.Set(ELevel::High).IsOk() &&
+        items.Set({ 1, 2, 3 }).IsOk() && file.Set(std::filesystem::path("app.log")).IsOk();
+
+    // Assert
+    CheckTrue(allOk, __func__, __LINE__, "each Set() should succeed");
+    CheckEquals(std::string("[Values]\nNumber = -42\nCount = 7\nEnabled = true\nRatio = 0.5\nName = some name\n"
+        "Level = High\nItems = 1, 2, 3\nFile = app.log\n"), ini.ToText(), __func__, __LINE__,
+        "each value should be written with its converter, in the order set");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the document should be modified");
+    CheckEquals(-42, number.Get(), __func__, __LINE__, "the value set should be read back");
+    CheckEquals(7u, count.Get(), __func__, __LINE__, "the value set should be read back");
+    CheckTrue(enabled.Get(), __func__, __LINE__, "the value set should be read back");
+    CheckEquals(std::string("some name"), name.Get(), __func__, __LINE__, "the value set should be read back");
+    CheckTrue(level.Get() == ELevel::High, __func__, __LINE__, "the value set should be read back");
+    CheckTrue(items.Get() == std::vector<int>{ 1, 2, 3 }, __func__, __LINE__, "the value set should be read back");
+    CheckTrue(file.Get() == std::filesystem::path("app.log"), __func__, __LINE__, "the value set should be read back");
+    CheckTrue(number.IsPresent(), __func__, __LINE__, "a key Set() added should be present");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Types_WithoutOperatorLessWork)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    auto const physical = [](TTemperature const& value)
+        {
+            return value.Degrees < -273 ? "it is below absolute zero" : "";
+        };
+    TASWIniSection const room(ini, "Room");
+    TASWIniSetting<TTemperature> temperature(room, "Temperature", TTemperature(20), "",
+        TASWIniSettingOptions<TTemperature>().SetValidator(physical));
+
+    // Act
+    TASWIniResult const valid = temperature.Set(TTemperature(21));
+    TASWIniResult const refused = temperature.Set(TTemperature(-300));
+
+    // Assert
+    CheckTrue(valid.IsOk(), __func__, __LINE__, "a value of an application's type should be set");
+    CheckEquals(EIniCode::InvalidValue, refused.Code, __func__, __LINE__, "the validator should refuse a value");
+    CheckEquals(std::string("[Room]\nTemperature = 21\n"), ini.ToText(), __func__, __LINE__,
+        "the value should be written with the application's converter");
+    CheckEquals(21, temperature.Get().Degrees, __func__, __LINE__, "the value should be read back");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, Validator_ChecksGetAndSet)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    static_cast<void>(ini.LoadText("[General]\nPrefix =\nEven = 3\n"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    auto const notEmpty = [](std::string const& value)
+        {
+            return value.empty() ? "it can't be empty" : "";
+        };
+    std::vector<int> checked;
+    auto const even = [&checked](int const& value)
+        {
+            checked.push_back(value);
+
+            return value % 2 != 0 ? "it must be even." : "";
+        };
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<std::string> prefix(general, "Prefix", "App_", "",
+        TASWIniSettingOptions<std::string>().SetValidator(notEmpty));
+    TASWIniSetting<int> evenNumber(general, "Even", 2, "", TASWIniSettingOptions<int>().SetValidator(even));
+
+    // Act
+    std::string const readPrefix = prefix.Get();
+    TASWIniResult const emptyPrefix = prefix.Set("");
+    TASWIniResult const validPrefix = prefix.Set("Log_");
+    int const readEven = evenNumber.Get();
+    TASWIniResult const odd = evenNumber.Set(5);
+    TASWIniResult const validEven = evenNumber.Set(4);
+
+    // Assert
+    CheckEquals(std::string("App_"), readPrefix, __func__, __LINE__, "a value the validator refuses gives the default");
+    AssertGreaterThan(messages.size(), std::size_t(0), __func__, __LINE__, "Get() should report the refused value");
+    CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "Get() should report a Warning");
+    CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "a refused value is InvalidValue");
+    CheckEquals(std::string("The value \"\" isn't valid: it can't be empty. The default value \"App_\" is used."),
+        messages[0].Text, __func__, __LINE__, "the Warning should give the validator's problem and the default");
+    CheckEquals(EIniCode::InvalidValue, emptyPrefix.Code, __func__, __LINE__, "Set() should be refused");
+    CheckEquals(std::string("The key \"Prefix\" of the section \"General\" can't be set: The value \"\" isn't valid: "
+        "it can't be empty."), emptyPrefix.Message, __func__, __LINE__, "the message should give the problem");
+    CheckTrue(validPrefix.IsOk(), __func__, __LINE__, "a value the validator accepts should be set");
+    CheckEquals(2, readEven, __func__, __LINE__, "a value the validator refuses gives the default");
+    CheckEndsWith(odd.Message, std::string("The value \"5\" isn't valid: it must be even."), __func__, __LINE__,
+        "a problem that ends with a period shouldn't get another one");
+    CheckTrue(validEven.IsOk(), __func__, __LINE__, "a value the validator accepts should be set");
+    CheckTrue(checked == std::vector<int>{ 3, 5, 4 }, __func__, __LINE__,
+        "the validator should be given each value read or set");
+    CheckEquals(std::string("[General]\nPrefix = Log_\nEven = 4\n"), ini.ToText(), __func__, __LINE__,
+        "only the values the validator accepts should be written");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsAccess, ValueOptions_AreTheSettingsOwnOrTheOwners)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    TASWIniValueOptions oneZero;
+    oneZero.BoolFormat = EBoolFormat::OneZero;
+    oneZero.ListDelimiter = ';';
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<bool> own(general, "Own", false, "", TASWIniSettingOptions<bool>().SetValues(oneZero));
+    TASWIniSetting<bool> owners(general, "Owners", false);
+    TASWIniSetting<std::vector<int> > list(general, "List", std::vector<int>(), "",
+        TASWIniSettingOptions<std::vector<int> >().SetValues(oneZero));
+
+    // Act
+    bool const setTrue = own.Set(true).IsOk() && owners.Set(true).IsOk() && list.Set({ 1, 2 }).IsOk();
+    std::string const textBefore = ini.ToText();
+    TASWIniOptions yesNo = ini.GetOptions();
+    yesNo.Values.BoolFormat = EBoolFormat::YesNo;
+    static_cast<void>(ini.SetOptions(yesNo));
+    bool const setFalse = own.Set(false).IsOk() && owners.Set(false).IsOk();
+
+    // Assert
+    CheckTrue(setTrue && setFalse, __func__, __LINE__, "each Set() should succeed");
+    AssertTrue(own.GetOptions().GetValues() != nullptr, __func__, __LINE__, "the setting should keep its value options");
+    CheckEquals(EBoolFormat::OneZero, own.GetOptions().GetValues()->BoolFormat, __func__, __LINE__,
+        "the setting should keep its value options");
+    CheckEquals(std::string("[General]\nOwn = 1\nOwners = true\nList = 1; 2\n"), textBefore, __func__, __LINE__,
+        "a setting with value options of its own should be written with them, another with the owner's");
+    CheckEquals(std::string("[General]\nOwn = 0\nOwners = no\nList = 1; 2\n"), ini.ToText(), __func__, __LINE__,
+        "a setting without value options of its own should follow the owner's");
+    CheckTrue(list.Get() == std::vector<int>{ 1, 2 }, __func__, __LINE__,
+        "a setting should be read with its own value options");
+}
+//---------------------------------------------------------------------------
+
+} // namespace ASWUnitTests
+
+//---------------------------------------------------------------------------
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsAccess, "Settings")

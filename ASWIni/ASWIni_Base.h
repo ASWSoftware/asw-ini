@@ -65,6 +65,9 @@ namespace ASWIni
 namespace Detail
 {
 
+// The base of TASWIniSetting<T> (ASWIni_Settings.h), which TASWBaseIni lets add a key with its comment in one edit
+class TSettingBase;
+
 /////////////////////////////////////////////////////////////////////////////
 // TMutex
 //
@@ -142,6 +145,8 @@ public:
 class TASWBaseIni : public IASWIni
 {
 private:
+    friend class Detail::TSettingBase;
+
     typedef std::shared_ptr<TASWIniLogCallback const> TLogCallbackPtr;
 
 private:
@@ -180,6 +185,11 @@ private:
     // Save() (when 'filePath' is nullptr) or SaveAs(*filePath): SaveFile() with an exception caught, and its warnings
     // and failure reported
     TASWIniResult SaveTo(std::string_view const* filePath);
+
+    // SetText() for a setting (see TASWIniSetting::Set()): when it adds the key and 'comment' isn't empty, also sets
+    // the key's comment to 'comment', in the same edit, so a failure of either changes nothing
+    TASWIniResult SetSettingText(std::string_view section, std::string_view key, std::string_view text,
+        std::string_view comment);
 
 protected:
     // Reads the whole file 'filePath' (UTF-8) into 'contents', failing with FileTooLarge if it has more than 'maxSize'

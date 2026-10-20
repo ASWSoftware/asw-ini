@@ -728,6 +728,29 @@ TASWIniResult TASWBaseIni::SetSectionComment(std::string_view section, std::stri
     return Edit(edit);
 }
 //---------------------------------------------------------------------------
+TASWIniResult TASWBaseIni::SetSettingText(std::string_view section, std::string_view key, std::string_view text,
+    std::string_view comment)
+{
+    auto const edit = [section, key, text, comment](TASWIniDocument& document)
+        {
+            if (comment.empty() || document.FindKey(section, key) != nullptr)
+                return document.SetValue(section, key, text);
+
+            // The key and its comment are added to a copy, which replaces the document only when both succeed
+            TASWIniDocument changed = document;
+            TASWIniResult result = changed.SetValue(section, key, text);
+            if (result.IsOk())
+                result = changed.SetKeyComment(section, key, comment);
+
+            if (result.IsOk())
+                document = std::move(changed);
+
+            return result;
+        };
+
+    return Edit(edit);
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::SetText(std::string_view section, std::string_view key, std::string_view text)
 {
     auto const edit = [section, key, text](TASWIniDocument& document)

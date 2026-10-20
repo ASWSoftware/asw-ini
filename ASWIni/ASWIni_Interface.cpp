@@ -56,6 +56,26 @@ std::string Quoted(std::string_view name)
 
 //---------------------------------------------------------------------------
 
+namespace Detail
+{
+
+//---------------------------------------------------------------------------
+TASWIniResult KeyFailure(std::string_view section, std::string_view key, char const* action, EIniCode code,
+    std::string_view problem)
+{
+    TASWIniResult result;
+    result.Code = code;
+    result.Message = "The key " + Quoted(key) + " of the section " + Quoted(section) + " " + action + ": ";
+    result.Message += problem;
+
+    return result;
+}
+//---------------------------------------------------------------------------
+
+} // namespace Detail
+
+//---------------------------------------------------------------------------
+
 
 /////////////////////////////////////////////////////////////////////////////
 // IASWIni
@@ -74,17 +94,6 @@ std::string IASWIni::GetValue(std::string_view section, std::string_view key, st
         return std::string(defaultValue);
 
     return text;
-}
-//---------------------------------------------------------------------------
-TASWIniResult IASWIni::KeyFailure(std::string_view section, std::string_view key, char const* action, EIniCode code,
-    std::string_view problem)
-{
-    TASWIniResult result;
-    result.Code = code;
-    result.Message = "The key " + Quoted(key) + " of the section " + Quoted(section) + " " + action + ": ";
-    result.Message += problem;
-
-    return result;
 }
 //---------------------------------------------------------------------------
 TASWIniResult IASWIni::KeyNotFound(std::string_view section, std::string_view key)

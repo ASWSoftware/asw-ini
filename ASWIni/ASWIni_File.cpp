@@ -312,6 +312,12 @@ bool ReplaceWithTemp(std::filesystem::path const& temp, std::filesystem::path co
 #else
     (void)targetExists;
 
+    // The folder whose entry the rename changes, found first: nothing may throw (std::bad_alloc) once the file is
+    // replaced, or the save would fail after it succeeded
+    std::filesystem::path folder = target.parent_path();
+    if (folder.empty())
+        folder = ".";
+
     if (::rename(temp.c_str(), target.c_str()) != 0)
     {
         error = LastSystemError();
@@ -320,10 +326,6 @@ bool ReplaceWithTemp(std::filesystem::path const& temp, std::filesystem::path co
 
     // The rename is only durable once the folder's entry is on the disk. A failure here isn't reported: the file is
     // already replaced.
-    std::filesystem::path folder = target.parent_path();
-    if (folder.empty())
-        folder = ".";
-
     int descriptor;
     do
     {

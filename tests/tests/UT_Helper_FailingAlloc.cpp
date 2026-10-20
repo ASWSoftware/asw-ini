@@ -106,6 +106,10 @@ bool CanFailAllocations() noexcept
 {
 #if defined(ASWINI_TESTS_SANITIZER)
     return false;
+#elif defined(_ITERATOR_DEBUG_LEVEL) && _ITERATOR_DEBUG_LEVEL != 0
+    // MSVC's library with iterator debugging gives each container a proxy object, which even its noexcept move
+    // constructors allocate
+    return false;
 #else
     return true;
 #endif

@@ -596,7 +596,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_EditChangesNothing)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     std::size_t failures = 0;
 
@@ -645,7 +645,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_LoadTextChangesNothing)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     std::size_t failures = 0;
 
@@ -692,7 +692,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_SetOptionsChangesNothing)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     TASWIniOptions options;
     options.Reading.InlineComments = true;
@@ -1064,7 +1064,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, OutOfMemory_IsReportedAsAnError)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     TASWBaseIni ini;
     std::vector<TASWIniMessage> messages;
@@ -1481,7 +1481,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_LoadChangesNothing)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     TTempDir const folder;
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
@@ -1538,7 +1538,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_SaveChangesNothing)
 {
     // Arrange
     if (!CanFailAllocations())
-        Skip(__func__, __LINE__, "allocations can't be made to fail in a sanitizer build");
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
 
     TTempDir const folder;
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");

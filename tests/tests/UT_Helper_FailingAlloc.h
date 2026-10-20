@@ -54,7 +54,9 @@ public:
 
 //---------------------------------------------------------------------------
 
-// Whether a TFailingAlloc can make allocations fail: false in a sanitizer build, which keeps the runtime's operator new
+// Whether a TFailingAlloc can make allocations fail: false in a sanitizer build, which keeps the runtime's operator new,
+// and with MSVC's library with iterator debugging on (its Debug default), whose noexcept move constructors allocate,
+// so a failed allocation there calls std::terminate()
 bool CanFailAllocations() noexcept;
 
 } // namespace ASWUnitTests

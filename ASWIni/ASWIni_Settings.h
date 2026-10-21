@@ -61,16 +61,28 @@ class TASWIniSection;
 namespace Detail
 {
 
-// Whether two values of T can be compared with operator< (see TASWIniSettingOptions::SetRange()); IsLessComparable
-// says it
+// Whether an operator< is declared for two values of T (see TIsLessComparable)
 template <typename T, typename Enable = void>
-struct TIsLessComparable : std::false_type
+struct THasOperatorLess : std::false_type
 {
 };
 
 template <typename T>
-struct TIsLessComparable<T, std::void_t<decltype(std::declval<T const&>() < std::declval<T const&>())> > :
+struct THasOperatorLess<T, std::void_t<decltype(std::declval<T const&>() < std::declval<T const&>())> > :
     std::true_type
+{
+};
+
+// Whether two values of T can be compared with operator< (see TASWIniSettingOptions::SetRange()); IsLessComparable
+// says it. A std::vector's operator< is declared whatever its items are, but compiles only when they have one, so a
+// std::vector (a list) is asked about its items: a list of an application's type without operator< is a setting too.
+template <typename T>
+struct TIsLessComparable : THasOperatorLess<T>
+{
+};
+
+template <typename T, typename TAllocator>
+struct TIsLessComparable<std::vector<T, TAllocator> > : TIsLessComparable<T>
 {
 };
 

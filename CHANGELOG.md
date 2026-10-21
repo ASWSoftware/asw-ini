@@ -128,14 +128,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that isn't valid UTF-8, or a path that wouldn't read back the same, is `InvalidValue`),
   `std::u8string` (the bytes as they are; in a C++20 application, even with the library built at
   C++17, as `ASWINI_HAS_U8STRING` in the new `ASWIni_Platform.h` says) and `std::vector<T>` of any
-  of them (a list: items separated by `Values.ListDelimiter`, written with the delimiter and a
-  space; an item is in double quotes, with `""` for a `"`, only when it holds the delimiter or a
-  `"`, has blanks at either end, or is the only item and empty; a `"` elsewhere in an item is
-  ordinary; lists of lists work too). An application adds a converter for its own type by
-  specializing the template. A text that isn't a value of the type fails with the new code
-  `EIniCode::InvalidValue` (a number outside its type's range with `EIniCode::ValueOutOfRange`),
-  with a message that quotes the text, and leaves the value as it was. New sources:
-  `ASWIni_Converters.cpp` and `ASWIni_Platform.cpp`.
+  type that has a converter and a default constructor (a list: items separated by
+  `Values.ListDelimiter`, written with the delimiter and a space; an item is in double quotes, with
+  `""` for a `"`, only when it holds the delimiter or a `"`, has blanks at either end, or is the
+  only item and empty; a `"` elsewhere in an item is ordinary; lists of lists work too; an item type
+  without a default constructor stops the build with a `static_assert` that says so). An
+  application adds a converter for its own type by specializing the template. A text that isn't a
+  value of the type fails with the new code `EIniCode::InvalidValue` (a number outside its type's
+  range with `EIniCode::ValueOutOfRange`), with a message that quotes the text, and leaves the value
+  as it was. New sources: `ASWIni_Converters.cpp` and `ASWIni_Platform.cpp`.
 
   RAD Studio Win32 (bcc32c) converts `float` and `double` with the C runtime instead of
   `std::to_chars()`/`std::from_chars()`, which give wrong results there, reading with Windows'
@@ -199,10 +200,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   A section has its owner, name and comment. A setting has its section, key, type (any type
   `TASWIniConverter` converts), default value, comment and options (`TASWIniSettingOptions<T>`): a
-  range (`SetRange()`, `SetMin()` or `SetMax()`, for a type that `operator<` compares), a validator
-  that returns what is wrong with a value, `SetOptional()` for a key that isn't added when it is
-  missing, value options of its own (e.g. a `bool` written as `1` and `0`), and the earlier names
-  of a renamed key, in the same section (`AddOldKey()`). New source: `ASWIni_Settings.cpp`.
+  range (`SetRange()`, `SetMin()` or `SetMax()`, for a type that `operator<` compares; a list
+  compares as its items do, so a list of a type without `operator<` is a setting too, without a
+  range), a validator that returns what is wrong with a value, `SetOptional()` for a key that isn't
+  added when it is missing, value options of its own (e.g. a `bool` written as `1` and `0`), and
+  the earlier names of a renamed key, in the same section (`AddOldKey()`). New source:
+  `ASWIni_Settings.cpp`.
 
   A setting holds no value of its own. `Get()` reads the owner's document, giving the default value
   for a missing key, and for a value that doesn't convert, is out of the range or that the validator

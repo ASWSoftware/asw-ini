@@ -80,6 +80,13 @@ auto const& ASWIniEnumNames(ELevel)
     return names;
 }
 
+// An application's type with a converter of its own (below), a default constructor and no operator<, so a list can
+// hold it
+struct TMark
+{
+    int Number = 0;
+};
+
 // An application's type with a converter of its own (below) and no operator<
 struct TTemperature
 {
@@ -99,6 +106,26 @@ struct TTemperature
 
 namespace ASWIni
 {
+
+/////////////////////////////////////////////////////////////////////////////
+// TASWIniConverter<TMark>
+//
+// The number as an int
+/////////////////////////////////////////////////////////////////////////////
+template <>
+struct TASWIniConverter<ASWUnitTests::TMark>
+{
+    static TASWIniResult FromText(std::string_view text, ASWUnitTests::TMark& value, TASWIniValueOptions const& options)
+    {
+        return TASWIniConverter<int>::FromText(text, value.Number, options);
+    }
+
+    static TASWIniResult ToText(ASWUnitTests::TMark const& value, std::string& text, TASWIniValueOptions const& options)
+    {
+        return TASWIniConverter<int>::ToText(value.Number, text, options);
+    }
+};
+
 
 /////////////////////////////////////////////////////////////////////////////
 // TASWIniConverter<TTemperature>
@@ -126,6 +153,13 @@ struct TASWIniConverter<ASWUnitTests::TTemperature>
 //---------------------------------------------------------------------------
 
 static_assert(!ASWIni::Detail::IsLessComparable<ASWUnitTests::TTemperature>, "TTemperature should have no operator<");
+
+// A list compares as its items do, though std::vector declares an operator< for any items
+static_assert(ASWIni::Detail::IsLessComparable<std::vector<int> >, "a list of int should have operator<");
+static_assert(!ASWIni::Detail::IsLessComparable<std::vector<ASWUnitTests::TMark> >,
+    "a list of TMark should have no operator<");
+static_assert(!ASWIni::Detail::IsLessComparable<std::vector<std::vector<ASWUnitTests::TMark> > >,
+    "a list of lists of TMark should have no operator<");
 
 namespace ASWUnitTests
 {
@@ -743,17 +777,24 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Types_WithoutOperatorLessWork)
     TASWIniSection const room(ini, "Room");
     TASWIniSetting<TTemperature> temperature(room, "Temperature", TTemperature(20), "",
         TASWIniSettingOptions<TTemperature>().SetValidator(physical));
+    TASWIniSetting<std::vector<TMark> > marks(room, "Marks", std::vector<TMark>{ TMark{ 1 } });
 
     // Act
     TASWIniResult const valid = temperature.Set(TTemperature(21));
     TASWIniResult const refused = temperature.Set(TTemperature(-300));
+    TASWIniResult const listSet = marks.Set(std::vector<TMark>{ TMark{ 2 }, TMark{ 3 } });
 
     // Assert
+    std::vector<TMark> const listRead = marks.Get();
     CheckTrue(valid.IsOk(), __func__, __LINE__, "a value of an application's type should be set");
     CheckEquals(EIniCode::InvalidValue, refused.Code, __func__, __LINE__, "the validator should refuse a value");
-    CheckEquals(std::string("[Room]\nTemperature = 21\n"), ini.ToText(), __func__, __LINE__,
-        "the value should be written with the application's converter");
+    CheckTrue(listSet.IsOk(), __func__, __LINE__, "a list of an application's type should be set");
+    CheckEquals(std::string("[Room]\nTemperature = 21\nMarks = 2, 3\n"), ini.ToText(), __func__, __LINE__,
+        "the values should be written with the application's converter");
     CheckEquals(21, temperature.Get().Degrees, __func__, __LINE__, "the value should be read back");
+    CheckEquals(std::size_t(2), listRead.size(), __func__, __LINE__, "the list should be read back");
+    if (listRead.size() == 2)
+        CheckEquals(3, listRead[1].Number, __func__, __LINE__, "the list's items should be read back");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsAccess, Validator_ChecksGetAndSet)

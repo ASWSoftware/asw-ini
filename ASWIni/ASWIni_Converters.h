@@ -531,16 +531,17 @@ public:
 /////////////////////////////////////////////////////////////////////////////
 // TASWIniConverter<std::vector<T> >
 //
-// A list of values of any type T that has a converter, as items separated by TASWIniValueOptions::ListDelimiter, in
-// the CSV style. Reads an empty text (or only blanks) as an empty list; otherwise each item is the text up to the next
-// delimiter, without the spaces and tabs around it, or, when it starts with a '"', a quoted item: the text up to the
-// closing '"', with each "" in it as one '"', which keeps its blanks and may hold the delimiter. Only blanks may follow
-// a quoted item before the next delimiter, and an unclosed quote is InvalidValue; a '"' anywhere else in an item is an
-// ordinary character. Each item is read with TASWIniConverter<T>, so "1,,2" fails as a list of int and is "1", "" and
-// "2" as a list of std::string. Writes the items joined with the delimiter and a space ("a, b, c"), quoting an item
-// only when it has to be (see Detail::JoinListItems()): "a, b" and c are written as "\"a, b\", c". A list of lists
-// needs nothing more: its items are lists, quoted ("\"1, 2\", \"3, 4\""). When an item fails, so does the list, with
-// the item's code and a message that names the item, leaving the value or text as it was.
+// A list of values of any type T that has a converter and a default constructor (each item is made before it is read),
+// as items separated by TASWIniValueOptions::ListDelimiter, in the CSV style. Reads an empty text (or only blanks) as
+// an empty list; otherwise each item is the text up to the next delimiter, without the spaces and tabs around it, or,
+// when it starts with a '"', a quoted item: the text up to the closing '"', with each "" in it as one '"', which keeps
+// its blanks and may hold the delimiter. Only blanks may follow a quoted item before the next delimiter, and an
+// unclosed quote is InvalidValue; a '"' anywhere else in an item is an ordinary character. Each item is read with
+// TASWIniConverter<T>, so "1,,2" fails as a list of int and is "1", "" and "2" as a list of std::string. Writes the
+// items joined with the delimiter and a space ("a, b, c"), quoting an item only when it has to be (see
+// Detail::JoinListItems()): "a, b" and c are written as "\"a, b\", c". A list of lists needs nothing more: its items
+// are lists, quoted ("\"1, 2\", \"3, 4\""). When an item fails, so does the list, with the item's code and a message
+// that names the item, leaving the value or text as it was.
 // With TASWIniReadingOptions::QuotedValues, the document removes the quotes around a whole value before the converter
 // sees it, so a hand-written k = "a, b" is the two items a and b; a list written through TASWIniDocument::SetValue()
 // still reads back, since the document quotes a value that starts with a '"' again (k = """a, b""").
@@ -548,6 +549,8 @@ public:
 template <typename T, typename TAllocator>
 struct TASWIniConverter<std::vector<T, TAllocator> >
 {
+    static_assert(std::is_default_constructible_v<T>, "a list's items need a default constructor");
+
     static TASWIniResult FromText(std::string_view text, std::vector<T, TAllocator>& value,
         TASWIniValueOptions const& options)
     {

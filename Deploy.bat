@@ -95,6 +95,16 @@ call :CopyFile "example\cmake\CMakeLists.txt" "%TARGET_DIR%\example\cmake\CMakeL
 if errorlevel 1 exit /b 1
 call :CopyFile "example\cmake\README.md" "%TARGET_DIR%\example\cmake\README.md"
 if errorlevel 1 exit /b 1
+call :CopyFile "example\rad370\ASWIniExample.cbproj" "%TARGET_DIR%\example\rad370\ASWIniExample.cbproj"
+if errorlevel 1 exit /b 1
+call :CopyFile "example\rad370\Build_Win32_Debug.bat" "%TARGET_DIR%\example\rad370\Build_Win32_Debug.bat"
+if errorlevel 1 exit /b 1
+call :CopyFile "example\rad370\Build_Win32_Release.bat" "%TARGET_DIR%\example\rad370\Build_Win32_Release.bat"
+if errorlevel 1 exit /b 1
+call :CopyFile "example\rad370\Build_Win64x_Debug.bat" "%TARGET_DIR%\example\rad370\Build_Win64x_Debug.bat"
+if errorlevel 1 exit /b 1
+call :CopyFile "example\rad370\Build_Win64x_Release.bat" "%TARGET_DIR%\example\rad370\Build_Win64x_Release.bat"
+if errorlevel 1 exit /b 1
 call :CopyFile "example\src\main.cpp" "%TARGET_DIR%\example\src\main.cpp"
 if errorlevel 1 exit /b 1
 

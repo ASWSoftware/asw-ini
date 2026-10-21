@@ -232,6 +232,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   old key), its first run, a file a user edited by hand, a setting used from two threads, values
   the class doesn't declare, and a `TASWIniDocument` on its own. It prints each step, the messages
   the library reports and the file, and returns 0 when every step did what it shows. Build it with
-  `example/cmake`, or with the root project and `-DASWINI_BUILD_EXAMPLE=ON`.
+  `example/cmake`, with the root project and `-DASWINI_BUILD_EXAMPLE=ON`, or with RAD Studio's
+  `example/rad370/ASWIniExample.cbproj` (Win32 and Win64x).
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

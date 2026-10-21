@@ -89,7 +89,8 @@ Add the `ASWIni/*.cpp` files to the project (Project > Add to Project) and the `
 the include path (Project > Options > Building > C++ Shared Options > Include path). RAD Studio 13.1
 or later, with bcc32c (Win32) or the modern Clang toolchain (Win64x). A Win32 project must use the
 multithreaded runtime (the project's `Multithreaded` option), or code that uses a mutex doesn't
-link. `tests/rad370/ASWIniTests.cbproj` is a working project to copy settings from.
+link. `example/rad370/ASWIniExample.cbproj` (Win32 and Win64x, with `Build_*.bat` scripts) is a
+working project to copy settings from.
 
 ### CMake
 

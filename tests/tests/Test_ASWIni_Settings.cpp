@@ -160,38 +160,25 @@ namespace
 class TAppSettings : public TASWBaseIni
 {
 private:
-    // The comments of the keys that have one (Days: NDaysRetainLogs), and the default value of DirLogs
-    static constexpr char const* DaysComment = "Valid value for NDaysRetainLogs: 0 to N days. 0=retain forever.";
-    static constexpr char const* DirLogsDefault = "%localAppData%\\ASWSoftware\\SweepThemMines\\Logs\\";
-    static constexpr char const* ImagesPathComment = "Leave blank for default (exe directory).";
-    static constexpr char const* LogLevelComment = "Valid range for LogLevel: 0-4. 0=System/forced logs only, "
-        "1=errors/warnings, 2=medium, 3=heavy, 4=debug/verbose";
-
-private:
-    // The options of NDaysRetainLogs: its earlier name, LogDays
-    static TASWIniSettingOptions<unsigned> DaysOptions();
-
-    // The options of LogLevel: 0 to 4
-    static TASWIniSettingOptions<unsigned> LogLevelOptions();
-
     // The validator of a text that can't be empty
     static std::string NotEmpty(std::string const& value);
 
-    // The options of a text that can't be empty
-    static TASWIniSettingOptions<std::string> NotEmptyOptions();
-
-    // The options of an optional bool
-    static TASWIniSettingOptions<bool> OptionalOptions();
-
 public:
     TASWIniSection General{ *this, "General" };
-    TASWIniSetting<std::string> ImagesPath{ General, "ImagesPath", "", ImagesPathComment };
-    TASWIniSetting<bool> EnableCheats{ General, "EnableCheats", false, "", OptionalOptions() };
+    TASWIniSetting<std::string> ImagesPath{ General, "ImagesPath", "", "Leave blank for default (exe directory)." };
+    TASWIniSetting<bool> EnableCheats{ General, "EnableCheats", false, "",
+        TASWIniSettingOptions<bool>().SetOptional() };
     TASWIniSetting<bool> UseQuestionMarksInit{ General, "UseQuestionMarksInit", true };
-    TASWIniSetting<std::string> DirLogs{ General, "DirLogs", DirLogsDefault, "", NotEmptyOptions() };
-    TASWIniSetting<std::string> LogPrefix{ General, "LogPrefix", "GeneralSTM_", "", NotEmptyOptions() };
-    TASWIniSetting<unsigned> LogLevel{ General, "LogLevel", 0, LogLevelComment, LogLevelOptions() };
-    TASWIniSetting<unsigned> NDaysRetainLogs{ General, "NDaysRetainLogs", 30, DaysComment, DaysOptions() };
+    TASWIniSetting<std::string> DirLogs{ General, "DirLogs", "%localAppData%\\ASWSoftware\\SweepThemMines\\Logs\\", "",
+        TASWIniSettingOptions<std::string>().SetValidator(NotEmpty) };
+    TASWIniSetting<std::string> LogPrefix{ General, "LogPrefix", "GeneralSTM_", "",
+        TASWIniSettingOptions<std::string>().SetValidator(NotEmpty) };
+    TASWIniSetting<unsigned> LogLevel{ General, "LogLevel", 0, "Valid range for LogLevel: 0-4. 0=System/forced logs "
+        "only, 1=errors/warnings, 2=medium, 3=heavy, 4=debug/verbose",
+        TASWIniSettingOptions<unsigned>().SetRange(0, 4) };
+    TASWIniSetting<unsigned> NDaysRetainLogs{ General, "NDaysRetainLogs", 30,
+        "Valid value for NDaysRetainLogs: 0 to N days. 0=retain forever.",
+        TASWIniSettingOptions<unsigned>().AddOldKey("LogDays") };
 };
 
 //---------------------------------------------------------------------------
@@ -313,29 +300,9 @@ std::string WholeSettingsProblem(TASWIniDocument const& document, std::size_t wr
 /////////////////////////////////////////////////////////////////////////////
 
 //---------------------------------------------------------------------------
-TASWIniSettingOptions<unsigned> TAppSettings::DaysOptions()
-{
-    return TASWIniSettingOptions<unsigned>().AddOldKey("LogDays");
-}
-//---------------------------------------------------------------------------
-TASWIniSettingOptions<unsigned> TAppSettings::LogLevelOptions()
-{
-    return TASWIniSettingOptions<unsigned>().SetRange(0, 4);
-}
-//---------------------------------------------------------------------------
 std::string TAppSettings::NotEmpty(std::string const& value)
 {
     return value.empty() ? "it can't be empty" : "";
-}
-//---------------------------------------------------------------------------
-TASWIniSettingOptions<std::string> TAppSettings::NotEmptyOptions()
-{
-    return TASWIniSettingOptions<std::string>().SetValidator(NotEmpty);
-}
-//---------------------------------------------------------------------------
-TASWIniSettingOptions<bool> TAppSettings::OptionalOptions()
-{
-    return TASWIniSettingOptions<bool>().SetOptional();
 }
 //---------------------------------------------------------------------------
 

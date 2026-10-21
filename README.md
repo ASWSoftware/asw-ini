@@ -25,8 +25,9 @@ class: each setting has its section, key, type, default value, comment, and opti
 validator and the earlier names of its key. Loading brings the file up to date: a missing key is
 added with its default value and comment, a value that isn't valid is replaced by the default, an
 old key is renamed, and each change is reported, so `IsModified()` says whether the file needs
-saving. Examples and the documentation come next. [CHANGELOG.md](CHANGELOG.md) lists what each
-change adds. The interface may change in any way until 1.0.0.
+saving. `example/src/main.cpp` shows them in use; the documentation comes next.
+[CHANGELOG.md](CHANGELOG.md) lists what each change adds. The interface may change in any way until
+1.0.0.
 
 ## Design
 
@@ -79,8 +80,8 @@ Bitcoin: 15rKqL1numHJyE36ottMbhs5cmCjJkuowV
 ### Copied sources (any build system)
 
 Add every `.cpp` file in `ASWIni/` to the project, and the `ASWIni` folder to its include path, and
-compile as C++17 or later. `Deploy.bat <folder>` copies the library sources, the build files and
-the docs to a folder, e.g. for a release package or to copy into another project.
+compile as C++17 or later. `Deploy.bat <folder>` copies the library sources, the build files, the
+docs and the example to a folder, e.g. for a release package or to copy into another project.
 
 ### RAD Studio
 
@@ -115,8 +116,8 @@ target_link_libraries(MyApp PRIVATE ASWIni::ASWIni)
 ```
 
 Either way, only the library is built. When ASWIni is the top-level project,
-`-DASWINI_BUILD_TESTS=ON` also builds the unit tests, and `ASWINI_WARNINGS` (on by default only
-there) compiles the library with extra warnings.
+`-DASWINI_BUILD_EXAMPLE=ON` and `-DASWINI_BUILD_TESTS=ON` also build the example and the unit
+tests, and `ASWINI_WARNINGS` (on by default only there) compiles the library with extra warnings.
 
 To use a prebuilt copy instead, build and install the library from the repository root (a Debug
 build is named `ASWInid`, so Debug and Release can share one install prefix):

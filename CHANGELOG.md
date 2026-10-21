@@ -14,7 +14,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `VersionMinor`, `VersionPatch`, `VersionPreRelease` and `Version`), starting at `1.0.0-dev.1`.
 - The `ASWIni::ASWIni` CMake target (a static library that needs C++17), with install rules and a
   CMake package, so `find_package(ASWIni CONFIG)` finds an installed copy.
-- `Deploy.bat`, which copies the library sources, build files and docs to a folder.
+- `Deploy.bat`, which copies the library sources, build files, docs and example to a folder.
 - The shared types in `ASWIni_Types.h`: `EIniCode` (what happened, with values that never change),
   `ELineBreak` (`None`, `LF`, `CR` or `CRLF`: the line break that ends a line), `ESeverity`,
   `TASWIniMessage` (a warning or error for the application's log callback, with the file, line,
@@ -227,5 +227,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   nothing and reports none of these changes. A default value that can't be written, or that its
   own range or validator refuses, is reported as an error. `SetOptions()` doesn't apply the
   settings.
+- An example program, `example/src/main.cpp`: an application's settings class (with a range, a
+  validator, an enum written by name, a bool written as `1` and `0`, an optional setting and an
+  old key), its first run, a file a user edited by hand, a setting used from two threads, values
+  the class doesn't declare, and a `TASWIniDocument` on its own. It prints each step, the messages
+  the library reports and the file, and returns 0 when every step did what it shows. Build it with
+  `example/cmake`, or with the root project and `-DASWINI_BUILD_EXAMPLE=ON`.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

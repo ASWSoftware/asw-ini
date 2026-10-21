@@ -25,6 +25,7 @@ else()
     set(ASWINI_IS_TOP_LEVEL OFF)
 endif()
 
+option(ASWINI_BUILD_EXAMPLE "Build the ASWIni example (example/cmake)" OFF)
 option(ASWINI_BUILD_TESTS "Build the ASWIni unit tests (tests/cmake; needs the asw-unit-tests submodule)" OFF)
 option(ASWINI_INSTALL "Generate the install rules for the ASWIni library, headers, and CMake package files"
     ${ASWINI_IS_TOP_LEVEL})
@@ -151,4 +152,10 @@ endif()
 
 if(ASWINI_BUILD_TESTS)
     add_subdirectory(tests/cmake tests)
+endif()
+
+# After the tests: both choose ASWINI_CXX_STANDARD (a cache variable), and the first to set it wins, so with both on
+# they build at the tests' default, C++20.
+if(ASWINI_BUILD_EXAMPLE)
+    add_subdirectory(example/cmake example)
 endif()

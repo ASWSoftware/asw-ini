@@ -39,11 +39,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that a file written with them can be read back (e.g. `Writing.Separator` must be one of
   `Reading.Separators`); a problem is `EIniCode::InvalidOptions` with a message naming the setting.
   New source: `ASWIni_Options.cpp`.
-- The file layer that loading and saving will use (`ASWIni_File.cpp`, internal): whole files read
-  and written in binary mode with the operating system's own file APIs, a size limit on reads, and
+- The file layer that loading and saving use (`ASWIni_File.cpp`, internal): whole files read and
+  written in binary mode with the operating system's own file APIs, a size limit on reads, and
   saves that replace the file atomically (keeping its attributes on Windows, and its permissions
   and symbolic link elsewhere), with an optional backup and missing folders created. File paths
-  are UTF-8.
+  are UTF-8: `ASWIni::PathToUtf8()` and `ASWIni::Utf8ToPath()` (`ASWIni_File.h`, its only public
+  part) convert a `std::filesystem::path` to and from that form on every platform, e.g.
+  `ini.Load(ASWIni::PathToUtf8(folder / "app.ini"))` (on Windows through the path's wide form,
+  since a narrow `std::filesystem::path` string is in the ANSI code page with MSVC and libc++).
 - `TASWIniDocument` (`ASWIni_Document.h`), the lossless model of an INI text: its sections in file
   order (`TASWIniDocumentSection`, the preamble before the first header first), each with its lines
   (`TASWIniDocumentLine`: the text as read, its line break, its kind (`ELineKind`: `Blank`,

@@ -617,7 +617,7 @@ std::vector<T> RandomList(std::mt19937& generator)
 */
 std::filesystem::path RandomPath(std::mt19937& generator)
 {
-    return ASWIni::Detail::Utf8ToPath(RandomPathText(generator));
+    return ASWIni::Utf8ToPath(RandomPathText(generator));
 }
 //---------------------------------------------------------------------------
 /*
@@ -2314,7 +2314,7 @@ ASW_TEST(TTest_ASWIni_TextConverter, Path_FromTextKeepsTheTextExactly)
             TASWIniValueOptions());
 
         CheckTrue(result.IsOk(), __func__, __LINE__, "\"" + text + "\" should be read: " + result.Message);
-        CheckEquals(text, ASWIni::Detail::PathToUtf8(value), __func__, __LINE__, "the path should be the text exactly");
+        CheckEquals(text, ASWIni::PathToUtf8(value), __func__, __LINE__, "the path should be the text exactly");
     }
 }
 //---------------------------------------------------------------------------

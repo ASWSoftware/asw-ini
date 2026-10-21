@@ -8,9 +8,9 @@ The file layer: reading a whole file in binary mode with a size limit, and
 writing one atomically (a temporary file in the same folder that then
 replaces the file), with an optional backup and missing folders created,
 using the operating system's own file APIs. File paths are UTF-8 strings in
-the library's interface; Utf8ToPath() and PathToUtf8() convert them.
-Internal (namespace ASWIni::Detail): not part of the public interface, and
-may change in any release.
+the library's interface; Utf8ToPath() and PathToUtf8() convert them, and are
+public. The rest is internal (namespace ASWIni::Detail): not part of the
+public interface, and may change in any release.
 
 Requires C++ 17 or higher.
 
@@ -48,24 +48,26 @@ limitations under the License.
 namespace ASWIni
 {
 
+// 'path' as UTF-8, the form the library takes file paths in, e.g. ini.Load(ASWIni::PathToUtf8(folder / "app.ini")).
+// On Windows, the path's wide (UTF-16) form is converted, since a narrow std::filesystem::path string is in the ANSI
+// code page with some standard libraries and UTF-8 with others (and path::u8string() is a std::string in C++17 but a
+// std::u8string in C++20).
+std::string PathToUtf8(std::filesystem::path const& path);
+
+// The UTF-8 text 'utf8' (e.g. IASWIni::GetFilePath()) as a path. On Windows, it is converted to the wide (UTF-16) form
+// the file APIs take; an invalid UTF-8 sequence becomes U+FFFD. Elsewhere, the bytes are the path.
+std::filesystem::path Utf8ToPath(std::string_view utf8);
+
 //---------------------------------------------------------------------------
 // Internals of the library. Not part of the public interface.
 //---------------------------------------------------------------------------
 namespace Detail
 {
 
-// 'path' as UTF-8. On Windows, the path's wide (UTF-16) form is converted, since a narrow std::filesystem::path string
-// is in the ANSI code page with some standard libraries and UTF-8 with others.
-std::string PathToUtf8(std::filesystem::path const& path);
-
 // Reads the whole file at 'path', in binary mode (no line ending conversion), into 'contents'. Fails with
 // EIniCode::FileTooLarge if it is larger than 'maxSize' bytes (leaving 'contents' empty), FileNotFound if it or its
 // folder doesn't exist, AccessDenied, OpenFailed (e.g. a folder) or ReadFailed. Never throws.
 TASWIniResult ReadWholeFile(std::filesystem::path const& path, std::size_t maxSize, std::string& contents) noexcept;
-
-// The UTF-8 text 'utf8' as a path. On Windows, it is converted to the wide (UTF-16) form the file APIs take; an
-// invalid UTF-8 sequence becomes U+FFFD. Elsewhere, the bytes are the path.
-std::filesystem::path Utf8ToPath(std::string_view utf8);
 
 // Writes 'contents' to the file at 'path', in binary mode, as the saving options say:
 // - CreateFolders: creates the file's folder (and those above it) when it doesn't exist.

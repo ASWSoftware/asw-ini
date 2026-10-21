@@ -870,15 +870,6 @@ bool TNativeFile::WriteAll(std::string_view data, int& error) noexcept
 //---------------------------------------------------------------------------
 
 //---------------------------------------------------------------------------
-std::string PathToUtf8(std::filesystem::path const& path)
-{
-#if defined(_WIN32)
-    return WideToUtf8(path.wstring());
-#else
-    return path.string();
-#endif
-}
-//---------------------------------------------------------------------------
 TASWIniResult ReadWholeFile(std::filesystem::path const& path, std::size_t maxSize, std::string& contents) noexcept
 {
     try
@@ -956,25 +947,6 @@ TASWIniResult ReadWholeFile(std::filesystem::path const& path, std::size_t maxSi
     }
 }
 //---------------------------------------------------------------------------
-std::filesystem::path Utf8ToPath(std::string_view utf8)
-{
-#if defined(_WIN32)
-    if (utf8.empty() || utf8.size() > static_cast<std::size_t>(INT_MAX))
-        return std::filesystem::path();
-
-    int const utf8Size = static_cast<int>(utf8.size());
-    int const size = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8Size, nullptr, 0);
-    if (size <= 0)
-        return std::filesystem::path();
-
-    std::wstring wide(static_cast<std::size_t>(size), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8Size, &wide[0], size);
-    return std::filesystem::path(wide);
-#else
-    return std::filesystem::path(std::string(utf8));
-#endif
-}
-//---------------------------------------------------------------------------
 TASWIniResult WriteWholeFile(std::filesystem::path const& path, std::string_view contents,
     TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings) noexcept
 {
@@ -1039,5 +1011,35 @@ TASWIniResult WriteWholeFile(std::filesystem::path const& path, std::string_view
 //---------------------------------------------------------------------------
 
 } // namespace Detail
+
+//---------------------------------------------------------------------------
+std::string PathToUtf8(std::filesystem::path const& path)
+{
+#if defined(_WIN32)
+    return Detail::WideToUtf8(path.wstring());
+#else
+    return path.string();
+#endif
+}
+//---------------------------------------------------------------------------
+std::filesystem::path Utf8ToPath(std::string_view utf8)
+{
+#if defined(_WIN32)
+    if (utf8.empty() || utf8.size() > static_cast<std::size_t>(INT_MAX))
+        return std::filesystem::path();
+
+    int const utf8Size = static_cast<int>(utf8.size());
+    int const size = ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8Size, nullptr, 0);
+    if (size <= 0)
+        return std::filesystem::path();
+
+    std::wstring wide(static_cast<std::size_t>(size), L'\0');
+    ::MultiByteToWideChar(CP_UTF8, 0, utf8.data(), utf8Size, &wide[0], size);
+    return std::filesystem::path(wide);
+#else
+    return std::filesystem::path(std::string(utf8));
+#endif
+}
+//---------------------------------------------------------------------------
 
 } // namespace ASWIni

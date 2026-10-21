@@ -1202,7 +1202,7 @@ TASWIniResult TASWIniConverter<std::filesystem::path>::FromText(std::string_view
     if (!Detail::IsValidUtf8(text))
         return Detail::ValueFailure(EIniCode::InvalidValue, text, "isn't a path: it isn't valid UTF-8.");
 
-    value = Detail::Utf8ToPath(text);
+    value = Utf8ToPath(text);
 
     return TASWIniResult();
 }
@@ -1210,8 +1210,8 @@ TASWIniResult TASWIniConverter<std::filesystem::path>::FromText(std::string_view
 TASWIniResult TASWIniConverter<std::filesystem::path>::ToText(std::filesystem::path const& value, std::string& text,
     TASWIniValueOptions const& /*options*/)
 {
-    std::string written = Detail::PathToUtf8(value);
-    if (!Detail::IsValidUtf8(written) || Detail::Utf8ToPath(written) != value)
+    std::string written = PathToUtf8(value);
+    if (!Detail::IsValidUtf8(written) || Utf8ToPath(written) != value)
     {
         return Detail::ValueFailure(EIniCode::InvalidValue, written,
             "is a path that isn't valid Unicode, so it can't be written to read back the same.");

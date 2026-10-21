@@ -123,6 +123,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_OutOfMemory_LoadChangesNothing();
     void Test_OutOfMemory_SaveChangesNothing();
     void Test_SaveAs_SetsTheFilePath();
+    void Test_SaveAs_UsesUtf8Paths();
     void Test_Save_EditDuringSaveKeepsTheModifiedFlag();
     void Test_Save_NoFilePathFails();
 #if defined(_WIN32)

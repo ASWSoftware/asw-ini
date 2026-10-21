@@ -135,6 +135,7 @@ using ASWIni::ECommentPolicy;
 using ASWIni::EIniCode;
 using ASWIni::ELineEnding;
 using ASWIni::ESeverity;
+using ASWIni::PathToUtf8;
 using ASWIni::TASWBaseIni;
 using ASWIni::TASWIniConverter;
 using ASWIni::TASWIniDocument;
@@ -146,7 +147,6 @@ using ASWIni::TASWIniSection;
 using ASWIni::TASWIniSetting;
 using ASWIni::TASWIniSettingOptions;
 using ASWIni::TASWIniValueOptions;
-using ASWIni::Detail::PathToUtf8;
 
 namespace
 {

@@ -82,10 +82,10 @@ static_assert(std::is_nothrow_move_constructible_v<ASWIni::TASWIniMessage>,
 namespace ASWUnitTests
 {
 
-using ASWIni::Detail::PathToUtf8;
 using ASWIni::EBoolFormat;
 using ASWIni::EIniCode;
 using ASWIni::ESeverity;
+using ASWIni::PathToUtf8;
 using ASWIni::TASWBaseIni;
 using ASWIni::TASWIniDocument;
 using ASWIni::TASWIniLogCallback;
@@ -93,6 +93,7 @@ using ASWIni::TASWIniMessage;
 using ASWIni::TASWIniOptions;
 using ASWIni::TASWIniResult;
 using ASWIni::TASWIniSavingOptions;
+using ASWIni::Utf8ToPath;
 
 namespace
 {
@@ -1762,6 +1763,48 @@ ASW_TEST(TTest_ASWIni_BaseFile, SaveAs_SetsTheFilePath)
             "the failure should name the file it couldn't write");
         CheckNotEquals(first, messages[0].FilePath, __func__, __LINE__,
             "the failure shouldn't name the object's file path");
+    }
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_BaseFile, SaveAs_UsesUtf8Paths)
+{
+    // Arrange
+    // A missing folder "cafe" with U+00E9, and the Greek lambda U+03BB, given to the object as UTF-8 by PathToUtf8()
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
+    std::filesystem::path const subFolder = folder.Path() / Utf8ToPath("caf\xC3\xA9");
+    std::filesystem::path const file = subFolder / Utf8ToPath("\xCE\xBB.ini");
+    std::string const path = PathToUtf8(file);
+    std::string const missingPath = PathToUtf8(subFolder / Utf8ToPath("\xCE\xBB-missing.ini"));
+    TASWBaseIni ini;
+    static_cast<void>(ini.LoadText(SampleText));
+    TASWBaseIni loader;
+    TASWBaseIni missingLoader;
+    std::vector<TASWIniMessage> messages;
+    missingLoader.SetLogCallback(Recorder(messages));
+
+    // Act
+    TASWIniResult const saved = ini.SaveAs(path);
+    TASWIniResult const loaded = loader.Load(path);
+    TASWIniResult const missing = missingLoader.Load(missingPath);
+
+    // Assert
+    std::string contents;
+    CheckTrue(saved.IsOk(), __func__, __LINE__, "SaveAs() should write the file: " + saved.Message);
+    CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the UTF-8 path should become the file path");
+    CheckTrue(Utf8ToPath(ini.GetFilePath()) == file, __func__, __LINE__,
+        "the file path should convert back to the path");
+    CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist at the path");
+    CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
+    CheckTrue(loaded.IsOk(), __func__, __LINE__, "Load() should read the file: " + loaded.Message);
+    CheckEquals(ini.ToText(), loader.ToText(), __func__, __LINE__, "the file should load as it was saved");
+    CheckEquals(EIniCode::FileNotFound, missing.Code, __func__, __LINE__, "a missing file should be FileNotFound");
+    CheckEquals(missingPath, missing.FilePath, __func__, __LINE__, "the result should name the file as UTF-8");
+    CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the missing file should be reported");
+    if (messages.size() == 1)
+    {
+        CheckEquals(missingPath, messages[0].FilePath, __func__, __LINE__,
+            "the message should name the file as UTF-8");
     }
 }
 //---------------------------------------------------------------------------

@@ -116,15 +116,15 @@ ASW_TEST(TTest_ASWIni_File, PathToUtf8_RoundTripsAscii)
     std::string const pathText = "folder/sub folder/app settings.ini";
 
     // Act
-    std::string const roundTrip = ASWIni::Detail::PathToUtf8(ASWIni::Detail::Utf8ToPath(name));
-    std::filesystem::path const path = ASWIni::Detail::Utf8ToPath(pathText);
+    std::string const roundTrip = ASWIni::PathToUtf8(ASWIni::Utf8ToPath(name));
+    std::filesystem::path const path = ASWIni::Utf8ToPath(pathText);
 
     // Assert. A path is compared by its elements: bcc32c's library turns '/' into '\' in a path made from a wide
     // string, which the other libraries keep as written.
     CheckEquals(name, roundTrip, __func__, __LINE__, "an ASCII name should convert back to the same text");
     CheckTrue(path == std::filesystem::path(pathText), __func__, __LINE__,
         "a path with separators should have the same elements");
-    CheckTrue(ASWIni::Detail::Utf8ToPath("").empty(), __func__, __LINE__, "an empty text should be an empty path");
+    CheckTrue(ASWIni::Utf8ToPath("").empty(), __func__, __LINE__, "an empty text should be an empty path");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, ReadWholeFile_EmptyFile)
@@ -211,7 +211,7 @@ ASW_TEST(TTest_ASWIni_File, ReadWholeFile_MissingFile)
     // Assert
     CheckEquals(ASWIni::EIniCode::FileNotFound, result.Code, __func__, __LINE__, "the code should be FileNotFound");
     CheckNotEquals(0, result.SystemError, __func__, __LINE__, "the system's error code should be kept");
-    CheckEquals(ASWIni::Detail::PathToUtf8(path), result.FilePath, __func__, __LINE__, "the path should be kept");
+    CheckEquals(ASWIni::PathToUtf8(path), result.FilePath, __func__, __LINE__, "the path should be kept");
     CheckContains(result.Message, "missing.ini", __func__, __LINE__, "the message should name the file");
 }
 //---------------------------------------------------------------------------
@@ -254,7 +254,7 @@ ASW_TEST(TTest_ASWIni_File, Utf8ToPath_ConvertsFourByteSequence)
     std::string const utf8 = "\xF0\x9F\x98\x80.ini";
 
     // Act
-    std::filesystem::path const path = ASWIni::Detail::Utf8ToPath(utf8);
+    std::filesystem::path const path = ASWIni::Utf8ToPath(utf8);
 
     // Assert
 #if defined(_WIN32)
@@ -263,7 +263,7 @@ ASW_TEST(TTest_ASWIni_File, Utf8ToPath_ConvertsFourByteSequence)
 #else
     CheckEquals(utf8, path.string(), __func__, __LINE__, "the path should hold the UTF-8 bytes");
 #endif
-    CheckEquals(utf8, ASWIni::Detail::PathToUtf8(path), __func__, __LINE__, "the path should convert back");
+    CheckEquals(utf8, ASWIni::PathToUtf8(path), __func__, __LINE__, "the path should convert back");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, Utf8ToPath_ConvertsNonAscii)
@@ -272,7 +272,7 @@ ASW_TEST(TTest_ASWIni_File, Utf8ToPath_ConvertsNonAscii)
     std::string const utf8 = "caf\xC3\xA9_\xCE\xBB.ini";
 
     // Act
-    std::filesystem::path const path = ASWIni::Detail::Utf8ToPath(utf8);
+    std::filesystem::path const path = ASWIni::Utf8ToPath(utf8);
 
     // Assert
 #if defined(_WIN32)
@@ -281,7 +281,7 @@ ASW_TEST(TTest_ASWIni_File, Utf8ToPath_ConvertsNonAscii)
 #else
     CheckEquals(utf8, path.string(), __func__, __LINE__, "the path should hold the UTF-8 bytes");
 #endif
-    CheckEquals(utf8, ASWIni::Detail::PathToUtf8(path), __func__, __LINE__, "the path should convert back");
+    CheckEquals(utf8, ASWIni::PathToUtf8(path), __func__, __LINE__, "the path should convert back");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_CopiesPreviousFile)
@@ -530,8 +530,8 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_NonAsciiPath)
     // Arrange: a folder and a file name with U+00E9 and U+03BB
     TTempDir const folder;
     AssertFalse(folder.Path().empty(), __func__, __LINE__, "the test folder should be created");
-    std::filesystem::path const path = folder.Path() / ASWIni::Detail::Utf8ToPath("caf\xC3\xA9") /
-        ASWIni::Detail::Utf8ToPath("\xCE\xBB.ini");
+    std::filesystem::path const path = folder.Path() / ASWIni::Utf8ToPath("caf\xC3\xA9") /
+        ASWIni::Utf8ToPath("\xCE\xBB.ini");
     std::vector<ASWIni::TASWIniMessage> warnings;
     std::string contents;
 

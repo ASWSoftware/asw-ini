@@ -536,7 +536,7 @@ TASWIniResult TASWBaseIni::LoadText(std::string_view text)
 //---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::ReadFile(std::string const& filePath, std::size_t maxSize, std::string& contents)
 {
-    return Detail::ReadWholeFile(Detail::Utf8ToPath(filePath), maxSize, contents);
+    return Detail::ReadWholeFile(Utf8ToPath(filePath), maxSize, contents);
 }
 //---------------------------------------------------------------------------
 bool TASWBaseIni::RemoveKey(std::string_view section, std::string_view key)
@@ -838,7 +838,7 @@ void TASWBaseIni::Unregister(TASWIniSection const& section)
 TASWIniResult TASWBaseIni::WriteFile(std::string const& filePath, std::string_view contents,
     TASWIniSavingOptions const& options, std::vector<TASWIniMessage>& warnings)
 {
-    return Detail::WriteWholeFile(Detail::Utf8ToPath(filePath), contents, options, warnings);
+    return Detail::WriteWholeFile(Utf8ToPath(filePath), contents, options, warnings);
 }
 //---------------------------------------------------------------------------
 

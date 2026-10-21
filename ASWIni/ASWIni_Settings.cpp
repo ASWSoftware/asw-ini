@@ -164,6 +164,30 @@ void TSettingBase::ApplyDefault(TASWIniDocument& document, std::string const& de
     ApplyComment(document, messages);
 }
 //---------------------------------------------------------------------------
+bool TSettingBase::ApplyOldKeys(TASWIniDocument& document, std::vector<std::string> const& oldKeys,
+    std::vector<TASWIniMessage>& messages) const
+{
+    for (std::string const& oldKey : oldKeys)
+    {
+        if (document.FindKey(m_SectionName, oldKey) == nullptr)
+            continue;
+
+        TASWIniResult const result = document.RenameKey(m_SectionName, oldKey, m_Key);
+        if (!result.IsOk())
+        {
+            messages.push_back(SettingMessage(ESeverity::Error, result, m_SectionName, m_Key));
+            return false;
+        }
+
+        TASWIniResult const renamed = KeyFailure(m_SectionName, m_Key, "is missing", EIniCode::KeyRenamed,
+            "its earlier name \"" + oldKey + "\" is renamed to it.");
+        messages.push_back(SettingMessage(ESeverity::Info, renamed, m_SectionName, m_Key));
+        break;
+    }
+
+    return true;
+}
+//---------------------------------------------------------------------------
 TASWIniResult TSettingBase::CaughtSetFailure() const noexcept
 {
     TASWIniResult result;

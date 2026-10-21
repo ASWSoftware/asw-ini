@@ -942,6 +942,28 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_InvalidDefaultIsAnError)
     CheckEndsWith(messages[1].Text, unnamedProblem, __func__, __LINE__, "the message should give the problem");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_KeyWinsOverItsOldKeys)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const width(general, "Width", 640, "", TASWIniSettingOptions<int>().AddOldKey("W"));
+    std::string const text = "[General]\nW = 800\nWidth = 900\n";
+
+    // Act
+    TASWIniResult const result = ini.LoadText(text);
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "the key and its old key should both stay as they are");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
+    CheckTrue(messages.empty(), __func__, __LINE__, "nothing should be reported");
+    CheckEquals(900, width.Get(), __func__, __LINE__, "the setting should read its own key");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Load_LeavesAValidDocumentAsItIs)
 {
     // Arrange
@@ -1010,6 +1032,33 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_MissingFileGetsEverySetting)
     CheckFalse(again.IsModified(), __func__, __LINE__, "the file saved should hold every setting");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OldKeyThatCantBeRenamedIsAnError)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const badKey(general, "a=b", 1, "", TASWIniSettingOptions<int>().AddOldKey("Old"));
+    TASWIniSetting<int> const good(general, "Good", 2, "", TASWIniSettingOptions<int>().AddOldKey("Older"));
+
+    // Act
+    TASWIniResult const result = ini.LoadText("[General]\nOld = 5\nOlder = 3\n");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\nOld = 5\nGood = 3\n"), ini.ToText(), __func__, __LINE__,
+        "an old key that can't be renamed should stay as it is, and the next setting should still be applied");
+    AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the failure should be reported once, then the next key renamed");
+    CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a key that can't be renamed is an Error");
+    CheckEquals(EIniCode::InvalidArgument, messages[0].Code, __func__, __LINE__, "the code should be RenameKey()'s");
+    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals(std::string("a=b"), messages[0].Key, __func__, __LINE__, "the message should name the setting's key");
+    CheckEquals(EIniCode::KeyRenamed, messages[1].Code, __func__, __LINE__, "the next key should still be renamed");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OptionalKeyIsNotAdded)
 {
     // Arrange
@@ -1041,6 +1090,95 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OptionalKeyIsNotAdded)
     CheckTrue(set.IsOk(), __func__, __LINE__, "Set() should write an optional setting");
     CheckEquals(std::string("[General]\nEnableCheats = true\n"), ini.ToText(), __func__, __LINE__,
         "Set() should write an optional setting");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_RenamedKeyIsAppliedAsAnyOther)
+{
+    // Arrange
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Writing.LineEnding = ELineEnding::LF;
+    options.Writing.CommentPolicy = ECommentPolicy::FileWins;
+    static_cast<void>(ini.SetOptions(options));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const level(general, "LogLevel", 2, "From 0 to 4",
+        TASWIniSettingOptions<int>().SetRange(0, 4).AddOldKey("Level"));
+    TASWIniSetting<bool> const cheats(general, "EnableCheats", false, "",
+        TASWIniSettingOptions<bool>().SetOptional().AddOldKey("Cheats"));
+    TASWIniSetting<int> const width(general, "Width", 640, "In pixels", TASWIniSettingOptions<int>().AddOldKey("W"));
+
+    // Act
+    TASWIniResult const result = ini.LoadText("[General]\nLevel = 9\nCheats = maybe\n; The user's note\nW = 800\n");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\n; From 0 to 4\nLogLevel = 2\nEnableCheats = false\n; The user's note\n"
+        "Width = 800\n"), ini.ToText(), __func__, __LINE__,
+        "a renamed key's value should be checked and its comment written as for any key, also for an optional one");
+    AssertEquals(5, static_cast<int>(messages.size()), __func__, __LINE__,
+        "each key renamed and each value replaced should be reported");
+    CheckEquals(EIniCode::KeyRenamed, messages[0].Code, __func__, __LINE__, "the rename should come first");
+    CheckEquals(EIniCode::ValueOutOfRange, messages[1].Code, __func__, __LINE__, "then the value replaced");
+    CheckEquals(ESeverity::Warning, messages[1].Severity, __func__, __LINE__, "a value replaced is a Warning");
+    CheckEquals(std::string("LogLevel"), messages[1].Key, __func__, __LINE__, "the warning should name the new key");
+    CheckEquals(EIniCode::KeyRenamed, messages[2].Code, __func__, __LINE__, "an optional key should be renamed");
+    CheckEquals(std::string("EnableCheats"), messages[2].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(EIniCode::InvalidValue, messages[3].Code, __func__, __LINE__,
+        "an optional key's renamed value should be checked");
+    CheckEquals(EIniCode::KeyRenamed, messages[4].Code, __func__, __LINE__, "the last key should be renamed");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_RenamesAnOldKey)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const days(general, "NDaysRetainLogs", 7, "Days to keep the logs",
+        TASWIniSettingOptions<int>().AddOldKey("LogDays").AddOldKey("DaysToKeepLogs"));
+    TASWIniSetting<int> const width(general, "Width", 640, "",
+        TASWIniSettingOptions<int>().AddOldKey("W").AddOldKey("SizeX"));
+    TASWIniSetting<int> const height(general, "Height", 480, "", TASWIniSettingOptions<int>().AddOldKey("H"));
+
+    // Act
+    // An old key is looked for in the setting's own section only
+    TASWIniResult const result = ini.LoadText("[General]\n; The user's note\n  logdays: 30\nSizeX = 800\nW = 900\n"
+        "\n[Other]\nH = 1\n");
+    std::string const text = ini.ToText();
+    bool const modified = ini.IsModified();
+    int const daysValue = days.Get();
+    int const widthValue = width.Get();
+    std::size_t const reported = messages.size();
+    static_cast<void>(ini.LoadText(text));
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\n  ; Days to keep the logs\n  NDaysRetainLogs: 30\nSizeX = 800\nWidth = 900\n"
+        "Height = 480\n\n[Other]\nH = 1\n"), text, __func__, __LINE__,
+        "the first old key in the setting's order should be renamed in place, keeping its spacing and value");
+    CheckTrue(modified, __func__, __LINE__, "renaming keys should set the modified flag");
+    CheckEquals(30, daysValue, __func__, __LINE__, "the setting should read the renamed key's value");
+    CheckEquals(900, widthValue, __func__, __LINE__, "the setting should read the renamed key's value");
+    AssertEquals(3, static_cast<int>(reported), __func__, __LINE__, "each key renamed or added should be reported");
+    CheckEquals(ESeverity::Info, messages[0].Severity, __func__, __LINE__, "a renamed key is an Info message");
+    CheckEquals(EIniCode::KeyRenamed, messages[0].Code, __func__, __LINE__, "a renamed key is KeyRenamed");
+    CheckEquals(std::string("The key \"NDaysRetainLogs\" of the section \"General\" is missing: its earlier name "
+        "\"LogDays\" is renamed to it."), messages[0].Text, __func__, __LINE__,
+        "the message should name the key and its earlier name");
+    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals(std::string("NDaysRetainLogs"), messages[0].Key, __func__, __LINE__,
+        "the message should name the setting's key");
+    CheckEquals(std::string("Width"), messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals(EIniCode::KeyAdded, messages[2].Code, __func__, __LINE__,
+        "a key whose old key is in another section should be added");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document with the new keys should stay as it is");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a document with the new keys isn't modified");
+    CheckEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
+        "a document with the new keys reports nothing");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Load_ReplacesAnInvalidValueWithTheDefault)

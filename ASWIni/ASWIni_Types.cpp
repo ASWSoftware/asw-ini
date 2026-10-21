@@ -113,6 +113,9 @@ char const* ToString(EIniCode code) noexcept
 
         case EIniCode::KeyAdded:
             return "KeyAdded";
+
+        case EIniCode::KeyRenamed:
+            return "KeyRenamed";
     }
 
     return "Unknown";

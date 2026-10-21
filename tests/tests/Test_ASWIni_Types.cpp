@@ -72,6 +72,7 @@ std::vector<ASWIni::EIniCode> AllIniCodes()
     codes.push_back(EIniCode::InvalidValue);
     codes.push_back(EIniCode::ValueOutOfRange);
     codes.push_back(EIniCode::KeyAdded);
+    codes.push_back(EIniCode::KeyRenamed);
     return codes;
 }
 

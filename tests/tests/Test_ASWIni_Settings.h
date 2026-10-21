@@ -69,7 +69,7 @@ public:
 // TTest_ASWIni_SettingsLoad
 //
 // What Load() and LoadText() do with the settings and sections bound to the object: missing keys added, invalid
-// values replaced, comments as the CommentPolicy says, what is reported, and the bindings' lifetimes
+// values replaced, old keys renamed, comments as the CommentPolicy says, what is reported, and the bindings' lifetimes
 /////////////////////////////////////////////////////////////////////////////
 class TTest_ASWIni_SettingsLoad : public TAutoTestGroup<TTest_ASWIni_SettingsLoad>
 {
@@ -83,9 +83,13 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Load_AddsMissingKeysInDeclarationOrder();
     void Test_Load_FailureAppliesNothing();
     void Test_Load_InvalidDefaultIsAnError();
+    void Test_Load_KeyWinsOverItsOldKeys();
     void Test_Load_LeavesAValidDocumentAsItIs();
     void Test_Load_MissingFileGetsEverySetting();
+    void Test_Load_OldKeyThatCantBeRenamedIsAnError();
     void Test_Load_OptionalKeyIsNotAdded();
+    void Test_Load_RenamedKeyIsAppliedAsAnyOther();
+    void Test_Load_RenamesAnOldKey();
     void Test_Load_ReplacesAnInvalidValueWithTheDefault();
     void Test_Load_WriteFailuresAreErrors();
     void Test_SetOptions_DoesntApplyTheSettings();

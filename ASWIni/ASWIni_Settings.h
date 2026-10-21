@@ -129,6 +129,13 @@ protected:
     void ApplyDefault(TASWIniDocument& document, std::string const& defaultText, TASWIniResult const* problem,
         std::vector<TASWIniMessage>& messages) const;
 
+    // For a key that 'document' doesn't have: renames the first of 'oldKeys' (earlier names of the key, in its section)
+    // that 'document' has to the key (TASWIniDocument::RenameKey(): the line, its value and its comment stay), adding
+    // the Info that it was renamed (EIniCode::KeyRenamed) to 'messages'. Returns false when that fails (added as an
+    // Error; the document is left as it is), else true (also when 'document' has none of them).
+    bool ApplyOldKeys(TASWIniDocument& document, std::vector<std::string> const& oldKeys,
+        std::vector<TASWIniMessage>& messages) const;
+
     // The UnexpectedException result of Set() for the exception being handled (call it in a catch block), with a
     // message that names the section and key; without a message when it can't be made
     TASWIniResult CaughtSetFailure() const noexcept;
@@ -236,8 +243,9 @@ public:
 /////////////////////////////////////////////////////////////////////////////
 // TASWIniSettingOptions
 //
-// The options of a TASWIniSetting<T>: the range its values must be in, a function that checks them, and the value
-// options it converts them with. Each setter returns the options, so they are given in one expression:
+// The options of a TASWIniSetting<T>: the range its values must be in, a function that checks them, the value options
+// it converts them with, whether it is optional, and the earlier names of its key. Each setter returns the options, so
+// they are given in one expression:
 //
 //     ASWIni::TASWIniSettingOptions<int>().SetRange(0, 4).SetValues(oneZero)
 //
@@ -256,11 +264,22 @@ public:
 private:
     std::shared_ptr<T const> m_Max; // Replaced, never changed, so copies of the options may share it
     std::shared_ptr<T const> m_Min;
+    std::vector<std::string> m_OldKeys;
     bool m_Optional = false;
     TValidator m_Validator;
     std::optional<TASWIniValueOptions> m_Values;
 
 public:
+    // Adds 'key' to the earlier names of the setting's key, in its own section, after the ones added before: when a
+    // loaded document doesn't have the key, the first earlier name it has is renamed to it (see TASWIniSetting), e.g.
+    // AddOldKey("LogDays") for a key that was called "LogDays" in an earlier version of the application
+    TASWIniSettingOptions& AddOldKey(std::string_view key)
+    {
+        m_OldKeys.emplace_back(key);
+
+        return *this;
+    }
+
     // The largest value the setting takes; nullptr (the default) when there is none
     T const* GetMax() const noexcept
     {
@@ -271,6 +290,12 @@ public:
     T const* GetMin() const noexcept
     {
         return m_Min.get();
+    }
+
+    // The earlier names of the setting's key, in the order they were added (none by default)
+    std::vector<std::string> const& GetOldKeys() const noexcept
+    {
+        return m_OldKeys;
     }
 
     // The function that checks the setting's values (none by default)
@@ -358,15 +383,19 @@ public:
 // default value for one that isn't.
 // A setting is bound to its owner from its constructor to its destructor, in the order settings are declared. When
 // the owner's Load() or LoadText() has read a document, before anyone sees it, each setting bound to it is applied
-// to it, in that order: a missing key is added with the default value (unless the setting is optional: see
-// TASWIniSettingOptions::SetOptional()) and the setting's comment, reported as an Info message (EIniCode::KeyAdded);
-// a value that isn't valid is replaced by the default value, reported as a Warning (as Get() reports it); and the
-// key's comment is set to the setting's (if it has one) as the options' Writing.CommentPolicy says. So the document
-// then holds every setting with a valid value, and the owner's IsModified() says whether that changed it (whether it
-// needs saving). A default value that can't be written, or that the range or the validator refuses, is reported as
-// an Error, and the key is left as it is. The converter and the validator are called with the owner's file lock
-// held, so they must not call its Load(), LoadText(), Save(), SaveAs() or SetOptions(). SetOptions() doesn't apply
-// the settings. A setting must not outlive its section's owner (see TASWIniSection). Neither copyable nor movable.
+// to it, in that order: a missing key whose earlier name (see TASWIniSettingOptions::AddOldKey()) the section has is
+// renamed from it, keeping its line, value and comment, reported as an Info message (EIniCode::KeyRenamed), and is
+// then applied as a key that was there (when the key is there, an earlier name is left alone); any other missing key
+// is added with the default value (unless the setting is optional: see TASWIniSettingOptions::SetOptional()) and the
+// setting's comment, reported as an Info message (EIniCode::KeyAdded); a value that isn't valid is replaced by the
+// default value, reported as a Warning (as Get() reports it); and the key's comment is set to the setting's (if it
+// has one) as the options' Writing.CommentPolicy says. So the document then holds every setting with a valid value,
+// and the owner's IsModified() says whether that changed it (whether it needs saving). A default value that can't be
+// written, or that the range or the validator refuses, is reported as an Error, and the key is left as it is; so is
+// an earlier name that can't be renamed (the key's name can't be written). The converter and the validator are called
+// with the owner's file lock held, so they must not call its Load(), LoadText(), Save(), SaveAs() or SetOptions().
+// SetOptions() doesn't apply the settings. A setting must not outlive its section's owner (see TASWIniSection).
+// Neither copyable nor movable.
 /////////////////////////////////////////////////////////////////////////////
 template <typename T>
 class TASWIniSetting : public Detail::TSettingBase
@@ -391,7 +420,15 @@ private:
             return;
         }
 
-        TASWIniDocumentLine const* const line = document.FindKey(GetSectionName(), GetKey());
+        TASWIniDocumentLine const* line = document.FindKey(GetSectionName(), GetKey());
+        if (line == nullptr)
+        {
+            if (!ApplyOldKeys(document, m_Options.GetOldKeys(), messages))
+                return;
+
+            line = document.FindKey(GetSectionName(), GetKey());
+        }
+
         if (line == nullptr)
         {
             if (!m_Options.IsOptional())
@@ -474,10 +511,10 @@ public:
     }
 
     // The value of the key in the owner's document, converted with TASWIniConverter<T> and the value options (the
-    // setting's own, or else the owner's), or the default value when the key doesn't exist or its value isn't valid
-    // (it doesn't convert, is out of range, or the validator refuses it). A value that isn't valid is reported as a
-    // Warning message (see TSettingBase::ReportDefaultUsed()). May throw what the converter, the validator or the
-    // owner's operations throw (e.g. std::bad_alloc).
+    // setting's own, or else the owner's), or the default value when the key doesn't exist (an earlier name of it isn't
+    // read: Load() renames it) or its value isn't valid (it doesn't convert, is out of range, or the validator refuses
+    // it). A value that isn't valid is reported as a Warning message (see TSettingBase::ReportDefaultUsed()). May throw
+    // what the converter, the validator or the owner's operations throw (e.g. std::bad_alloc).
     T Get() const
     {
         std::string text;

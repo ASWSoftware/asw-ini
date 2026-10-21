@@ -206,4 +206,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   default value that can't be written, or that its own range or validator refuses, is reported as
   an error. `SetOptions()` doesn't apply the settings.
 
+  A setting's options may name earlier names of its key, in its own section
+  (`TASWIniSettingOptions<T>::AddOldKey()`), for a key renamed in a newer version of the
+  application: when a loaded document doesn't have the key, the first earlier name it has is
+  renamed to it, keeping its line, value and comment, reported as an Info message with the new code
+  `EIniCode::KeyRenamed`, and the setting is then applied to it as to any key. When the document has
+  both, the old key is left alone. `Get()`, `Set()` and `IsPresent()` only look at the key itself.
+
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

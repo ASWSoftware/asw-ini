@@ -82,6 +82,7 @@ enum class EIniCode : int
 
     // Notes added for settings: what applying them to a loaded document changed (see TASWIniSetting)
     KeyAdded = 26, // A setting's key was missing, and was added with its default value
+    KeyRenamed = 27, // A setting's key was missing, and an earlier name of it was renamed to it
 };
 
 // The line break that ends a line of an INI text

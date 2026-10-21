@@ -19,9 +19,14 @@ added by specializing `TASWIniConverter`. `TASWBaseIni` (`ASWIni_Base.h`) is the
 application uses, from any number of threads: it loads a file and saves it back (atomically, with an
 optional backup), reads and writes typed values (`GetValue()`, `TryGetValue()` and `SetValue()`),
 and reports warnings and errors to a log callback. Code that only reads and writes values can take
-its interface, `IASWIni` (`ASWIni_Interface.h`). The settings classes, which declare an
-application's settings in one place, come next. [CHANGELOG.md](CHANGELOG.md) lists what each change
-adds. The interface may change in any way until 1.0.0.
+its interface, `IASWIni` (`ASWIni_Interface.h`). `TASWIniSection` and `TASWIniSetting<T>`
+(`ASWIni_Settings.h`) declare an application's settings in one place, as members of its settings
+class: each setting has its section, key, type, default value, comment, and optionally a range, a
+validator and the earlier names of its key. Loading brings the file up to date: a missing key is
+added with its default value and comment, a value that isn't valid is replaced by the default, an
+old key is renamed, and each change is reported, so `IsModified()` says whether the file needs
+saving. Examples and the documentation come next. [CHANGELOG.md](CHANGELOG.md) lists what each
+change adds. The interface may change in any way until 1.0.0.
 
 ## Design
 
@@ -32,8 +37,9 @@ with RAD Studio (bcc32c at C++17, bcc64x at C++20), MSVC, MinGW, GCC and Clang. 
   byte for byte: comments, blank lines, spacing, the order of sections and keys, and lines it
   doesn't understand. Changing a value changes only that line.
 - **Settings in one place.** An application declares each setting once, with its section, key,
-  type, default value, comment and valid range; loading fills it in (or uses the default and says
-  why) and saving writes it back, with its comment.
+  type, default value, comment and valid range. Loading brings the file up to date (it adds missing
+  keys with their comments, and replaces values that aren't valid with the defaults, saying why),
+  and each setting reads and writes its value in the file's document, from any thread.
 - **Same file on every system.** Files are read and written in binary mode, so the line ending
   (LF or CRLF) is chosen by the library, not by the operating system.
 - **Safe to use from several threads**, and saving replaces the file atomically, so a crash while
@@ -53,6 +59,9 @@ with RAD Studio (bcc32c at C++17, bcc64x at C++20), MSVC, MinGW, GCC and Clang. 
   enumerations and lists, read and written independently of the locale, plus your own types.
 - An interface, `ASWIni::IASWIni`, and its implementation, `ASWIni::TASWBaseIni`, which an
   application's settings class derives from.
+- Settings declared once, as members of that class (`ASWIni::TASWIniSection` and
+  `ASWIni::TASWIniSetting<T>`), with default values, comments, ranges, validators and the earlier
+  names of renamed keys.
 - Atomic saves with an optional backup, and UTF-8 file paths on Windows and Linux.
 
 # Donations:

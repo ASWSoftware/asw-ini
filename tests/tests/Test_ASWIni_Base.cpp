@@ -60,6 +60,7 @@ limitations under the License.
 #include "ASWIni_Version.h"
 #include "UT_Helper_FailingAlloc.h"
 #include "UT_Helper_TempDir.h"
+#include "UT_Helper_Threads.h"
 //---------------------------------------------------------------------------
 
 // Neither copyable nor movable
@@ -73,6 +74,10 @@ static_assert(!std::is_copy_constructible_v<ASWIni::Detail::TSharedMutex>, "TSha
 static_assert(std::is_nothrow_move_assignable_v<ASWIni::TASWIniDocument>,
     "a TASWIniDocument should move without throwing");
 static_assert(std::is_nothrow_move_assignable_v<std::string>, "a std::string should move without throwing");
+
+// A load adds the messages of applying the settings to its own once room is made for them, by moves that can't throw
+static_assert(std::is_nothrow_move_constructible_v<ASWIni::TASWIniMessage>,
+    "a TASWIniMessage should move without throwing");
 
 namespace ASWUnitTests
 {
@@ -132,30 +137,6 @@ constexpr char const* TrickyText =
 // How long a test waits for another thread before it counts as stuck
 constexpr std::chrono::seconds ThreadTimeout(10);
 
-// The seed of the random numbers of the first thread of a thread test (each next thread's is one more)
-constexpr std::uint32_t ThreadsSeed = 20261020;
-
-// The Id of the next TLifeId
-std::atomic<std::uint32_t> g_NextLifeId{ 1 };
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TLifeId
-//
-// A number of its own (a copy gets a new one) from its construction until its destructor sets it to 0, so code that
-// reads it before and after a wait can tell whether the object was destroyed meanwhile, even when another one has
-// taken its memory. Its stores are volatile, so the compiler can't leave out the destructor's as a store to an
-// object that ends.
-/////////////////////////////////////////////////////////////////////////////
-struct TLifeId
-{
-    volatile std::uint32_t Id;
-
-    TLifeId() noexcept;
-    TLifeId(TLifeId const& /*other*/) noexcept;
-    ~TLifeId();
-};
-
 
 /////////////////////////////////////////////////////////////////////////////
 // TReadCall
@@ -206,72 +187,13 @@ public:
     TASWIniResult DefaultWrite(TWriteCall const& call);
 };
 
-
-/////////////////////////////////////////////////////////////////////////////
-// TThreadFailures
-//
-// The problems the threads of a test find, which any thread may add. The test checks them on its own thread when the
-// threads are done, since the checks aren't made to be called from several threads at once.
-/////////////////////////////////////////////////////////////////////////////
-class TThreadFailures
-{
-private:
-    mutable std::mutex m_Mutex;
-    std::size_t m_Count = 0;
-    std::string m_First;
-
-public:
-    // Adds 'problem'
-    void Add(std::string const& problem);
-
-    // "" when no problem was added; else how many there were, the seed of the threads' random numbers, and the first
-    std::string Summary() const;
-};
-
 //---------------------------------------------------------------------------
 
-TASWIniLogCallback CountingCallback(std::atomic<int>& count);
-void MaybeYield(std::mt19937& generator);
 TASWIniDocument ParsedDocument(std::string_view text, TASWIniOptions const& options = TASWIniOptions());
 TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages);
-void RunTogether(std::vector<std::function<void()> > const& work, TThreadFailures& failures);
 TASWIniResult SeamFailure(EIniCode code, std::string const& filePath, int systemError);
 std::string ValuesProblem(TASWIniDocument const& document, std::size_t writers, int largest);
-std::string WriterKey(std::size_t index);
 
-//---------------------------------------------------------------------------
-/*
-    CountingCallback
-
-    A log callback that adds 1 to 'count' for each message, from any thread. It gives up its time slice and then counts
-    the message only if it still exists, so a callback destroyed while it runs (e.g. replaced by SetLogCallback()) is
-    a message that isn't counted, and a use after free that AddressSanitizer reports.
-*/
-TASWIniLogCallback CountingCallback(std::atomic<int>& count)
-{
-    TLifeId const life;
-    auto const counter = [&count, life](TASWIniMessage const& /*message*/)
-        {
-            std::uint32_t const id = life.Id;
-            std::this_thread::yield();
-            if (id != 0 && life.Id == id)
-                ++count;
-        };
-
-    return counter;
-}
-//---------------------------------------------------------------------------
-/*
-    MaybeYield
-
-    Gives up the rest of the thread's time slice now and then (in 1 of 4 calls, as 'generator' picks them), so the
-    threads of a test interleave in more ways.
-*/
-void MaybeYield(std::mt19937& generator)
-{
-    if (generator() % 4 == 0)
-        std::this_thread::yield();
-}
 //---------------------------------------------------------------------------
 /*
     ParsedDocument
@@ -300,50 +222,6 @@ TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages)
         };
 
     return record;
-}
-//---------------------------------------------------------------------------
-/*
-    RunTogether
-
-    Runs each function of 'work' on a thread of its own, all of them starting together, and waits for them to finish.
-    An exception a function throws, or a thread that can't be started, is added to 'failures'.
-*/
-void RunTogether(std::vector<std::function<void()> > const& work, TThreadFailures& failures)
-{
-    std::atomic<bool> start{ false };
-    auto const run = [&start, &failures](std::function<void()> const& function)
-        {
-            while (!start)
-                std::this_thread::yield();
-
-            try
-            {
-                function();
-            }
-            catch (std::exception const& e)
-            {
-                failures.Add(std::string("a thread threw: ") + e.what());
-            }
-            catch (...)
-            {
-                failures.Add("a thread threw an exception that isn't a std::exception");
-            }
-        };
-
-    std::vector<std::thread> threads;
-    try
-    {
-        for (std::function<void()> const& function : work)
-            threads.emplace_back(run, std::cref(function));
-    }
-    catch (std::exception const& e)
-    {
-        failures.Add(std::string("a thread couldn't be started: ") + e.what());
-    }
-
-    start = true;
-    for (std::thread& thread : threads)
-        thread.join();
 }
 //---------------------------------------------------------------------------
 /*
@@ -397,38 +275,6 @@ std::string ValuesProblem(TASWIniDocument const& document, std::size_t writers, 
     return std::string();
 }
 //---------------------------------------------------------------------------
-/*
-    WriterKey
-
-    The key the writer thread number 'index' of a thread test counts up.
-*/
-std::string WriterKey(std::size_t index)
-{
-    return "Writer" + std::to_string(index);
-}
-//---------------------------------------------------------------------------
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TLifeId
-/////////////////////////////////////////////////////////////////////////////
-
-//---------------------------------------------------------------------------
-TLifeId::TLifeId() noexcept
-    : Id(g_NextLifeId++)
-{
-}
-//---------------------------------------------------------------------------
-TLifeId::TLifeId(TLifeId const& /*other*/) noexcept
-    : Id(g_NextLifeId++)
-{
-}
-//---------------------------------------------------------------------------
-TLifeId::~TLifeId()
-{
-    Id = 0;
-}
-//---------------------------------------------------------------------------
 
 
 /////////////////////////////////////////////////////////////////////////////
@@ -458,30 +304,6 @@ TASWIniResult TSeamIni::WriteFile(std::string const& filePath, std::string_view 
         return OnWrite(call);
 
     return DefaultWrite(call);
-}
-//---------------------------------------------------------------------------
-
-
-/////////////////////////////////////////////////////////////////////////////
-// TThreadFailures
-/////////////////////////////////////////////////////////////////////////////
-
-//---------------------------------------------------------------------------
-void TThreadFailures::Add(std::string const& problem)
-{
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    if (m_Count++ == 0)
-        m_First = problem;
-}
-//---------------------------------------------------------------------------
-std::string TThreadFailures::Summary() const
-{
-    std::lock_guard<std::mutex> lock(m_Mutex);
-    if (m_Count == 0)
-        return std::string();
-
-    return std::to_string(m_Count) + " problem(s), with the threads seeded from " + std::to_string(ThreadsSeed) +
-        "; the first: " + m_First;
 }
 //---------------------------------------------------------------------------
 

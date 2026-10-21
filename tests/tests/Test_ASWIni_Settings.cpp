@@ -26,8 +26,13 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWUnitTests_Registry.h"
 //---------------------------------------------------------------------------
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <functional>
+#include <memory>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -36,10 +41,12 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWIni_Base.h"
 #include "ASWIni_Converters.h"
+#include "ASWIni_Document.h"
 #include "ASWIni_File.h"
 #include "ASWIni_Settings.h"
 #include "UT_Helper_FailingAlloc.h"
 #include "UT_Helper_TempDir.h"
+#include "UT_Helper_Threads.h"
 //---------------------------------------------------------------------------
 
 // Neither copyable nor movable: settings and sections are bound to their owner by address
@@ -130,6 +137,7 @@ using ASWIni::ELineEnding;
 using ASWIni::ESeverity;
 using ASWIni::TASWBaseIni;
 using ASWIni::TASWIniConverter;
+using ASWIni::TASWIniDocument;
 using ASWIni::TASWIniLogCallback;
 using ASWIni::TASWIniMessage;
 using ASWIni::TASWIniOptions;
@@ -143,9 +151,94 @@ using ASWIni::Detail::PathToUtf8;
 namespace
 {
 
+/////////////////////////////////////////////////////////////////////////////
+// TAppSettings
+//
+// The settings of an application, SweepThemMines, declared as its settings class declared them by hand on an earlier
+// INI library, except that the days to keep the logs were called "LogDays" in an earlier version
+/////////////////////////////////////////////////////////////////////////////
+class TAppSettings : public TASWBaseIni
+{
+private:
+    // The comments of the keys that have one (Days: NDaysRetainLogs), and the default value of DirLogs
+    static constexpr char const* DaysComment = "Valid value for NDaysRetainLogs: 0 to N days. 0=retain forever.";
+    static constexpr char const* DirLogsDefault = "%localAppData%\\ASWSoftware\\SweepThemMines\\Logs\\";
+    static constexpr char const* ImagesPathComment = "Leave blank for default (exe directory).";
+    static constexpr char const* LogLevelComment = "Valid range for LogLevel: 0-4. 0=System/forced logs only, "
+        "1=errors/warnings, 2=medium, 3=heavy, 4=debug/verbose";
+
+private:
+    // The options of NDaysRetainLogs: its earlier name, LogDays
+    static TASWIniSettingOptions<unsigned> DaysOptions();
+
+    // The options of LogLevel: 0 to 4
+    static TASWIniSettingOptions<unsigned> LogLevelOptions();
+
+    // The validator of a text that can't be empty
+    static std::string NotEmpty(std::string const& value);
+
+    // The options of a text that can't be empty
+    static TASWIniSettingOptions<std::string> NotEmptyOptions();
+
+    // The options of an optional bool
+    static TASWIniSettingOptions<bool> OptionalOptions();
+
+public:
+    TASWIniSection General{ *this, "General" };
+    TASWIniSetting<std::string> ImagesPath{ General, "ImagesPath", "", ImagesPathComment };
+    TASWIniSetting<bool> EnableCheats{ General, "EnableCheats", false, "", OptionalOptions() };
+    TASWIniSetting<bool> UseQuestionMarksInit{ General, "UseQuestionMarksInit", true };
+    TASWIniSetting<std::string> DirLogs{ General, "DirLogs", DirLogsDefault, "", NotEmptyOptions() };
+    TASWIniSetting<std::string> LogPrefix{ General, "LogPrefix", "GeneralSTM_", "", NotEmptyOptions() };
+    TASWIniSetting<unsigned> LogLevel{ General, "LogLevel", 0, LogLevelComment, LogLevelOptions() };
+    TASWIniSetting<unsigned> NDaysRetainLogs{ General, "NDaysRetainLogs", 30, DaysComment, DaysOptions() };
+};
+
+//---------------------------------------------------------------------------
+
+std::string BindingsProblem(TASWIniDocument const& document, std::size_t stayers, std::size_t binders);
 TASWIniLogCallback Recorder(std::vector<TASWIniMessage>& messages);
 void UseLf(TASWBaseIni& ini);
+std::string WholeSettingsProblem(TASWIniDocument const& document, std::size_t writers, std::size_t others);
 
+//---------------------------------------------------------------------------
+/*
+    BindingsProblem
+
+    What is wrong with 'document', which a load in Bindings_ComeAndGoWhileLoading gave: "" when the section "Stays"
+    has its comment and its keys Key0 to Key<stayers - 1>, each with its value (its number) and its comment, and when
+    the section of each binder (Binder0 to Binder<binders - 1>) that is there has its comment and its key with its
+    comment.
+*/
+std::string BindingsProblem(TASWIniDocument const& document, std::size_t stayers, std::size_t binders)
+{
+    if (document.GetSectionComment("Stays") != "Settings that stay")
+        return "the section that stays should have its comment";
+
+    for (std::size_t i = 0; i < stayers; ++i)
+    {
+        std::string const key = "Key" + std::to_string(i);
+        ASWIni::TASWIniDocumentLine const* const line = document.FindKey("Stays", key);
+        bool const whole = line != nullptr && line->GetValue() == std::to_string(i) &&
+            document.GetKeyComment("Stays", key) == "A comment";
+        if (!whole)
+            return key + " should be there with its value and its comment";
+    }
+
+    for (std::size_t i = 0; i < binders; ++i)
+    {
+        std::string const section = "Binder" + std::to_string(i);
+        if (document.FindSection(section) == nullptr)
+            continue;
+
+        bool const whole = document.GetSectionComment(section) == "A binder's section" &&
+            document.FindKey(section, "Key") != nullptr && document.GetKeyComment(section, "Key") == "A binder's key";
+        if (!whole)
+            return "the section " + section + " should have its comment and its key with its comment";
+    }
+
+    return std::string();
+}
 //---------------------------------------------------------------------------
 /*
     Recorder
@@ -172,6 +265,77 @@ void UseLf(TASWBaseIni& ini)
     TASWIniOptions options = ini.GetOptions();
     options.Writing.LineEnding = ELineEnding::LF;
     static_cast<void>(ini.SetOptions(options));
+}
+//---------------------------------------------------------------------------
+/*
+    WholeSettingsProblem
+
+    What is wrong with 'document', a copy of the object of GetAndSet_SeeWholeSettingsWhileLoading: "" when the sections
+    "Values" and "Others" have their comments, the keys WriterKey(0) to WriterKey(writers - 1) of "Values" and Key0 to
+    Key<others - 1> of "Others" are there with their comments, and the key "Scratch", when it is there, has its comment.
+*/
+std::string WholeSettingsProblem(TASWIniDocument const& document, std::size_t writers, std::size_t others)
+{
+    bool const sectionComments = document.GetSectionComment("Values") == "The counts" &&
+        document.GetSectionComment("Others") == "Other settings";
+    if (!sectionComments)
+        return "each section should have its comment";
+
+    for (std::size_t i = 0; i < writers; ++i)
+    {
+        bool const whole = document.FindKey("Values", WriterKey(i)) != nullptr &&
+            document.GetKeyComment("Values", WriterKey(i)) == "A count";
+        if (!whole)
+            return WriterKey(i) + " should be there with its comment";
+    }
+
+    for (std::size_t i = 0; i < others; ++i)
+    {
+        std::string const key = "Key" + std::to_string(i);
+        bool const whole = document.FindKey("Others", key) != nullptr &&
+            document.GetKeyComment("Others", key) == "A comment";
+        if (!whole)
+            return key + " should be there with its comment";
+    }
+
+    bool const scratchWhole = document.FindKey("Values", "Scratch") == nullptr ||
+        document.GetKeyComment("Values", "Scratch") == "The scratch key";
+    if (!scratchWhole)
+        return "the scratch key should have its comment";
+
+    return std::string();
+}
+//---------------------------------------------------------------------------
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TAppSettings
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TASWIniSettingOptions<unsigned> TAppSettings::DaysOptions()
+{
+    return TASWIniSettingOptions<unsigned>().AddOldKey("LogDays");
+}
+//---------------------------------------------------------------------------
+TASWIniSettingOptions<unsigned> TAppSettings::LogLevelOptions()
+{
+    return TASWIniSettingOptions<unsigned>().SetRange(0, 4);
+}
+//---------------------------------------------------------------------------
+std::string TAppSettings::NotEmpty(std::string const& value)
+{
+    return value.empty() ? "it can't be empty" : "";
+}
+//---------------------------------------------------------------------------
+TASWIniSettingOptions<std::string> TAppSettings::NotEmptyOptions()
+{
+    return TASWIniSettingOptions<std::string>().SetValidator(NotEmpty);
+}
+//---------------------------------------------------------------------------
+TASWIniSettingOptions<bool> TAppSettings::OptionalOptions()
+{
+    return TASWIniSettingOptions<bool>().SetOptional();
 }
 //---------------------------------------------------------------------------
 
@@ -749,6 +913,65 @@ void TTest_ASWIni_SettingsLoad::TearDown_Test(ITestCase& /*testCase*/)
 // /////// Begin tests after this line ///////////////////////
 
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, AppSettings_OldFileIsBroughtUpToDate)
+{
+    // Arrange
+    // A file as the application's earlier settings class wrote it (CRLF, "key=value", ";comment"), which a user then
+    // edited: an empty DirLogs, a LogLevel out of range, and the days to keep the logs still under their old name
+    std::string const oldText = "[General]\r\n;Leave blank for default (exe directory).\r\nImagesPath=\r\nDirLogs=\r\n"
+        "LogPrefix=GeneralSTM_\r\n;Valid range for LogLevel: 0-4. 0=System/forced logs only, 1=errors/warnings, "
+        "2=medium, 3=heavy, 4=debug/verbose\r\nLogLevel=9\r\n;Days to keep the logs.\r\nLogDays=14\r\n";
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the temporary folder should be created");
+    std::filesystem::path const file = folder.Path() / "SweepThemMines.ini";
+    AssertTrue(WriteTestFile(file, oldText), __func__, __LINE__, "the old file should be written");
+    std::string const path = PathToUtf8(file);
+    TAppSettings settings;
+    std::vector<TASWIniMessage> messages;
+    settings.SetLogCallback(Recorder(messages));
+
+    // Act
+    // As the application would: load, save when needed, read the settings; and then load the file saved
+    TASWIniResult const loaded = settings.Load(path);
+    bool const modified = settings.IsModified();
+    TASWIniResult const saved = modified ? settings.Save() : TASWIniResult();
+    std::string written;
+    bool const read = ReadTestFile(file, written);
+    TAppSettings again;
+    std::vector<TASWIniMessage> againMessages;
+    again.SetLogCallback(Recorder(againMessages));
+    TASWIniResult const loadedAgain = again.Load(path);
+
+    // Assert
+    CheckTrue(loaded.IsOk(), __func__, __LINE__, "the old file should load");
+    CheckTrue(modified, __func__, __LINE__, "the old file should need saving");
+    CheckTrue(saved.IsOk() && read, __func__, __LINE__, "the file should be saved");
+    CheckEquals(std::string("[General]\r\n;Leave blank for default (exe directory).\r\nImagesPath=\r\n"
+        "DirLogs=%localAppData%\\ASWSoftware\\SweepThemMines\\Logs\\\r\nLogPrefix=GeneralSTM_\r\n;Valid range for "
+        "LogLevel: 0-4. 0=System/forced logs only, 1=errors/warnings, 2=medium, 3=heavy, 4=debug/verbose\r\n"
+        "LogLevel=0\r\n; Valid value for NDaysRetainLogs: 0 to N days. 0=retain forever.\r\nNDaysRetainLogs=14\r\n"
+        "UseQuestionMarksInit = true\r\n"), written, __func__, __LINE__,
+        "only the lines that needed it should change, and the missing key should be added in the file's line ending");
+    AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each change should be reported");
+    CheckEquals(EIniCode::KeyAdded, messages[0].Code, __func__, __LINE__, "the missing key should be added");
+    CheckEquals(std::string("UseQuestionMarksInit"), messages[0].Key, __func__, __LINE__,
+        "the changes should be reported in the order the settings are declared");
+    CheckEquals(EIniCode::InvalidValue, messages[1].Code, __func__, __LINE__, "the empty DirLogs should be refused");
+    CheckEquals(EIniCode::ValueOutOfRange, messages[2].Code, __func__, __LINE__, "LogLevel should be out of range");
+    CheckEquals(EIniCode::KeyRenamed, messages[3].Code, __func__, __LINE__, "LogDays should be renamed");
+    CheckEquals(std::string(), settings.ImagesPath.Get(), __func__, __LINE__, "ImagesPath should be the file's");
+    CheckFalse(settings.EnableCheats.Get(), __func__, __LINE__, "the optional EnableCheats should be its default");
+    CheckFalse(settings.EnableCheats.IsPresent(), __func__, __LINE__, "the optional EnableCheats shouldn't be added");
+    CheckTrue(settings.UseQuestionMarksInit.Get(), __func__, __LINE__, "UseQuestionMarksInit should be its default");
+    CheckEquals(settings.DirLogs.GetDefault(), settings.DirLogs.Get(), __func__, __LINE__,
+        "DirLogs should be its default");
+    CheckEquals(0u, settings.LogLevel.Get(), __func__, __LINE__, "LogLevel should be its default");
+    CheckEquals(14u, settings.NDaysRetainLogs.Get(), __func__, __LINE__, "NDaysRetainLogs should keep the old value");
+    CheckTrue(loadedAgain.IsOk(), __func__, __LINE__, "the saved file should load");
+    CheckFalse(again.IsModified(), __func__, __LINE__, "the saved file shouldn't need saving");
+    CheckTrue(againMessages.empty(), __func__, __LINE__, "loading the saved file should report nothing");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Bindings_FollowTheirLifetimes)
 {
     // Arrange
@@ -987,6 +1210,43 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_LeavesAValidDocumentAsItIs)
     CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document that holds every setting should stay byte for byte");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
     CheckTrue(messages.empty(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_MessagesNameTheFileLoaded)
+{
+    // Arrange
+    // The callback saves the object to another file when the first message comes, which makes that the object's file
+    // path before the messages of applying the settings are reported
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the temporary folder should be created");
+    std::string const path = PathToUtf8(folder.Path() / "app.ini");
+    std::string const otherPath = PathToUtf8(folder.Path() / "other.ini");
+    TASWBaseIni ini;
+    UseLf(ini);
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const first(general, "A", 1);
+    TASWIniSetting<int> const second(general, "B", 2);
+    std::vector<TASWIniMessage> messages;
+    TASWIniResult savedAs;
+    auto const callback = [&](TASWIniMessage const& message)
+        {
+            messages.push_back(message);
+            if (messages.size() == 1)
+                savedAs = ini.SaveAs(otherPath);
+        };
+    ini.SetLogCallback(callback);
+
+    // Act
+    TASWIniResult const loaded = ini.Load(path);
+
+    // Assert
+    CheckEquals(EIniCode::FileNotFound, loaded.Code, __func__, __LINE__, "a missing file is FileNotFound");
+    CheckTrue(savedAs.IsOk(), __func__, __LINE__, "the callback should save the object to the other file");
+    CheckEquals(otherPath, ini.GetFilePath(), __func__, __LINE__, "the other file should be the object's file path");
+    AssertEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the missing file and each key added should be reported");
+    for (TASWIniMessage const& message : messages)
+        CheckEquals(path, message.FilePath, __func__, __LINE__, "each message should name the file loaded");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Load_MissingFileGetsEverySetting)
@@ -1261,6 +1521,77 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_WriteFailuresAreErrors)
     CheckEquals(EIniCode::KeyAdded, messages[3].Code, __func__, __LINE__, "the next key should still be added");
 }
 //---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, OutOfMemory_LoadAppliesAllOrNothing)
+{
+    // Arrange
+    if (!CanFailAllocations())
+        Skip(__func__, __LINE__, "allocations can't be made to fail in this build (see CanFailAllocations())");
+
+    // An old key renamed, a value replaced, a key added, and the comments of the keys and the section
+    std::string const text = "[General]\nOld = 3\nB = bad\n";
+    std::string const loadedText = "; General's comment\n[General]\n; A's comment\nA = 3\nB = 2\n; C's comment\n"
+        "C = 5\n";
+    std::size_t failures = 0;
+
+    // Act & Assert
+    // Each allocation of the load fails in turn, on a new object, until the load makes no more. A failed allocation
+    // fails the load, which then changes nothing and reports only its failure (not what applying the settings did
+    // before it failed), or, when the standard library copes with it, doesn't.
+    for (std::size_t number = 1; number < 10000; ++number)
+    {
+        TASWBaseIni ini;
+        UseLf(ini);
+        static_cast<void>(ini.SetText("Before", "Key", "Value"));
+        std::string const before = ini.ToText();
+        TASWIniSection const general(ini, "General", "General's comment");
+        TASWIniSetting<int> const first(general, "A", 1, "A's comment", TASWIniSettingOptions<int>().AddOldKey("Old"));
+        TASWIniSetting<int> const second(general, "B", 2);
+        TASWIniSetting<int> const third(general, "C", 5, "C's comment");
+        // The callback keeps only the codes, in room made before, so it allocates nothing itself
+        std::vector<EIniCode> codes;
+        codes.reserve(10);
+        auto const record = [&codes](TASWIniMessage const& message)
+            {
+                codes.push_back(message.Code);
+            };
+        ini.SetLogCallback(record);
+        std::string const which = " (allocation " + std::to_string(number) + ")";
+        TASWIniResult result;
+        bool failed = false;
+        {
+            TFailingAlloc failingAlloc(number);
+            result = ini.LoadText(text);
+            failed = failingAlloc.HasFailed();
+        }
+
+        if (result.IsOk())
+        {
+            CheckEquals(loadedText, ini.ToText(), __func__, __LINE__,
+                "a load that succeeded should have applied every setting" + which);
+            CheckEquals(3, static_cast<int>(codes.size()), __func__, __LINE__,
+                "a load that succeeded should report each change" + which);
+        }
+        else
+        {
+            ++failures;
+            CheckTrue(failed, __func__, __LINE__, "the load should only fail when an allocation fails" + which);
+            CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
+                "a failed allocation should be UnexpectedException" + which);
+            CheckEquals(before, ini.ToText(), __func__, __LINE__, "a failed load should change nothing" + which);
+            CheckTrue(ini.IsModified(), __func__, __LINE__, "a failed load should keep the modified flag" + which);
+            AssertEquals(1, static_cast<int>(codes.size()), __func__, __LINE__,
+                "a failed load should report only its failure" + which);
+            CheckEquals(EIniCode::UnexpectedException, codes[0], __func__, __LINE__,
+                "the failure should be reported" + which);
+        }
+
+        if (!failed)
+            break;
+    }
+
+    CheckGreaterThan(failures, std::size_t(0), __func__, __LINE__, "at least one allocation should have failed");
+}
+//---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, SetOptions_DoesntApplyTheSettings)
 {
     // Arrange
@@ -1280,8 +1611,286 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, SetOptions_DoesntApplyTheSettings)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_SettingsThreads
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsThreads::TTest_ASWIni_SettingsThreads()
+    : inherited("ASWIni_SettingsThreads_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsThreads::~TTest_ASWIni_SettingsThreads()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsThreads::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsThreads::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsThreads::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsThreads::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsThreads, Bindings_ComeAndGoWhileLoading)
+{
+    // Arrange
+    // Binder threads declare a section and a setting of their own and destroy them again, over and over, while a
+    // loader loads a text that has none of the keys and checks each document it gives. Each load applies the settings
+    // that stay, and a binder's section and setting whole or not at all: when its section is in the document, so is
+    // its key, each with its comment. Many settings that stay make applying take long enough for bindings to come and
+    // go while it runs. The binders go on until the loader is done (at least 'iterations' times, at most 'largest').
+    std::size_t const binders = 2;
+    std::size_t const stayers = 100;
+    int const iterations = 300;
+    int const largest = 1000000;
+    int const loads = 200;
+    std::atomic<bool> loading{ true };
+    TASWBaseIni ini;
+    UseLf(ini);
+    TASWIniSection const stays(ini, "Stays", "Settings that stay");
+    std::vector<std::unique_ptr<TASWIniSetting<int> > > settings;
+    std::string expected = "; Settings that stay\n[Stays]\n";
+    for (std::size_t i = 0; i < stayers; ++i)
+    {
+        std::string const key = "Key" + std::to_string(i);
+        settings.push_back(std::make_unique<TASWIniSetting<int> >(stays, key, static_cast<int>(i), "A comment"));
+        expected += "; A comment\n" + key + " = " + std::to_string(i) + "\n";
+    }
+
+    TThreadFailures failures;
+    auto const binder = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            std::string const name = "Binder" + std::to_string(index);
+            for (int i = 0; i < largest; ++i)
+            {
+                {
+                    TASWIniSection const section(ini, name, "A binder's section");
+                    TASWIniSetting<int> const setting(section, "Key", static_cast<int>(index), "A binder's key");
+                    MaybeYield(generator);
+                    if (setting.Get() != static_cast<int>(index))
+                        failures.Add(name + "'s setting should read its default value");
+                }
+
+                if (i >= iterations && !loading)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    auto const loader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < loads; ++i)
+            {
+                TASWIniResult const result = ini.LoadText("");
+                if (!result.IsOk())
+                    failures.Add("LoadText() should succeed: " + result.Message);
+
+                std::string const problem = BindingsProblem(ini.GetDocument(), stayers, binders);
+                if (!problem.empty())
+                    failures.Add("in a loaded document, " + problem);
+
+                MaybeYield(generator);
+            }
+
+            loading = false;
+        };
+    std::vector<std::function<void()> > work;
+    for (std::size_t i = 0; i < binders; ++i)
+        work.push_back(std::bind(binder, i));
+
+    work.push_back(std::bind(loader, binders));
+
+    // Act
+    // Then, with the binders' bindings gone, the object is loaded again
+    RunTogether(work, failures);
+    TASWIniResult const result = ini.LoadText("");
+
+    // Assert
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the last load should succeed");
+    CheckEquals(expected, ini.ToText(), __func__, __LINE__,
+        "the last load should apply only the settings that stay");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsThreads, GetAndSet_SeeWholeSettingsWhileLoading)
+{
+    // Arrange
+    // Writers count their own settings up with Set(), and a scratch thread removes the key of an optional setting and
+    // sets it again, while a loader loads the saved file or a text whose values aren't valid and that lacks most keys,
+    // a saver saves the file, and readers check what they see: each count's key is there and Get() gives a number in
+    // range, and in a copy of the document each key that is there has its comment, since a load applies the settings
+    // before anyone sees the document and Set() adds a key with its comment in one edit. Many other settings make
+    // applying take long enough for a reader to see a document that isn't whole. The writers, the scratch thread and
+    // the readers go on until the file threads are done (at least 'iterations' times, at most 'largest').
+    std::size_t const writers = 3;
+    std::size_t const readers = 2;
+    std::size_t const others = 100;
+    int const iterations = 300;
+    int const largest = 1000000;
+    int const fileOperations = 8;
+    std::atomic<int> fileThreadsLeft{ 2 };
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the temporary folder should be created");
+    std::string const path = PathToUtf8(folder.Path() / "app.ini");
+    TASWBaseIni ini;
+    TASWIniSection const values(ini, "Values", "The counts");
+    std::vector<std::unique_ptr<TASWIniSetting<int> > > counts;
+    for (std::size_t i = 0; i < writers; ++i)
+    {
+        counts.push_back(std::make_unique<TASWIniSetting<int> >(values, WriterKey(i), 0, "A count",
+            TASWIniSettingOptions<int>().SetRange(0, largest)));
+    }
+
+    TASWIniSetting<int> scratch(values, "Scratch", 0, "The scratch key",
+        TASWIniSettingOptions<int>().SetOptional().SetRange(0, largest));
+    TASWIniSection const other(ini, "Others", "Other settings");
+    std::vector<std::unique_ptr<TASWIniSetting<int> > > fillers;
+    for (std::size_t i = 0; i < others; ++i)
+    {
+        fillers.push_back(std::make_unique<TASWIniSetting<int> >(other, "Key" + std::to_string(i),
+            static_cast<int>(i), "A comment"));
+    }
+
+    // Each load of 'invalid' reports a Warning for each count and the scratch key, and an Info for each other key
+    std::string invalid = "[Values]\nScratch = -1\n";
+    for (std::size_t i = 0; i < writers; ++i)
+        invalid += WriterKey(i) + " = many\n";
+
+    int const reportsPerInvalidLoad = static_cast<int>(writers + 1 + others);
+    TASWIniResult const loaded = ini.LoadText("");
+    TASWIniResult const saved = ini.SaveAs(path);
+    AssertTrue(loaded.IsOk() && saved.IsOk(), __func__, __LINE__, "the settings should be saved");
+    std::atomic<int> reports{ 0 };
+    ini.SetLogCallback(CountingCallback(reports));
+    TThreadFailures failures;
+    auto const writer = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int value = 1; value <= largest; ++value)
+            {
+                TASWIniResult const result = counts[index]->Set(value);
+                if (!result.IsOk())
+                    failures.Add("Set() should succeed: " + result.Message);
+
+                if (value >= iterations && fileThreadsLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    auto const scratcher = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < largest; ++i)
+            {
+                static_cast<void>(ini.RemoveKey("Values", "Scratch"));
+                TASWIniResult const result = scratch.Set(i % 100);
+                if (!result.IsOk())
+                    failures.Add("Set() should succeed: " + result.Message);
+
+                if (i >= iterations && fileThreadsLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    auto const loader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < fileOperations; ++i)
+            {
+                TASWIniResult const result = i % 2 == 0 ? ini.LoadText(invalid) : ini.Load(path);
+                if (!result.IsOk())
+                    failures.Add("a load should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+
+            --fileThreadsLeft;
+        };
+    auto const saver = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < fileOperations; ++i)
+            {
+                TASWIniResult const result = ini.Save();
+                if (!result.IsOk())
+                    failures.Add("Save() should succeed: " + result.Message);
+
+                MaybeYield(generator);
+            }
+
+            --fileThreadsLeft;
+        };
+    auto const reader = [&](std::size_t index)
+        {
+            std::mt19937 generator(ThreadsSeed + static_cast<std::uint32_t>(index));
+            for (int i = 0; i < largest; ++i)
+            {
+                std::size_t const key = generator() % writers;
+                if (!counts[key]->IsPresent())
+                    failures.Add(WriterKey(key) + " should always be there");
+
+                int const value = counts[key]->Get();
+                if (value < 0 || value > largest)
+                    failures.Add(WriterKey(key) + " should be a number in range: " + std::to_string(value));
+
+                std::string const problem = WholeSettingsProblem(ini.GetDocument(), writers, others);
+                if (!problem.empty())
+                    failures.Add("in a copy of the document, " + problem);
+
+                if (i >= iterations && fileThreadsLeft == 0)
+                    break;
+
+                MaybeYield(generator);
+            }
+        };
+    std::vector<std::function<void()> > work;
+    for (std::size_t i = 0; i < writers; ++i)
+        work.push_back(std::bind(writer, i));
+
+    work.push_back(std::bind(scratcher, writers));
+    work.push_back(std::bind(loader, writers + 1));
+    work.push_back(std::bind(saver, writers + 2));
+    for (std::size_t i = 0; i < readers; ++i)
+        work.push_back(std::bind(reader, writers + 3 + i));
+
+    // Act
+    // Then the object's text is loaded again, which needs nothing
+    RunTogether(work, failures);
+    TASWIniResult const reloaded = ini.LoadText(ini.ToText());
+
+    // Assert
+    CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
+    CheckEquals(fileOperations / 2 * reportsPerInvalidLoad, reports.load(), __func__, __LINE__,
+        "only the loads of the text that isn't valid should report, each what it changed");
+    CheckTrue(reloaded.IsOk(), __func__, __LINE__, "the last load should succeed");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the object's text should hold every setting");
+    CheckEquals(std::string(), WholeSettingsProblem(ini.GetDocument(), writers, others), __func__, __LINE__,
+        "the document should hold every setting with its comment");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsAccess, "Settings")
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsLoad, "Settings")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsThreads, "Settings")

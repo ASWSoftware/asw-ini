@@ -250,6 +250,10 @@
             <DependentOn>..\tests\UT_Helper_TempDir.h</DependentOn>
             <BuildOrder>23</BuildOrder>
         </CppCompile>
+        <CppCompile Include="..\tests\UT_Helper_Threads.cpp">
+            <DependentOn>..\tests\UT_Helper_Threads.h</DependentOn>
+            <BuildOrder>37</BuildOrder>
+        </CppCompile>
         <CppCompile Include="..\..\third_party\asw-unit-tests\src\ASWUnitTests_CLI.cpp">
             <DependentOn>..\..\third_party\asw-unit-tests\src\ASWUnitTests_CLI.h</DependentOn>
             <BuildOrder>3</BuildOrder>

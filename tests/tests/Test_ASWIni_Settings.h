@@ -77,6 +77,7 @@ private:
     typedef TAutoTestGroup<TTest_ASWIni_SettingsLoad> inherited;
 
 public: // Test methods, each defined with ASW_TEST
+    void Test_AppSettings_OldFileIsBroughtUpToDate();
     void Test_Bindings_FollowTheirLifetimes();
     void Test_Comments_CodeWinsReplacesTheFilesComments();
     void Test_Comments_FileWinsKeepsTheFilesComments();
@@ -85,6 +86,7 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Load_InvalidDefaultIsAnError();
     void Test_Load_KeyWinsOverItsOldKeys();
     void Test_Load_LeavesAValidDocumentAsItIs();
+    void Test_Load_MessagesNameTheFileLoaded();
     void Test_Load_MissingFileGetsEverySetting();
     void Test_Load_OldKeyThatCantBeRenamedIsAnError();
     void Test_Load_OptionalKeyIsNotAdded();
@@ -92,11 +94,38 @@ public: // Test methods, each defined with ASW_TEST
     void Test_Load_RenamesAnOldKey();
     void Test_Load_ReplacesAnInvalidValueWithTheDefault();
     void Test_Load_WriteFailuresAreErrors();
+    void Test_OutOfMemory_LoadAppliesAllOrNothing();
     void Test_SetOptions_DoesntApplyTheSettings();
 
 public:
     TTest_ASWIni_SettingsLoad();
     ~TTest_ASWIni_SettingsLoad() override;
+
+    void SetUp_Group() override;
+    void SetUp_Test(ITestCase& testCase) override;
+    void TearDown_Group() override;
+    void TearDown_Test(ITestCase& testCase) override;
+};
+
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_SettingsThreads
+//
+// Settings used from several threads at once: Get() and Set() while other threads load and save, and settings and
+// sections declared and destroyed while other threads load. The data races themselves show under ThreadSanitizer.
+/////////////////////////////////////////////////////////////////////////////
+class TTest_ASWIni_SettingsThreads : public TAutoTestGroup<TTest_ASWIni_SettingsThreads>
+{
+private:
+    typedef TAutoTestGroup<TTest_ASWIni_SettingsThreads> inherited;
+
+public: // Test methods, each defined with ASW_TEST
+    void Test_Bindings_ComeAndGoWhileLoading();
+    void Test_GetAndSet_SeeWholeSettingsWhileLoading();
+
+public:
+    TTest_ASWIni_SettingsThreads();
+    ~TTest_ASWIni_SettingsThreads() override;
 
     void SetUp_Group() override;
     void SetUp_Test(ITestCase& testCase) override;

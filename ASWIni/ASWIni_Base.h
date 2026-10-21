@@ -178,10 +178,12 @@ private:
 
 private:
     // Applies the settings and then the sections bound to the object to 'document', a document Load() or LoadText()
-    // read, before anyone else can see it (see TASWIniSetting and TASWIniSection), adding what they report to
-    // 'messages'. Called with the file lock held. May throw (std::bad_alloc, or what a converter or a validator
-    // throws).
-    void ApplySettings(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const;
+    // read, before anyone else can see it (see TASWIniSetting and TASWIniSection), and then adds what they report to
+    // 'messages', with 'filePath' (the file read, or "") as the file path of each. Called with the file lock held. May
+    // throw (std::bad_alloc, or what a converter or a validator throws), and then adds nothing to 'messages', so a
+    // load that fails doesn't report changes it didn't make.
+    void ApplySettings(TASWIniDocument& document, std::string_view filePath,
+        std::vector<TASWIniMessage>& messages) const;
 
     // Applies 'edit', a function that takes a TASWIniDocument& and returns a TASWIniResult, to the document under the
     // lock; an exception becomes CaughtException(). Reports a failed result.

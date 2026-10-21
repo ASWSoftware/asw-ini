@@ -27,6 +27,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <exception>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -261,14 +262,27 @@ TASWIniResult TASWBaseIni::AddSection(std::string_view section)
     return Edit(edit);
 }
 //---------------------------------------------------------------------------
-void TASWBaseIni::ApplySettings(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const
+void TASWBaseIni::ApplySettings(TASWIniDocument& document, std::string_view filePath,
+    std::vector<TASWIniMessage>& messages) const
 {
+    std::vector<TASWIniMessage> applied;
+
     // The settings first, so a section a setting added gets its comment too
     for (Detail::TSettingBase const* setting : m_Settings)
-        setting->Apply(document, messages);
+        setting->Apply(document, applied);
 
     for (TASWIniSection const* section : m_Sections)
-        section->Apply(document, messages);
+        section->Apply(document, applied);
+
+    for (TASWIniMessage& message : applied)
+    {
+        if (message.FilePath.empty())
+            message.FilePath = filePath;
+    }
+
+    // Room is made first, so the messages are then moved in without throwing
+    messages.reserve(messages.size() + applied.size());
+    std::move(applied.begin(), applied.end(), std::back_inserter(messages));
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::CaughtException() noexcept
@@ -468,8 +482,7 @@ TASWIniResult TASWBaseIni::LoadFile(std::string_view filePath, std::vector<TASWI
         messages.push_back(MissingFileWarning(result));
 
     // The settings are applied to the document read (or emptied), and their messages are about the file too
-    ApplySettings(document, messages);
-    SetFilePaths(path, result, messages);
+    ApplySettings(document, path, messages);
 
     {
         std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
@@ -502,7 +515,7 @@ TASWIniResult TASWBaseIni::LoadText(std::string_view text)
         result = document.Parse(text, options, messages);
         if (result.IsOk())
         {
-            ApplySettings(document, messages);
+            ApplySettings(document, std::string_view(), messages);
 
             std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
             m_Document = std::move(document);

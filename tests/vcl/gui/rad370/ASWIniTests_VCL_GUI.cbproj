@@ -284,6 +284,10 @@
             <DependentOn>..\..\..\tests\UT_Helper_TempDir.h</DependentOn>
             <BuildOrder>55</BuildOrder>
         </CppCompile>
+        <CppCompile Include="..\..\..\tests\UT_Helper_Threads.cpp">
+            <DependentOn>..\..\..\tests\UT_Helper_Threads.h</DependentOn>
+            <BuildOrder>69</BuildOrder>
+        </CppCompile>
         <CppCompile Include="ASWIniTests_VCL_GUI.cpp">
             <BuildOrder>0</BuildOrder>
         </CppCompile>

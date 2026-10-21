@@ -53,6 +53,7 @@ add_executable(ASWIniTests
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Version.cpp"
     "${ASWINI_TESTS_DIR}/UT_Helper_FailingAlloc.cpp"
     "${ASWINI_TESTS_DIR}/UT_Helper_TempDir.cpp"
+    "${ASWINI_TESTS_DIR}/UT_Helper_Threads.cpp"
 )
 
 target_include_directories(ASWIniTests PRIVATE

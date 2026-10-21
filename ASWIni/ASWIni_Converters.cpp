@@ -823,8 +823,9 @@ std::string WholeNumberText(T magnitude)
     // The mantissa doubled 'shift' times, in base 10^9 digits from the lowest
     unsigned long const base = 1000000000;
     std::vector<unsigned long> digits = { static_cast<unsigned long>(mantissa % base),
-                                          static_cast<unsigned long>(mantissa / base % base),
-                                          static_cast<unsigned long>(mantissa / base / base) };
+        static_cast<unsigned long>(mantissa / base % base),
+        static_cast<unsigned long>(mantissa / base / base)
+    };
     for (int i = 0; i < shift; ++i)
     {
         unsigned long carry = 0;

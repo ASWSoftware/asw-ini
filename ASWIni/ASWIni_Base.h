@@ -61,11 +61,15 @@ limitations under the License.
 namespace ASWIni
 {
 
+// A section of an application's settings (ASWIni_Settings.h), which registers with its TASWBaseIni
+class TASWIniSection;
+
 // The internals of TASWBaseIni
 namespace Detail
 {
 
-// The base of TASWIniSetting<T> (ASWIni_Settings.h), which TASWBaseIni lets add a key with its comment in one edit
+// The base of TASWIniSetting<T> (ASWIni_Settings.h), which registers with its TASWBaseIni, and which TASWBaseIni lets
+// add a key with its comment in one edit
 class TSettingBase;
 
 /////////////////////////////////////////////////////////////////////////////
@@ -140,12 +144,15 @@ public:
 // Lookups share a reader/writer lock; edits take it alone. Load() reads and parses the file without that lock, and
 // Save() writes it without that lock, so lookups and edits go on meanwhile; a second lock keeps loads, saves and
 // SetOptions() from overlapping. Warnings and errors are collected while a lock is held, and reported after it is
-// released (see TASWIniLogCallback). An application's settings class derives from it. Neither copyable nor movable.
+// released (see TASWIniLogCallback). An application's settings class derives from it, and declares its settings
+// (TASWIniSection, TASWIniSetting<T>), which Load() and LoadText() apply to the document they read before swapping it
+// in. Neither copyable nor movable.
 /////////////////////////////////////////////////////////////////////////////
 class TASWBaseIni : public IASWIni
 {
 private:
     friend class Detail::TSettingBase;
+    friend class TASWIniSection;
 
     typedef std::shared_ptr<TASWIniLogCallback const> TLogCallbackPtr;
 
@@ -157,8 +164,12 @@ private:
     unsigned long long m_EditCount = 0; // Counts the edits that succeeded, so Save() can tell whether one was made
 
     // Held for the whole of Load(), LoadText(), Save(), SaveAs() and SetOptions(), so they never overlap; taken before
-    // m_Mutex, never after it
+    // m_Mutex, never after it. Guards the members after it.
     Detail::TMutex m_FileMutex;
+
+    // The settings and sections bound to the object (see ASWIni_Settings.h), in the order they were declared
+    std::vector<Detail::TSettingBase const*> m_Settings;
+    std::vector<TASWIniSection const*> m_Sections;
 
 private:
     // The UnexpectedException result of the exception being handled (call it in a catch block): its message is "An
@@ -166,6 +177,12 @@ private:
     static TASWIniResult CaughtException() noexcept;
 
 private:
+    // Applies the settings and then the sections bound to the object to 'document', a document Load() or LoadText()
+    // read, before anyone else can see it (see TASWIniSetting and TASWIniSection), adding what they report to
+    // 'messages'. Called with the file lock held. May throw (std::bad_alloc, or what a converter or a validator
+    // throws).
+    void ApplySettings(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const;
+
     // Applies 'edit', a function that takes a TASWIniDocument& and returns a TASWIniResult, to the document under the
     // lock; an exception becomes CaughtException(). Reports a failed result.
     template <typename TEdit>
@@ -174,6 +191,11 @@ private:
     // Load()'s work, which may throw: adds the warnings to 'messages', and sets 'missing' when the file doesn't exist
     // and the document was emptied
     TASWIniResult LoadFile(std::string_view filePath, std::vector<TASWIniMessage>& messages, bool& missing);
+
+    // Adds 'setting' or 'section' at the end of the ones bound to the object, under the file lock: a setting's or a
+    // section's constructor calls it, once the object is complete
+    void Register(Detail::TSettingBase const& setting);
+    void Register(TASWIniSection const& section);
 
     // Reports each of 'messages', in order (with no lock held)
     void ReportAll(std::vector<TASWIniMessage> const& messages) const noexcept;
@@ -190,6 +212,11 @@ private:
     // the key's comment to 'comment', in the same edit, so a failure of either changes nothing
     TASWIniResult SetSettingText(std::string_view section, std::string_view key, std::string_view text,
         std::string_view comment);
+
+    // Removes 'setting' or 'section' from the ones bound to the object, under the file lock (so after a Load() that is
+    // applying it): a setting's or a section's destructor calls it
+    void Unregister(Detail::TSettingBase const& setting);
+    void Unregister(TASWIniSection const& section);
 
 protected:
     // Reads the whole file 'filePath' (UTF-8) into 'contents', failing with FileTooLarge if it has more than 'maxSize'

@@ -41,9 +41,11 @@ limitations under the License.
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 //---------------------------------------------------------------------------
 #include "ASWIni_Base.h"
 #include "ASWIni_Converters.h"
+#include "ASWIni_Document.h"
 #include "ASWIni_Options.h"
 #include "ASWIni_Types.h"
 //---------------------------------------------------------------------------
@@ -87,31 +89,62 @@ TASWIniResult RefusedValue(std::string_view text, std::string_view problem);
 // TSettingBase
 //
 // The part of TASWIniSetting<T> that doesn't depend on T: the owner, the section's name, the key and the comment, and
-// what the setting asks of its owner. Neither copyable nor movable.
+// what the setting asks of its owner. The owner calls Apply() for each setting bound to it (see
+// TASWBaseIni::ApplySettings()). Neither copyable nor movable.
 /////////////////////////////////////////////////////////////////////////////
 class TSettingBase
 {
+private:
+    friend class ASWIni::TASWBaseIni;
+
 private:
     TASWBaseIni* m_Owner;
     std::string m_SectionName;
     std::string m_Key;
     std::string m_Comment;
 
+private:
+    // Applies the setting to 'document', which Load() or LoadText() read (see TASWIniSetting), adding what it
+    // reports to 'messages'
+    virtual void Apply(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const = 0;
+
 protected:
-    // A setting of key 'key' in section 'section', with comment 'comment'
+    // A setting of key 'key' in section 'section', with comment 'comment'. The derived class registers it with its
+    // owner (Register()) once it is complete, and unregisters it (Unregister()) in its destructor.
     TSettingBase(TASWIniSection const& section, std::string_view key, std::string_view comment);
-    ~TSettingBase() = default;
+    virtual ~TSettingBase() = default;
+
+    // Adds to 'messages' the Error that the default value can't be applied, because it failed with 'result' (it
+    // can't be written, or the range or the validator refuses it), with a message that names the section and key
+    void AddInvalidDefault(TASWIniResult const& result, std::vector<TASWIniMessage>& messages) const;
+
+    // Sets the comment of the key in 'document' to the setting's, as the options' Writing.CommentPolicy says (not when
+    // the setting has none); a failure is added to 'messages' as an Error
+    void ApplyComment(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const;
+
+    // Sets the value of the key in 'document' to 'defaultText', the default value's text, and then its comment
+    // (ApplyComment()). With 'problem' (the value's text isn't valid), adds the Warning of DefaultUsedMessage() to
+    // 'messages'; without it (the key is missing), the Info that the key was added (EIniCode::KeyAdded). A failure is
+    // added as an Error.
+    void ApplyDefault(TASWIniDocument& document, std::string const& defaultText, TASWIniResult const* problem,
+        std::vector<TASWIniMessage>& messages) const;
 
     // The UnexpectedException result of Set() for the exception being handled (call it in a catch block), with a
     // message that names the section and key; without a message when it can't be made
     TASWIniResult CaughtSetFailure() const noexcept;
 
+    // The Warning that the default value is used, because the value's text failed with 'result' (its converter's,
+    // range's or validator's failure): its code, its text followed by the default value's ('defaultText', or nullptr
+    // when it can't be written), and the section and key
+    TASWIniMessage DefaultUsedMessage(TASWIniResult const& result, std::string const* defaultText) const;
+
     TASWBaseIni& GetOwner() const noexcept;
 
-    // Reports that Get() gives the default value, because the value's text failed with 'result' (its converter's,
-    // range's or validator's failure): a Warning message with its code, its text followed by the default value's
-    // ('defaultText', or nullptr when it can't be written), and the section and key. A message that can't be made
-    // (std::bad_alloc) is dropped.
+    // Adds the setting at the end of the ones bound to its owner
+    void Register() const;
+
+    // Reports DefaultUsedMessage() (Get() gives the default value). A message that can't be made (std::bad_alloc) is
+    // dropped.
     void ReportDefaultUsed(TASWIniResult const& result, std::string const* defaultText) const noexcept;
 
     // Reports 'result', a failure of Set(), as an Error message (see IASWIni::ReportFailure())
@@ -128,6 +161,9 @@ protected:
     // Whether the key exists in the owner's document; if it does, 'text' is set to its value's text, as
     // IASWIni::TryGetText() does
     bool TryGetText(std::string& text) const;
+
+    // Removes the setting from the ones bound to its owner, waiting for a Load() that is applying it
+    void Unregister() const;
 
 public:
     TSettingBase(TSettingBase const&) = delete;
@@ -154,7 +190,10 @@ public:
 // A section of an application's settings: the INI object it belongs to (its owner), its name and its comment. Its
 // settings (TASWIniSetting) take it in their constructors, so it is declared before them, and it must not outlive its
 // owner; both hold when the section and its settings are members of the application's settings class, which derives
-// from TASWBaseIni:
+// from TASWBaseIni. It is bound to its owner from its constructor to its destructor, in the order sections are
+// declared: after the owner's Load() or LoadText() has applied the settings, it applies its comment, if it has one,
+// as the options' Writing.CommentPolicy says, when the section is in the document (it adds no section itself). The
+// comment of the section "" (the keys before the first header) is the file comment.
 //
 //     class TAppSettings : public ASWIni::TASWBaseIni
 //     {
@@ -169,15 +208,24 @@ public:
 class TASWIniSection
 {
 private:
+    friend class TASWBaseIni;
+
+private:
     TASWBaseIni* m_Owner;
     std::string m_Name;
     std::string m_Comment;
 
+private:
+    // Sets the section's comment in 'document', which Load() or LoadText() read, as the class describes; a failure is
+    // added to 'messages' as an Error
+    void Apply(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const;
+
 public:
-    // Section 'name' of 'owner', with comment 'comment' ("" for none)
+    // Section 'name' of 'owner', with comment 'comment' ("" for none), bound to 'owner'
     TASWIniSection(TASWBaseIni& owner, std::string_view name, std::string_view comment = std::string_view());
     TASWIniSection(TASWIniSection const&) = delete;
     TASWIniSection& operator=(TASWIniSection const&) = delete;
+    ~TASWIniSection();
 
     std::string const& GetComment() const noexcept;
     std::string const& GetName() const noexcept;
@@ -208,6 +256,7 @@ public:
 private:
     std::shared_ptr<T const> m_Max; // Replaced, never changed, so copies of the options may share it
     std::shared_ptr<T const> m_Min;
+    bool m_Optional = false;
     TValidator m_Validator;
     std::optional<TASWIniValueOptions> m_Values;
 
@@ -237,6 +286,13 @@ public:
         return m_Values.has_value() ? &*m_Values : nullptr;
     }
 
+    // Whether a missing key is left missing when a document is loaded, instead of being added with the default value
+    // (false by default)
+    bool IsOptional() const noexcept
+    {
+        return m_Optional;
+    }
+
     // Sets the largest value the setting takes: one that is greater (by operator<) is out of range. Only for a T that
     // operator< compares (numbers, enums, strings, ...).
     TASWIniSettingOptions& SetMax(T const& max)
@@ -253,6 +309,15 @@ public:
     {
         static_assert(Detail::IsLessComparable<T>, "a setting's range needs a type that operator< compares");
         m_Min = std::make_shared<T const>(min);
+
+        return *this;
+    }
+
+    // Sets whether the setting is optional: its key isn't added when a loaded document doesn't have it (e.g. a hidden
+    // setting a user may add), only when Set() writes it
+    TASWIniSettingOptions& SetOptional(bool optional = true)
+    {
+        m_Optional = optional;
 
         return *this;
     }
@@ -290,8 +355,18 @@ public:
 // Get() reads the value from the owner's document and Set() writes it there, so a setting always agrees with the
 // document (with Load(), and with a raw SetText() of the same key), and any thread may call them, as the owner's
 // operations. A value is valid when it converts, is in the range and the validator accepts it; Get() gives the
-// default value for one that isn't. A setting must not outlive its section's owner (see TASWIniSection). Neither
-// copyable nor movable.
+// default value for one that isn't.
+// A setting is bound to its owner from its constructor to its destructor, in the order settings are declared. When
+// the owner's Load() or LoadText() has read a document, before anyone sees it, each setting bound to it is applied
+// to it, in that order: a missing key is added with the default value (unless the setting is optional: see
+// TASWIniSettingOptions::SetOptional()) and the setting's comment, reported as an Info message (EIniCode::KeyAdded);
+// a value that isn't valid is replaced by the default value, reported as a Warning (as Get() reports it); and the
+// key's comment is set to the setting's (if it has one) as the options' Writing.CommentPolicy says. So the document
+// then holds every setting with a valid value, and the owner's IsModified() says whether that changed it (whether it
+// needs saving). A default value that can't be written, or that the range or the validator refuses, is reported as
+// an Error, and the key is left as it is. The converter and the validator are called with the owner's file lock
+// held, so they must not call its Load(), LoadText(), Save(), SaveAs() or SetOptions(). SetOptions() doesn't apply
+// the settings. A setting must not outlive its section's owner (see TASWIniSection). Neither copyable nor movable.
 /////////////////////////////////////////////////////////////////////////////
 template <typename T>
 class TASWIniSetting : public Detail::TSettingBase
@@ -301,6 +376,42 @@ private:
     TASWIniSettingOptions<T> m_Options;
 
 private:
+    void Apply(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const override
+    {
+        TASWIniValueOptions const* const values = m_Options.GetValues();
+        TASWIniValueOptions const options = values != nullptr ? *values : document.GetOptions().Values;
+        std::string defaultText;
+        TASWIniResult result = TASWIniConverter<T>::ToText(m_Default, defaultText, options);
+        if (result.IsOk())
+            result = Check(m_Default, defaultText, options);
+
+        if (!result.IsOk())
+        {
+            AddInvalidDefault(result, messages);
+            return;
+        }
+
+        TASWIniDocumentLine const* const line = document.FindKey(GetSectionName(), GetKey());
+        if (line == nullptr)
+        {
+            if (!m_Options.IsOptional())
+                ApplyDefault(document, defaultText, nullptr, messages);
+
+            return;
+        }
+
+        std::string const text(line->GetValue());
+        T value = m_Default;
+        result = TASWIniConverter<T>::FromText(text, value, options);
+        if (result.IsOk())
+            result = Check(value, text, options);
+
+        if (result.IsOk())
+            ApplyComment(document, messages);
+        else
+            ApplyDefault(document, defaultText, &result, messages);
+    }
+
     // Ok when 'value', whose text is 'text', is in the range and the validator accepts it, else the failure
     // (ValueOutOfRange or InvalidValue), with a message that quotes 'text'
     TASWIniResult Check(T const& value, std::string_view text, TASWIniValueOptions const& options) const
@@ -345,8 +456,8 @@ private:
 
 public:
     // Setting 'key' of section 'section', whose value is 'defaultValue' while the key is missing or its value isn't
-    // valid, and that is written with comment 'comment' ("" for none) when Set() adds it. The default value is
-    // expected to be valid.
+    // valid, and that is written with comment 'comment' ("" for none), bound to the section's owner. The default value
+    // is expected to be valid.
     TASWIniSetting(TASWIniSection const& section, std::string_view key, T const& defaultValue,
         std::string_view comment = std::string_view(), TASWIniSettingOptions<T> const& options =
         TASWIniSettingOptions<T>())
@@ -354,6 +465,12 @@ public:
           m_Default(defaultValue),
           m_Options(options)
     {
+        Register();
+    }
+
+    ~TASWIniSetting() override
+    {
+        Unregister();
     }
 
     // The value of the key in the owner's document, converted with TASWIniConverter<T> and the value options (the

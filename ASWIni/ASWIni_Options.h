@@ -62,6 +62,14 @@ enum class EBomMode : int
     Never = 2,
 };
 
+// Whose comment a setting's key, a section and the file get when a loaded document has one and the code declares
+// another (see TASWIniSetting and TASWIniSection); a comment the code doesn't declare is never changed
+enum class ECommentPolicy : int
+{
+    CodeWins = 0, // The code's: a comment edited in the file is written over
+    FileWins = 1, // The file's: the code's is written only where the file has none
+};
+
 // Which value a key that appears more than once in a section has. Every line is kept either way, and the duplicate is
 // reported as a warning (EIniCode::DuplicateKey).
 enum class EDuplicateKeys : int
@@ -155,6 +163,9 @@ struct TASWIniWritingOptions
     // Whether a new section is written after a blank line (unless it is the first thing in the file)
     bool BlankLineBeforeNewSection = true;
 
+    // Whose comment a setting's key, a section and the file get when the file's differs from the code's
+    ECommentPolicy CommentPolicy = ECommentPolicy::CodeWins;
+
     // Ok if these options can be used on their own, else EIniCode::InvalidOptions with the first problem found, e.g. a
     // Separator of two characters. Whether Separator and CommentPrefix match the reading options is checked by
     // TASWIniOptions::Validate().
@@ -238,6 +249,7 @@ struct TASWIniOptions
 // The value's name, e.g. "CRLF"; "Unknown" for a value that isn't one of the enumerators
 char const* ToString(EBomMode bom) noexcept;
 char const* ToString(EBoolFormat boolFormat) noexcept;
+char const* ToString(ECommentPolicy commentPolicy) noexcept;
 char const* ToString(EDuplicateKeys duplicateKeys) noexcept;
 char const* ToString(ELineEnding lineEnding) noexcept;
 

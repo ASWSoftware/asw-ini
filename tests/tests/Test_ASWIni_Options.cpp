@@ -267,6 +267,7 @@ ASW_TEST(TTest_ASWIni_WritingOptions, Defaults_MatchDocumentedValues)
     CheckEquals(ASWIni::ELineEnding::Auto, options.LineEnding, __func__, __LINE__, "LineEnding");
     CheckEquals(ASWIni::EBomMode::Auto, options.Bom, __func__, __LINE__, "Bom");
     CheckTrue(options.BlankLineBeforeNewSection, __func__, __LINE__, "BlankLineBeforeNewSection should be on");
+    CheckEquals(ASWIni::ECommentPolicy::CodeWins, options.CommentPolicy, __func__, __LINE__, "CommentPolicy");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_WritingOptions, ToString_EnumNames)
@@ -287,8 +288,14 @@ ASW_TEST(TTest_ASWIni_WritingOptions, ToString_EnumNames)
         "EBomMode::Never");
     CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::ELineEnding>(99))), __func__,
         __LINE__, "an unknown ELineEnding");
+    CheckEquals(std::string("CodeWins"), std::string(ASWIni::ToString(ASWIni::ECommentPolicy::CodeWins)), __func__,
+        __LINE__, "ECommentPolicy::CodeWins");
+    CheckEquals(std::string("FileWins"), std::string(ASWIni::ToString(ASWIni::ECommentPolicy::FileWins)), __func__,
+        __LINE__, "ECommentPolicy::FileWins");
     CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::EBomMode>(99))), __func__,
         __LINE__, "an unknown EBomMode");
+    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::ECommentPolicy>(99))),
+        __func__, __LINE__, "an unknown ECommentPolicy");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_WritingOptions, Validate_AcceptsSeparatorVariants)
@@ -349,6 +356,10 @@ ASW_TEST(TTest_ASWIni_WritingOptions, Validate_RejectsUnknownEnumValues)
     options = ASWIni::TASWIniWritingOptions();
     options.Bom = static_cast<ASWIni::EBomMode>(7);
     CheckInvalid(options, "Writing.Bom", __func__, __LINE__, "an unknown EBomMode");
+
+    options = ASWIni::TASWIniWritingOptions();
+    options.CommentPolicy = static_cast<ASWIni::ECommentPolicy>(7);
+    CheckInvalid(options, "Writing.CommentPolicy", __func__, __LINE__, "an unknown ECommentPolicy");
 }
 //---------------------------------------------------------------------------
 

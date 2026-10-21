@@ -234,8 +234,9 @@ public:
     virtual TASWIniResult Load(std::string_view filePath) = 0;
 
     // Replaces the document with 'text', read as TASWIniDocument::Parse() reads it, with the options; its warnings are
-    // reported. Keeps the file path, and clears the modified flag. Fails as Parse() does (UnsupportedEncoding, or
-    // ParseFailed with StrictParsing), and then nothing changes. LoadText("") empties the document.
+    // reported. Keeps the file path, and clears the modified flag (which a TASWBaseIni's settings may set again: see
+    // TASWIniSetting). Fails as Parse() does (UnsupportedEncoding, or ParseFailed with StrictParsing), and then nothing
+    // changes. LoadText("") empties the document.
     virtual TASWIniResult LoadText(std::string_view text) = 0;
 
     // Removes key 'key' of section 'section', as TASWIniDocument::RemoveKey() does; returns whether anything was

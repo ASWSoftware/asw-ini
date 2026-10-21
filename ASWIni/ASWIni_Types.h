@@ -79,6 +79,9 @@ enum class EIniCode : int
     // Errors added for values: a value couldn't be converted to or from its text
     InvalidValue = 24, // The text isn't a value of the type, or the value can't be written as text
     ValueOutOfRange = 25, // The number is outside the range of its type (or of its setting)
+
+    // Notes added for settings: what applying them to a loaded document changed (see TASWIniSetting)
+    KeyAdded = 26, // A setting's key was missing, and was added with its default value
 };
 
 // The line break that ends a line of an INI text

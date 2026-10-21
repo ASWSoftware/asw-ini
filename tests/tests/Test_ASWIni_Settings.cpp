@@ -36,8 +36,10 @@ limitations under the License.
 //---------------------------------------------------------------------------
 #include "ASWIni_Base.h"
 #include "ASWIni_Converters.h"
+#include "ASWIni_File.h"
 #include "ASWIni_Settings.h"
 #include "UT_Helper_FailingAlloc.h"
+#include "UT_Helper_TempDir.h"
 //---------------------------------------------------------------------------
 
 // Neither copyable nor movable: settings and sections are bound to their owner by address
@@ -122,6 +124,7 @@ namespace ASWUnitTests
 {
 
 using ASWIni::EBoolFormat;
+using ASWIni::ECommentPolicy;
 using ASWIni::EIniCode;
 using ASWIni::ELineEnding;
 using ASWIni::ESeverity;
@@ -135,6 +138,7 @@ using ASWIni::TASWIniSection;
 using ASWIni::TASWIniSetting;
 using ASWIni::TASWIniSettingOptions;
 using ASWIni::TASWIniValueOptions;
+using ASWIni::Detail::PathToUtf8;
 
 namespace
 {
@@ -710,7 +714,436 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, ValueOptions_AreTheSettingsOwnOrTheOwners)
 }
 //---------------------------------------------------------------------------
 
+
+/////////////////////////////////////////////////////////////////////////////
+// TTest_ASWIni_SettingsLoad
+/////////////////////////////////////////////////////////////////////////////
+
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsLoad::TTest_ASWIni_SettingsLoad()
+    : inherited("ASWIni_SettingsLoad_Tests")
+{
+}
+//---------------------------------------------------------------------------
+TTest_ASWIni_SettingsLoad::~TTest_ASWIni_SettingsLoad()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsLoad::SetUp_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsLoad::SetUp_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsLoad::TearDown_Group()
+{
+}
+//---------------------------------------------------------------------------
+void TTest_ASWIni_SettingsLoad::TearDown_Test(ITestCase& /*testCase*/)
+{
+}
+//---------------------------------------------------------------------------
+
+// /////// Begin tests after this line ///////////////////////
+
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Bindings_FollowTheirLifetimes)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const kept(general, "Kept", 1);
+    {
+        TASWIniSection const gone(ini, "General", "The comment of a section that is gone");
+        TASWIniSetting<int> const goneSetting(general, "Gone", 2);
+    }
+
+    // Act
+    static_cast<void>(ini.LoadText(""));
+    std::string const textBefore = ini.ToText();
+    TASWIniSetting<int> const later(general, "Later", 3);
+    std::string const textDeclared = ini.ToText();
+    static_cast<void>(ini.LoadText(""));
+
+    // Assert
+    CheckEquals(std::string("[General]\nKept = 1\n"), textBefore, __func__, __LINE__,
+        "a setting or section that was destroyed should no longer be applied");
+    CheckEquals(textBefore, textDeclared, __func__, __LINE__, "declaring a setting shouldn't change the document");
+    CheckEquals(std::string("[General]\nKept = 1\nLater = 3\n"), ini.ToText(), __func__, __LINE__,
+        "a setting declared later should be applied by the next load");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Comments_CodeWinsReplacesTheFilesComments)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const file(ini, "", "The code's file comment");
+    TASWIniSection const general(ini, "General", "The code's section comment");
+    TASWIniSetting<int> const first(general, "A", 0, "The code's key comment\nin two lines");
+    TASWIniSetting<int> const second(general, "B", 0);
+    TASWIniSection const missing(ini, "Missing", "A section that isn't in the file");
+    TASWIniSection const other(ini, "Other");
+
+    // Act
+    TASWIniResult const result = ini.LoadText("; The user's file comment\n\n; The user's section comment\n"
+        "[General]\n; The user's key comment\nA = 1\n; The user's note, which the code has no comment for\nB = 2\n"
+        "\n; The user's note on a section the code has no comment for\n[Other]\n");
+    std::string const text = ini.ToText();
+    bool const modified = ini.IsModified();
+    static_cast<void>(ini.LoadText(text));
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("; The code's file comment\n\n; The code's section comment\n[General]\n"
+        "; The code's key comment\n; in two lines\nA = 1\n; The user's note, which the code has no comment for\n"
+        "B = 2\n\n; The user's note on a section the code has no comment for\n[Other]\n"), text, __func__, __LINE__,
+        "the code's comments should replace the file's, and a comment the code doesn't declare should stay");
+    CheckTrue(modified, __func__, __LINE__, "the replaced comments should set the modified flag");
+    CheckTrue(messages.empty(), __func__, __LINE__, "replacing a comment isn't reported");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document with the code's comments should stay as it is");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a document with the code's comments isn't modified");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Comments_FileWinsKeepsTheFilesComments)
+{
+    // Arrange
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Writing.LineEnding = ELineEnding::LF;
+    options.Writing.CommentPolicy = ECommentPolicy::FileWins;
+    static_cast<void>(ini.SetOptions(options));
+    TASWIniSection const file(ini, "", "The code's file comment");
+    TASWIniSection const general(ini, "General", "The code's section comment");
+    TASWIniSetting<int> const first(general, "A", 0, "The code's key comment");
+    TASWIniSetting<int> const third(general, "C", 0, "C's comment");
+    TASWIniSetting<int> const fifth(general, "E", 5, "E's comment");
+    TASWIniSection const bare(ini, "Bare", "Bare's comment");
+    TASWIniSetting<int> const fourth(bare, "D", 0);
+
+    // Act
+    static_cast<void>(ini.LoadText("; The user's file comment\n\n; The user's section comment\n[General]\n"
+        "; The user's key comment\nA = 1\nC = 3\n\n[Bare]\nD = 4\n"));
+    std::string const withComments = ini.ToText();
+    static_cast<void>(ini.LoadText("[General]\nA = 1\nC = 3\nE = 5\n"));
+
+    // Assert
+    CheckEquals(std::string("; The user's file comment\n\n; The user's section comment\n[General]\n"
+        "; The user's key comment\nA = 1\n; C's comment\nC = 3\n; E's comment\nE = 5\n\n; Bare's comment\n[Bare]\n"
+        "D = 4\n"), withComments, __func__, __LINE__,
+        "the file's comments should stay, and the code's should be written only where there is none");
+    CheckEquals(std::string("; The code's file comment\n\n; The code's section comment\n[General]\n"
+        "; The code's key comment\nA = 1\n; C's comment\nC = 3\n; E's comment\nE = 5\n\n; Bare's comment\n[Bare]\n"
+        "D = 0\n"), ini.ToText(), __func__, __LINE__, "a file without comments should get all the code's");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_AddsMissingKeysInDeclarationOrder)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const first(general, "A", 1, "A's comment");
+    TASWIniSetting<int> const second(general, "B", 0);
+    TASWIniSetting<std::string> const third(general, "C", "three");
+    TASWIniSection const window(ini, "Window");
+    TASWIniSetting<int> const width(window, "Width", 640);
+
+    // Act
+    TASWIniResult const result = ini.LoadText("[General]\nB = 2\n");
+    std::string const text = ini.ToText();
+    bool const modified = ini.IsModified();
+    std::size_t const reported = messages.size();
+    static_cast<void>(ini.LoadText(text));
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\nB = 2\n; A's comment\nA = 1\nC = three\n\n[Window]\nWidth = 640\n"), text,
+        __func__, __LINE__, "the missing keys and sections should be added in the order they are declared");
+    CheckTrue(modified, __func__, __LINE__, "adding keys should set the modified flag");
+    AssertEquals(3, static_cast<int>(reported), __func__, __LINE__, "each added key should be reported");
+    CheckEquals(ESeverity::Info, messages[0].Severity, __func__, __LINE__, "an added key is an Info message");
+    CheckEquals(EIniCode::KeyAdded, messages[0].Code, __func__, __LINE__, "an added key is KeyAdded");
+    CheckEquals(std::string("The key \"A\" of the section \"General\" is missing: it is added with its default value "
+        "\"1\"."), messages[0].Text, __func__, __LINE__, "the message should name the key and the default value");
+    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals(std::string("A"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(std::string("C"), messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals(std::string("Window"), messages[2].Section, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document with every setting should stay as it is");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a document with every setting isn't modified");
+    CheckEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
+        "a document with every setting reports nothing");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_FailureAppliesNothing)
+{
+    // Arrange
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Reading.StrictParsing = true;
+    options.Writing.LineEnding = ELineEnding::LF;
+    static_cast<void>(ini.SetOptions(options));
+    static_cast<void>(ini.LoadText("[General]\nA = 5\n"));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const first(general, "A", 1);
+    TASWIniSetting<int> const second(general, "B", 2);
+
+    // Act
+    TASWIniResult const result = ini.LoadText("[General]\nthis line has no separator\n");
+
+    // Assert
+    CheckEquals(EIniCode::ParseFailed, result.Code, __func__, __LINE__, "a malformed line should fail the load");
+    CheckEquals(std::string("[General]\nA = 5\n"), ini.ToText(), __func__, __LINE__,
+        "a failed load shouldn't change the document, nor apply the settings to it");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "a failed load shouldn't set the modified flag");
+    AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "only the failure should be reported");
+    CheckEquals(EIniCode::ParseFailed, messages[0].Code, __func__, __LINE__, "the failure should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_InvalidDefaultIsAnError)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const level(general, "Level", 9, "", TASWIniSettingOptions<int>().SetRange(0, 4));
+    TASWIniSetting<ELevel> const unnamed(general, "Unnamed", ELevel::Unnamed);
+    std::string unnamedText;
+    std::string const unnamedProblem = TASWIniConverter<ELevel>::ToText(ELevel::Unnamed, unnamedText,
+        TASWIniValueOptions()).Message;
+    std::string const text = "[General]\nLevel = 7\n";
+
+    // Act
+    static_cast<void>(ini.LoadText(text));
+
+    // Assert
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "a setting whose default isn't valid should leave its key");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
+    AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__, "each default should be reported");
+    CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a default that isn't valid is an Error");
+    CheckEquals(EIniCode::ValueOutOfRange, messages[0].Code, __func__, __LINE__, "the code should be the range's");
+    CheckEquals(std::string("The key \"Level\" of the section \"General\" can't be given its default value: The value "
+        "\"9\" is out of the setting's range: it must be 0 to 4."), messages[0].Text, __func__, __LINE__,
+        "the message should name the key and give the problem");
+    CheckEquals(std::string("Level"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(EIniCode::InvalidValue, messages[1].Code, __func__, __LINE__, "the code should be the converter's");
+    CheckEndsWith(messages[1].Text, unnamedProblem, __func__, __LINE__, "the message should give the problem");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_LeavesAValidDocumentAsItIs)
+{
+    // Arrange
+    // Mixed line breaks, other spacing, a ':' separator and a hex number: valid values are never written again
+    std::string const text = "; File comment\r\n\r\n; General's comment\r\n[General]\n; A's comment\nA = 0x10\n"
+        "  B=yes\r\nC: some text\n";
+    TASWBaseIni ini;
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const file(ini, "", "File comment");
+    TASWIniSection const general(ini, "General", "General's comment");
+    TASWIniSetting<int> const first(general, "A", 0, "A's comment");
+    TASWIniSetting<bool> const second(general, "B", false);
+    TASWIniSetting<std::string> const third(general, "C", "");
+
+    // Act
+    TASWIniResult const result = ini.LoadText(text);
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document that holds every setting should stay byte for byte");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "the document shouldn't be modified");
+    CheckTrue(messages.empty(), __func__, __LINE__, "nothing should be reported");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_MissingFileGetsEverySetting)
+{
+    // Arrange
+    TTempDir const folder;
+    AssertFalse(folder.Path().empty(), __func__, __LINE__, "the temporary folder should be created");
+    std::string const path = PathToUtf8(folder.Path() / "app.ini");
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const file(ini, "", "My application's settings");
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const first(general, "A", 1, "A's comment");
+    TASWIniSetting<std::string> const second(general, "B", "x");
+
+    // Act
+    TASWIniResult const loaded = ini.Load(path);
+    bool const modified = ini.IsModified();
+    TASWIniResult const saved = ini.Save();
+    std::string written;
+    bool const read = ReadTestFile(folder.Path() / "app.ini", written);
+    TASWBaseIni again;
+    TASWIniSection const againFile(again, "", "My application's settings");
+    TASWIniSection const againGeneral(again, "General");
+    TASWIniSetting<int> const againFirst(againGeneral, "A", 1, "A's comment");
+    TASWIniSetting<std::string> const againSecond(againGeneral, "B", "x");
+    TASWIniResult const loadedAgain = again.Load(path);
+
+    // Assert
+    CheckEquals(EIniCode::FileNotFound, loaded.Code, __func__, __LINE__, "a missing file is FileNotFound");
+    CheckTrue(modified, __func__, __LINE__, "the settings added should set the modified flag");
+    CheckTrue(saved.IsOk() && read, __func__, __LINE__, "Save() should create the file");
+    CheckEquals(std::string("; My application's settings\n\n[General]\n; A's comment\nA = 1\nB = x\n"), written,
+        __func__, __LINE__, "the file should hold every setting with its comment");
+    AssertEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
+        "the missing file and each key added should be reported");
+    CheckEquals(EIniCode::FileNotFound, messages[0].Code, __func__, __LINE__, "the missing file should come first");
+    CheckEquals(EIniCode::KeyAdded, messages[1].Code, __func__, __LINE__, "then each key added");
+    CheckEquals(path, messages[1].FilePath, __func__, __LINE__, "a key added should be reported with the file path");
+    CheckTrue(loadedAgain.IsOk(), __func__, __LINE__, "the file saved should load");
+    CheckFalse(again.IsModified(), __func__, __LINE__, "the file saved should hold every setting");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OptionalKeyIsNotAdded)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<bool> cheats(general, "EnableCheats", false, "", TASWIniSettingOptions<bool>().SetOptional());
+
+    // Act
+    static_cast<void>(ini.LoadText("[General]\nOther = 1\n"));
+    std::string const missingText = ini.ToText();
+    bool const missingModified = ini.IsModified();
+    bool const missingReported = !messages.empty();
+    static_cast<void>(ini.LoadText("[General]\nEnableCheats = maybe\n"));
+    std::string const invalidText = ini.ToText();
+    TASWIniResult const set = cheats.Set(true);
+
+    // Assert
+    CheckEquals(std::string("[General]\nOther = 1\n"), missingText, __func__, __LINE__,
+        "a missing optional key shouldn't be added");
+    CheckFalse(missingModified, __func__, __LINE__, "the document shouldn't be modified");
+    CheckFalse(missingReported, __func__, __LINE__, "a missing optional key shouldn't be reported");
+    CheckEquals(std::string("[General]\nEnableCheats = false\n"), invalidText, __func__, __LINE__,
+        "an optional key that is there should be applied as any other");
+    AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "the invalid value should be reported");
+    CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "the invalid value is a Warning");
+    CheckTrue(set.IsOk(), __func__, __LINE__, "Set() should write an optional setting");
+    CheckEquals(std::string("[General]\nEnableCheats = true\n"), ini.ToText(), __func__, __LINE__,
+        "Set() should write an optional setting");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_ReplacesAnInvalidValueWithTheDefault)
+{
+    // Arrange
+    TASWBaseIni ini;
+    UseLf(ini);
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    auto const notEmpty = [](std::string const& value)
+        {
+            return value.empty() ? "it can't be empty" : "";
+        };
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const width(general, "Width", 640, "In pixels");
+    TASWIniSetting<int> const level(general, "Level", 2, "", TASWIniSettingOptions<int>().SetRange(0, 4));
+    TASWIniSetting<std::string> const prefix(general, "Prefix", "App_", "",
+        TASWIniSettingOptions<std::string>().SetValidator(notEmpty));
+    TASWIniValueOptions oneZero;
+    oneZero.BoolFormat = EBoolFormat::OneZero;
+    TASWIniSetting<bool> const flag(general, "Flag", true, "", TASWIniSettingOptions<bool>().SetValues(oneZero));
+    int number = 0;
+    std::string const widthProblem = TASWIniConverter<int>::FromText("wide", number, TASWIniValueOptions()).Message;
+
+    // Act
+    TASWIniResult const result = ini.LoadText("[General]\n; In pixels\nWidth = wide\nLevel = 9\nPrefix =\n"
+        "Flag = maybe\n");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\n; In pixels\nWidth = 640\nLevel = 2\nPrefix = App_\nFlag = 1\n"),
+        ini.ToText(), __func__, __LINE__,
+        "each value that isn't valid should be replaced by the default, written with the setting's value options");
+    CheckTrue(ini.IsModified(), __func__, __LINE__, "the values replaced should set the modified flag");
+    AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each value should be reported");
+    CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "a value replaced is a Warning");
+    CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "the code should be the converter's");
+    CheckEquals(widthProblem + " The default value \"640\" is used.", messages[0].Text, __func__, __LINE__,
+        "the text should give the problem and the default");
+    CheckEquals(std::string("Width"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(EIniCode::ValueOutOfRange, messages[1].Code, __func__, __LINE__, "the code should be the range's");
+    CheckEquals(std::string("The value \"9\" is out of the setting's range: it must be 0 to 4. The default value "
+        "\"2\" is used."), messages[1].Text, __func__, __LINE__, "the text should give the range and the default");
+    CheckEquals(EIniCode::InvalidValue, messages[2].Code, __func__, __LINE__, "a refused value is InvalidValue");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, Load_WriteFailuresAreErrors)
+{
+    // Arrange
+    // ";x" written after ";" is ";;x", which reads back as the comment "x" after the longer prefix ";;"
+    TASWBaseIni ini;
+    TASWIniOptions options;
+    options.Reading.CommentPrefixes = { ";", ";;" };
+    options.Writing.CommentPrefix = ";";
+    options.Writing.LineEnding = ELineEnding::LF;
+    static_cast<void>(ini.SetOptions(options));
+    std::vector<TASWIniMessage> messages;
+    ini.SetLogCallback(Recorder(messages));
+    TASWIniSection const general(ini, "General");
+    TASWIniSetting<int> const badKey(general, "a=b", 1);
+    TASWIniSetting<int> const badComment(general, "Commented", 2, ";x");
+    TASWIniSetting<int> const good(general, "Good", 3);
+
+    // Act
+    TASWIniResult const result = ini.LoadText("");
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
+    CheckEquals(std::string("[General]\nCommented = 2\nGood = 3\n"), ini.ToText(), __func__, __LINE__,
+        "the keys that can be written should be added, the one whose comment can't be without it");
+    AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each failure should be reported");
+    CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a key that can't be written is an Error");
+    CheckEquals(EIniCode::InvalidArgument, messages[0].Code, __func__, __LINE__, "the code should be SetValue()'s");
+    CheckEquals(std::string("a=b"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(EIniCode::KeyAdded, messages[1].Code, __func__, __LINE__, "the key should be added");
+    CheckEquals(ESeverity::Error, messages[2].Severity, __func__, __LINE__,
+        "a comment that can't be written is an Error");
+    CheckEquals(EIniCode::InvalidArgument, messages[2].Code, __func__, __LINE__, "the code should be SetKeyComment()'s");
+    CheckEquals(std::string("Commented"), messages[2].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals(EIniCode::KeyAdded, messages[3].Code, __func__, __LINE__, "the next key should still be added");
+}
+//---------------------------------------------------------------------------
+ASW_TEST(TTest_ASWIni_SettingsLoad, SetOptions_DoesntApplyTheSettings)
+{
+    // Arrange
+    TASWBaseIni ini;
+    TASWIniSection const general(ini, "General", "A comment");
+    TASWIniSetting<int> const width(general, "Width", 640, "A comment");
+    TASWIniOptions options;
+    options.Writing.LineEnding = ELineEnding::LF;
+
+    // Act
+    TASWIniResult const result = ini.SetOptions(options);
+
+    // Assert
+    CheckTrue(result.IsOk(), __func__, __LINE__, "SetOptions() should succeed");
+    CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "SetOptions() shouldn't add the settings");
+    CheckFalse(ini.IsModified(), __func__, __LINE__, "SetOptions() shouldn't set the modified flag");
+}
+//---------------------------------------------------------------------------
+
 } // namespace ASWUnitTests
 
 //---------------------------------------------------------------------------
 ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsAccess, "Settings")
+ASW_REGISTER_TEST_GROUP_IN_SUITE(ASWUnitTests::TTest_ASWIni_SettingsLoad, "Settings")

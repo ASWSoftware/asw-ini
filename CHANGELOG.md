@@ -26,8 +26,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     and `#`) read, inline comments and quoted values (both off), case-sensitive names (off), which
     duplicate key wins (the first), strict parsing (off) and the largest file loaded (16 MiB).
   - `Writing` (`TASWIniWritingOptions`): the separator (`" = "`) and comment prefix (`"; "`) of new
-    lines, the line ending and byte order mark (both as the loaded file had them), and a blank line
-    before a new section (on).
+    lines, the line ending and byte order mark (both as the loaded file had them), a blank line
+    before a new section (on), and whose comment a setting's key, a section and the file get when
+    the file's differs from the code's (`CommentPolicy`: `ECommentPolicy::CodeWins`, the default,
+    or `FileWins`, which writes the code's only where the file has none).
   - `Saving` (`TASWIniSavingOptions`): atomic saves (on), backups (off, `.bak`) and creating
     missing folders (on).
   - `Values` (`TASWIniValueOptions`): how a bool is written (`EBoolFormat`: `TrueFalse`, the
@@ -181,14 +183,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   section has its owner, name and comment; a setting has its section, key, type (any type
   `TASWIniConverter` converts), default value, comment and options (`TASWIniSettingOptions<T>`: a
   range with `SetRange()`, `SetMin()` or `SetMax()`, for a type that `operator<` compares; a
-  validator, which returns what is wrong with a value; and value options of its own, e.g. a `bool`
-  written as `1` and `0`). A setting holds no value of its own: `Get()` reads the owner's document,
-  giving the default value for a missing key, and for a value that doesn't convert, is out of the
-  range or that the validator refuses (reported as a warning that names the default). `Set()`
-  writes the document, adding a missing key with the setting's comment above it in the same edit,
-  and fails, reports it and changes nothing for a value out of the range (`ValueOutOfRange`) or
-  one the validator refuses (`InvalidValue`). `Reset()` sets the default value, and `IsPresent()`
-  says whether the key is in the document. Any thread may call them, as the owner's operations.
-  New source: `ASWIni_Settings.cpp`.
+  validator, which returns what is wrong with a value; `SetOptional()` for a key that isn't added
+  when it is missing; and value options of its own, e.g. a `bool` written as `1` and `0`). A
+  setting holds no value of its own: `Get()` reads the owner's document, giving the default value
+  for a missing key, and for a value that doesn't convert, is out of the range or that the
+  validator refuses (reported as a warning that names the default). `Set()` writes the document,
+  adding a missing key with the setting's comment above it in the same edit, and fails, reports it
+  and changes nothing for a value out of the range (`ValueOutOfRange`) or one the validator
+  refuses (`InvalidValue`). `Reset()` sets the default value, and `IsPresent()` says whether the
+  key is in the document. Any thread may call them, as the owner's operations. New source:
+  `ASWIni_Settings.cpp`.
+
+  Sections and settings are bound to their owner from their constructors to their destructors, in
+  the order they are declared. When `Load()` or `LoadText()` has read a document, before anyone
+  sees it, each setting is applied to it: a missing key is added with its default value and
+  comment, reported as an Info message with the new code `EIniCode::KeyAdded`; a value that isn't
+  valid is replaced by the default value, reported as a warning; and the comments of the keys, of
+  the sections that are in the document and of the file (the comment of the section `""`) are set
+  to the code's, as `Writing.CommentPolicy` says. So the loaded document holds every setting, and
+  `IsModified()` says whether the file needs saving, e.g. on an application's first run, when the
+  file is missing. A file that holds every setting with the code's comments stays byte for byte. A
+  default value that can't be written, or that its own range or validator refuses, is reported as
+  an error. `SetOptions()` doesn't apply the settings.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

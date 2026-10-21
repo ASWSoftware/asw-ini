@@ -27,12 +27,58 @@ limitations under the License.
 #include <exception>
 #include <string>
 #include <string_view>
+#include <vector>
 //---------------------------------------------------------------------------
+#include "ASWIni_Document.h"
 #include "ASWIni_Interface.h"
+#include "ASWIni_Options.h"
 //---------------------------------------------------------------------------
 
 namespace ASWIni
 {
+
+namespace
+{
+
+TASWIniMessage SettingMessage(ESeverity severity, TASWIniResult const& result, std::string const& section,
+    std::string const& key);
+bool WritesCodeComment(TASWIniDocument const& document, std::string const& fileComment);
+
+//---------------------------------------------------------------------------
+/*
+    SettingMessage
+
+    A message with 'severity', and the code and text of 'result', about key 'key' of section 'section' (or about the
+    section when 'key' is empty).
+*/
+TASWIniMessage SettingMessage(ESeverity severity, TASWIniResult const& result, std::string const& section,
+    std::string const& key)
+{
+    TASWIniMessage message;
+    message.Severity = severity;
+    message.Code = result.Code;
+    message.Text = result.Message;
+    message.Section = section;
+    message.Key = key;
+
+    return message;
+}
+//---------------------------------------------------------------------------
+/*
+    WritesCodeComment
+
+    Whether a comment the code declares replaces 'fileComment', the comment in 'document', as its options'
+    Writing.CommentPolicy says: always with CodeWins, and only when there is none with FileWins.
+*/
+bool WritesCodeComment(TASWIniDocument const& document, std::string const& fileComment)
+{
+    return document.GetOptions().Writing.CommentPolicy != ECommentPolicy::FileWins || fileComment.empty();
+}
+//---------------------------------------------------------------------------
+
+} // namespace
+
+//---------------------------------------------------------------------------
 
 namespace Detail
 {
@@ -78,6 +124,46 @@ TSettingBase::TSettingBase(TASWIniSection const& section, std::string_view key, 
 {
 }
 //---------------------------------------------------------------------------
+void TSettingBase::AddInvalidDefault(TASWIniResult const& result, std::vector<TASWIniMessage>& messages) const
+{
+    TASWIniResult const failure = KeyFailure(m_SectionName, m_Key, "can't be given its default value", result.Code,
+        result.Message);
+    messages.push_back(SettingMessage(ESeverity::Error, failure, m_SectionName, m_Key));
+}
+//---------------------------------------------------------------------------
+void TSettingBase::ApplyComment(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const
+{
+    if (m_Comment.empty() || !WritesCodeComment(document, document.GetKeyComment(m_SectionName, m_Key)))
+        return;
+
+    TASWIniResult const result = document.SetKeyComment(m_SectionName, m_Key, m_Comment);
+    if (!result.IsOk())
+        messages.push_back(SettingMessage(ESeverity::Error, result, m_SectionName, m_Key));
+}
+//---------------------------------------------------------------------------
+void TSettingBase::ApplyDefault(TASWIniDocument& document, std::string const& defaultText,
+    TASWIniResult const* problem, std::vector<TASWIniMessage>& messages) const
+{
+    if (problem != nullptr)
+        messages.push_back(DefaultUsedMessage(*problem, &defaultText));
+
+    TASWIniResult const result = document.SetValue(m_SectionName, m_Key, defaultText);
+    if (!result.IsOk())
+    {
+        messages.push_back(SettingMessage(ESeverity::Error, result, m_SectionName, m_Key));
+        return;
+    }
+
+    if (problem == nullptr)
+    {
+        TASWIniResult const added = KeyFailure(m_SectionName, m_Key, "is missing", EIniCode::KeyAdded,
+            "it is added with its default value " + MessageText(defaultText) + ".");
+        messages.push_back(SettingMessage(ESeverity::Info, added, m_SectionName, m_Key));
+    }
+
+    ApplyComment(document, messages);
+}
+//---------------------------------------------------------------------------
 TASWIniResult TSettingBase::CaughtSetFailure() const noexcept
 {
     TASWIniResult result;
@@ -108,6 +194,17 @@ TASWIniResult TSettingBase::CaughtSetFailure() const noexcept
     return result;
 }
 //---------------------------------------------------------------------------
+TASWIniMessage TSettingBase::DefaultUsedMessage(TASWIniResult const& result, std::string const* defaultText) const
+{
+    TASWIniMessage message = SettingMessage(ESeverity::Warning, result, m_SectionName, m_Key);
+    if (defaultText != nullptr)
+        message.Text += " The default value " + MessageText(*defaultText) + " is used.";
+    else
+        message.Text += " The default value is used.";
+
+    return message;
+}
+//---------------------------------------------------------------------------
 std::string const& TSettingBase::GetComment() const noexcept
 {
     return m_Comment;
@@ -133,22 +230,16 @@ bool TSettingBase::IsPresent() const
     return m_Owner->HasKey(m_SectionName, m_Key);
 }
 //---------------------------------------------------------------------------
+void TSettingBase::Register() const
+{
+    m_Owner->Register(*this);
+}
+//---------------------------------------------------------------------------
 void TSettingBase::ReportDefaultUsed(TASWIniResult const& result, std::string const* defaultText) const noexcept
 {
     try
     {
-        TASWIniMessage message;
-        message.Severity = ESeverity::Warning;
-        message.Code = result.Code;
-        message.Text = result.Message;
-        if (defaultText != nullptr)
-            message.Text += " The default value " + MessageText(*defaultText) + " is used.";
-        else
-            message.Text += " The default value is used.";
-
-        message.Section = m_SectionName;
-        message.Key = m_Key;
-        m_Owner->Report(message);
+        m_Owner->Report(DefaultUsedMessage(result, defaultText));
     }
     catch (...)
     {
@@ -176,6 +267,11 @@ bool TSettingBase::TryGetText(std::string& text) const
     return m_Owner->TryGetText(m_SectionName, m_Key, text);
 }
 //---------------------------------------------------------------------------
+void TSettingBase::Unregister() const
+{
+    m_Owner->Unregister(*this);
+}
+//---------------------------------------------------------------------------
 
 } // namespace Detail
 
@@ -192,6 +288,42 @@ TASWIniSection::TASWIniSection(TASWBaseIni& owner, std::string_view name, std::s
       m_Name(name),
       m_Comment(comment)
 {
+    m_Owner->Register(*this);
+}
+//---------------------------------------------------------------------------
+TASWIniSection::~TASWIniSection()
+{
+    m_Owner->Unregister(*this);
+}
+//---------------------------------------------------------------------------
+void TASWIniSection::Apply(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const
+{
+    if (m_Comment.empty())
+        return;
+
+    // The section "" has no header: its comment is the file comment
+    TASWIniResult result;
+    if (m_Name.empty())
+    {
+        if (!WritesCodeComment(document, document.GetFileComment()))
+            return;
+
+        result = document.SetFileComment(m_Comment);
+    }
+    else
+    {
+        // A section isn't added for its comment
+        if (document.FindSection(m_Name) == nullptr)
+            return;
+
+        if (!WritesCodeComment(document, document.GetSectionComment(m_Name)))
+            return;
+
+        result = document.SetSectionComment(m_Name, m_Comment);
+    }
+
+    if (!result.IsOk())
+        messages.push_back(SettingMessage(ESeverity::Error, result, m_Name, std::string()));
 }
 //---------------------------------------------------------------------------
 std::string const& TASWIniSection::GetComment() const noexcept

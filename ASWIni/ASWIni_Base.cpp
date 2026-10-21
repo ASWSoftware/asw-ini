@@ -24,6 +24,7 @@ limitations under the License.
 // Module header
 #include "ASWIni_Base.h"
 //---------------------------------------------------------------------------
+#include <algorithm>
 #include <cstddef>
 #include <exception>
 #include <memory>
@@ -35,6 +36,7 @@ limitations under the License.
 #include <vector>
 //---------------------------------------------------------------------------
 #include "ASWIni_File.h"
+#include "ASWIni_Settings.h"
 #include "ASWIni_Version.h"
 //---------------------------------------------------------------------------
 #if ASWINI_WINDOWS_LOCKS
@@ -259,6 +261,16 @@ TASWIniResult TASWBaseIni::AddSection(std::string_view section)
     return Edit(edit);
 }
 //---------------------------------------------------------------------------
+void TASWBaseIni::ApplySettings(TASWIniDocument& document, std::vector<TASWIniMessage>& messages) const
+{
+    // The settings first, so a section a setting added gets its comment too
+    for (Detail::TSettingBase const* setting : m_Settings)
+        setting->Apply(document, messages);
+
+    for (TASWIniSection const* section : m_Sections)
+        section->Apply(document, messages);
+}
+//---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::CaughtException() noexcept
 {
     TASWIniResult result;
@@ -455,6 +467,10 @@ TASWIniResult TASWBaseIni::LoadFile(std::string_view filePath, std::vector<TASWI
     if (notFound)
         messages.push_back(MissingFileWarning(result));
 
+    // The settings are applied to the document read (or emptied), and their messages are about the file too
+    ApplySettings(document, messages);
+    SetFilePaths(path, result, messages);
+
     {
         std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
         m_Document = std::move(document);
@@ -486,6 +502,8 @@ TASWIniResult TASWBaseIni::LoadText(std::string_view text)
         result = document.Parse(text, options, messages);
         if (result.IsOk())
         {
+            ApplySettings(document, messages);
+
             std::lock_guard<Detail::TSharedMutex> lock(m_Mutex);
             m_Document = std::move(document);
         }
@@ -546,6 +564,18 @@ TASWIniResult TASWBaseIni::RenameSection(std::string_view section, std::string_v
         };
 
     return Edit(edit);
+}
+//---------------------------------------------------------------------------
+void TASWBaseIni::Register(Detail::TSettingBase const& setting)
+{
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    m_Settings.push_back(&setting);
+}
+//---------------------------------------------------------------------------
+void TASWBaseIni::Register(TASWIniSection const& section)
+{
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    m_Sections.push_back(&section);
 }
 //---------------------------------------------------------------------------
 void TASWBaseIni::Report(TASWIniMessage const& message) const noexcept
@@ -778,6 +808,18 @@ bool TASWBaseIni::TryGetText(std::string_view section, std::string_view key, std
     text = line->GetValue();
 
     return true;
+}
+//---------------------------------------------------------------------------
+void TASWBaseIni::Unregister(Detail::TSettingBase const& setting)
+{
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    m_Settings.erase(std::remove(m_Settings.begin(), m_Settings.end(), &setting), m_Settings.end());
+}
+//---------------------------------------------------------------------------
+void TASWBaseIni::Unregister(TASWIniSection const& section)
+{
+    std::lock_guard<Detail::TMutex> fileLock(m_FileMutex);
+    m_Sections.erase(std::remove(m_Sections.begin(), m_Sections.end(), &section), m_Sections.end());
 }
 //---------------------------------------------------------------------------
 TASWIniResult TASWBaseIni::WriteFile(std::string const& filePath, std::string_view contents,

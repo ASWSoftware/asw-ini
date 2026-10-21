@@ -110,6 +110,9 @@ char const* ToString(EIniCode code) noexcept
 
         case EIniCode::ValueOutOfRange:
             return "ValueOutOfRange";
+
+        case EIniCode::KeyAdded:
+            return "KeyAdded";
     }
 
     return "Unknown";

@@ -237,5 +237,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the library reports and the file, and returns 0 when every step did what it shows. Build it with
   `example/cmake`, with the root project and `-DASWINI_BUILD_EXAMPLE=ON`, or with RAD Studio's
   `example/rad370/ASWIniExample.cbproj` (Win32 and Win64x).
+- The documentation, in `docs/`: `Format.md` (the INI format ASWIni reads and writes, and the text
+  of each type of value), `Options.md` (every option, its default and what it does),
+  `Settings.md` (a guide to settings classes, with a log callback that sends the messages to
+  ASWLog) and `Guarantees.md` (errors, threads, callbacks, lifetimes, saving and crashes, and every
+  `EIniCode`). The README has a quick start, an API overview and links to them.
 
 [Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop

@@ -28,7 +28,8 @@ depends only on the C++ standard library and the operating system's APIs; third-
    and declare its `Test_TestName()` method public in the group's header; it registers itself. A new
    test file goes into `tests/cmake/CMakeLists.txt`, `tests/rad370/ASWIniTests.cbproj`, and
    `tests/vcl/gui/rad370/ASWIniTests_VCL_GUI.cbproj`. A new library source file goes into the root
-   `CMakeLists.txt`, the RAD Studio test projects, and `Deploy.bat`.
+   `CMakeLists.txt`, the RAD Studio test projects, the RAD Studio example project
+   (`example/rad370/ASWIniExample.cbproj`), and `Deploy.bat`.
 4. Build the affected configuration and run the unit-test executable, at C++17 and at C++20. See
    [README.md](README.md#unit-tests) for the CMake build commands, and the `Build_Win32_*.bat`
    (C++17) and `Build_Win64x_*.bat` (C++20) scripts in `tests/rad370/` for the RAD Studio builds.
@@ -36,8 +37,9 @@ depends only on the C++ standard library and the operating system's APIs; third-
 6. If you touched platform-specific code (`#if defined(_WIN32)` or similar), validate both the
    Windows and the portable path if you can. CI builds and runs the tests on Windows (MSVC, MinGW)
    and Linux (GCC, Clang, and GCC at C++17), plus Linux builds with ThreadSanitizer and with
-   AddressSanitizer + UBSan; a pull request should pass all of them.
-   [README.md](README.md#unit-tests) shows how to run a sanitizer build yourself.
+   AddressSanitizer + UBSan, and runs the example program (`example/`) in each of them; a pull
+   request should pass all of them. [README.md](README.md#unit-tests) shows how to run a sanitizer
+   build yourself.
 7. Keep `.cpp` and `.h` files ASCII-only. MSVC reads a source file without a BOM in the system's
    code page, so other characters can change meaning. In tests, write non-ASCII text with escapes
    (e.g. `"\xCE\xBB"` for UTF-8 bytes, or `L"\x03BB"` for a Windows path).
@@ -45,6 +47,8 @@ depends only on the C++ standard library and the operating system's APIs; third-
    the Changelog rules in `AGENTS.md`). Describe the effect on someone using the library; for a
    breaking change, say what callers must change. Test-only changes need no entry. Don't change the
    version in `ASWIni/ASWIni_Version.h`; that happens when a release is prepared.
+9. If the change affects what the README or the documentation in `docs/` describe, update them too,
+   and compile each code snippet you add or change.
 
 ## Formatting
 

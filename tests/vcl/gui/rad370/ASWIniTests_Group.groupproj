@@ -1,0 +1,48 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <ProjectGuid>{2DA380FB-B418-4A6F-9F17-84D6051D6C3C}</ProjectGuid>
+    </PropertyGroup>
+    <ItemGroup>
+        <Projects Include="ASWIniTests_VCL_GUI.cbproj">
+            <Dependencies/>
+        </Projects>
+        <Projects Include="..\..\..\rad370\ASWIniTests.cbproj">
+            <Dependencies/>
+        </Projects>
+    </ItemGroup>
+    <ProjectExtensions>
+        <Borland.Personality>Default.Personality.12</Borland.Personality>
+        <Borland.ProjectType/>
+        <BorlandProject>
+            <Default.Personality/>
+        </BorlandProject>
+    </ProjectExtensions>
+    <Target Name="ASWIniTests_VCL_GUI">
+        <MSBuild Projects="ASWIniTests_VCL_GUI.cbproj"/>
+    </Target>
+    <Target Name="ASWIniTests_VCL_GUI:Clean">
+        <MSBuild Projects="ASWIniTests_VCL_GUI.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ASWIniTests_VCL_GUI:Make">
+        <MSBuild Projects="ASWIniTests_VCL_GUI.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="ASWIniTests">
+        <MSBuild Projects="..\..\..\rad370\ASWIniTests.cbproj"/>
+    </Target>
+    <Target Name="ASWIniTests:Clean">
+        <MSBuild Projects="..\..\..\rad370\ASWIniTests.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ASWIniTests:Make">
+        <MSBuild Projects="..\..\..\rad370\ASWIniTests.cbproj" Targets="Make"/>
+    </Target>
+    <Target Name="Build">
+        <CallTarget Targets="ASWIniTests_VCL_GUI;ASWIniTests"/>
+    </Target>
+    <Target Name="Clean">
+        <CallTarget Targets="ASWIniTests_VCL_GUI:Clean;ASWIniTests:Clean"/>
+    </Target>
+    <Target Name="Make">
+        <CallTarget Targets="ASWIniTests_VCL_GUI:Make;ASWIniTests:Make"/>
+    </Target>
+    <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
+</Project>

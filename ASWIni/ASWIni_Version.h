@@ -39,8 +39,8 @@ limitations under the License.
 #define ASWINI_VERSION_MAJOR 1
 #define ASWINI_VERSION_MINOR 0
 #define ASWINI_VERSION_PATCH 0
-#define ASWINI_VERSION_PRERELEASE "dev.1"
-#define ASWINI_VERSION_STRING "1.0.0-dev.1"
+#define ASWINI_VERSION_PRERELEASE ""
+#define ASWINI_VERSION_STRING "1.0.0"
 
 namespace ASWIni
 {

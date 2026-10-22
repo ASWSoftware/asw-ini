@@ -7,20 +7,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-21
+
+The first release.
+
 ### Added
 
 - The ASWIni version in `ASWIni_Version.h`, as macros (`ASWINI_VERSION_MAJOR`, `_MINOR`, `_PATCH`,
   `_PRERELEASE` and `_STRING`) and as constants in the `ASWIni` namespace (`VersionMajor`,
-  `VersionMinor`, `VersionPatch`, `VersionPreRelease` and `Version`), starting at `1.0.0-dev.1`.
-- The `ASWIni::ASWIni` CMake target (a static library that needs C++17), with install rules and a
-  CMake package, so `find_package(ASWIni CONFIG)` finds an installed copy.
+  `VersionMinor`, `VersionPatch`, `VersionPreRelease` and `Version`).
+- The `ASWIni::ASWIni` CMake target (a static library that needs C++17 and links to
+  `Threads::Threads`), with install rules and a CMake package, so `find_package(ASWIni CONFIG)`
+  finds an installed copy (and the threads library).
 - `Deploy.bat`, which copies the library sources, build files, docs and example to a folder.
 - The shared types in `ASWIni_Types.h`: `EIniCode` (what happened, with values that never change),
   `ELineBreak` (`None`, `LF`, `CR` or `CRLF`: the line break that ends a line), `ESeverity`,
   `TASWIniMessage` (a warning or error for the application's log callback, with the file, line,
   section, key and system error it is about) and `TASWIniResult` (an operation's outcome, which
   converts to `true` when it succeeded). `ToString()` names a code, a line break or a severity, and
-  writes a message as one line of text. New sources: `ASWIni_Types.cpp` and `ASWIni_Utils.cpp`.
+  writes a message as one line of text.
 - `TASWIniOptions` (`ASWIni_Options.h`), the settings for INI files in four groups:
   - `Reading` (`TASWIniReadingOptions`): the separators (`=` and `:`) and comment prefixes (`;`
     and `#`) read, inline comments and quoted values (both off), case-sensitive names (off), which
@@ -38,7 +43,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Each group's `Validate()` checks its own settings, and `TASWIniOptions::Validate()` also checks
   that a file written with them can be read back (e.g. `Writing.Separator` must be one of
   `Reading.Separators`); a problem is `EIniCode::InvalidOptions` with a message naming the setting.
-  New source: `ASWIni_Options.cpp`.
 - The file layer that loading and saving use (`ASWIni_File.cpp`, internal): whole files read and
   written in binary mode with the operating system's own file APIs, a size limit on reads, and
   saves that replace the file atomically (keeping its attributes on Windows, and its permissions
@@ -55,7 +59,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   keeps its `TASWIniOptions` (`GetOptions()`), which only change when it is parsed again, reset
   (`Reset()` empties it and gives it new options) or given new ones with `SetOptions()`, and
   whether an edit changed it (`IsModified()`, `ClearModified()`). It is copyable and not
-  thread-safe. New source: `ASWIni_Document.cpp`.
+  thread-safe.
 - `TASWIniDocument::Parse()` reads UTF-8 text (with or without a byte order mark, with LF, CRLF or
   CR line breaks) as the options' `Reading` group says, keeping every line, and keeps the options.
   Lines that can't be parsed are kept as `Raw` lines and reported as warnings (`MalformedLine`,
@@ -90,10 +94,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   removal takes every line of the key, or every section of the name, with the comment lines
   directly above it (a removed section's lines that are the next section's comment stay), and
   returns whether anything was removed. A rename changes only the name, in every line or header
-  of that name, and may change only its case. Renames fail with the new codes
-  `EIniCode::NotFound` (no such key or section) and `EIniCode::AlreadyExists` (the new name is
-  taken), or with `InvalidArgument` for a name that wouldn't read back or for the preamble (`""`),
-  which has no header.
+  of that name, and may change only its case. Renames fail with `EIniCode::NotFound` (no such
+  key or section) and `EIniCode::AlreadyExists` (the new name is taken), or with
+  `InvalidArgument` for a name that wouldn't read back or for the preamble (`""`), which has no
+  header.
 - Comments in `TASWIniDocument`: `GetFileComment()`/`SetFileComment()` (the comment lines at the
   start of the file, before a blank line), `GetKeyComment()`/`SetKeyComment()` (the comment lines
   directly above a key) and `GetSectionComment()`/`SetSectionComment()` (directly above a header).
@@ -127,16 +131,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   text as it is), `std::filesystem::path` (the text is the path in UTF-8 on every platform; a text
   that isn't valid UTF-8, or a path that wouldn't read back the same, is `InvalidValue`),
   `std::u8string` (the bytes as they are; in a C++20 application, even with the library built at
-  C++17, as `ASWINI_HAS_U8STRING` in the new `ASWIni_Platform.h` says) and `std::vector<T>` of any
+  C++17, as `ASWINI_HAS_U8STRING` in `ASWIni_Platform.h` says) and `std::vector<T>` of any
   type that has a converter and a default constructor (a list: items separated by
   `Values.ListDelimiter`, written with the delimiter and a space; an item is in double quotes, with
   `""` for a `"`, only when it holds the delimiter or a `"`, has blanks at either end, or is the
   only item and empty; a `"` elsewhere in an item is ordinary; lists of lists work too; an item type
   without a default constructor stops the build with a `static_assert` that says so). An
   application adds a converter for its own type by specializing the template. A text that isn't a
-  value of the type fails with the new code `EIniCode::InvalidValue` (a number outside its type's
-  range with `EIniCode::ValueOutOfRange`), with a message that quotes the text, and leaves the value
-  as it was. New sources: `ASWIni_Converters.cpp` and `ASWIni_Platform.cpp`.
+  value of the type fails with `EIniCode::InvalidValue` (a number outside its type's range with
+  `EIniCode::ValueOutOfRange`), with a message that quotes the text, and leaves the value as it
+  was.
 
   RAD Studio Win32 (bcc32c) converts `float` and `double` with the C runtime instead of
   `std::to_chars()`/`std::from_chars()`, which give wrong results there, reading with Windows'
@@ -158,8 +162,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `SetValue()` fails, and reports it, when the converter can't write the value. A text (a string
   literal, a `char` array or pointer, or a `std::string_view`) is read and set as it is. The
   operations that return a `TASWIniResult` don't throw: an exception, e.g. one thrown by an
-  application's converter, is returned as `EIniCode::UnexpectedException`. New source:
-  `ASWIni_Interface.cpp`.
+  application's converter, is returned as `EIniCode::UnexpectedException`.
 - `TASWBaseIni` (`ASWIni_Base.h`), the thread-safe INI object that implements `IASWIni`, which an
   application's settings class derives from: a `TASWIniDocument` behind a reader/writer lock, so any
   thread may call its operations at any time; lookups share the lock and edits take it alone.
@@ -180,8 +183,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `EIniCode::UnexpectedException`, with nothing changed. On RAD Studio Win32 (bcc32c) the locks are
   Windows slim reader/writer locks, since that compiler's `std::mutex` and `std::shared_mutex` wait
   on a kernel mutex for every lock (about 1000 times slower when threads contend);
-  `ASWINI_WINDOWS_LOCKS` says which are used. The `ASWIni::ASWIni` CMake target now links to
-  `Threads::Threads`, and the installed package finds it. New source: `ASWIni_Base.cpp`.
+  `ASWINI_WINDOWS_LOCKS` says which are used.
 - `TASWIniSection` and `TASWIniSetting<T>` (`ASWIni_Settings.h`), which declare an application's
   settings in one place, as members of its settings class (derived from `TASWBaseIni`), instead of
   code that finds, checks and writes each key by hand:
@@ -204,8 +206,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   compares as its items do, so a list of a type without `operator<` is a setting too, without a
   range), a validator that returns what is wrong with a value, `SetOptional()` for a key that isn't
   added when it is missing, value options of its own (e.g. a `bool` written as `1` and `0`), and
-  the earlier names of a renamed key, in the same section (`AddOldKey()`). New source:
-  `ASWIni_Settings.cpp`.
+  the earlier names of a renamed key, in the same section (`AddOldKey()`).
 
   A setting holds no value of its own. `Get()` reads the owner's document, giving the default value
   for a missing key, and for a value that doesn't convert, is out of the range or that the validator
@@ -218,9 +219,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Sections and settings are bound to their owner from their constructors to their destructors, in
   the order they are declared. When `Load()` or `LoadText()` has read a document, before anyone
   sees it, each setting is applied to it: a missing key whose earlier name is there is renamed,
-  keeping its line, value and comment, reported as an Info message with the new code
+  keeping its line, value and comment, reported as an Info message with the code
   `EIniCode::KeyRenamed` (when the key is there too, the old one is left alone); any other missing
-  key is added with its default value and comment, reported as an Info message with the new code
+  key is added with its default value and comment, reported as an Info message with the code
   `EIniCode::KeyAdded`; a value that isn't valid is replaced by the default value, reported as a
   warning; and the comments of the keys, of the sections that are in the document and of the file
   (the comment of the section `""`) are set to the code's, as `Writing.CommentPolicy` says. So the
@@ -243,4 +244,5 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ASWLog) and `Guarantees.md` (errors, threads, callbacks, lifetimes, saving and crashes, and every
   `EIniCode`). The README has a quick start, an API overview and links to them.
 
-[Unreleased]: https://github.com/ASWSoftware/asw-ini/commits/develop
+[Unreleased]: https://github.com/ASWSoftware/asw-ini/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/ASWSoftware/asw-ini/releases/tag/v1.0.0

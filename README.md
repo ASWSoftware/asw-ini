@@ -3,12 +3,6 @@
 ASWIni is a thread-safe, dependency-free C++17 library for reading and writing INI files on Windows
 and Linux, which keeps the file's comments and layout.
 
-## Status
-
-ASWIni is in development toward 1.0.0: the `develop` branch carries `1.0.0-dev.N` versions, and
-the interface may change in any way until 1.0.0. [CHANGELOG.md](CHANGELOG.md) lists what each
-change adds.
-
 ## Design
 
 ASWIni is a folder of standard C++ sources, or one CMake target, with no third-party code. It builds
@@ -193,7 +187,7 @@ or let CMake download it with `FetchContent`:
 include(FetchContent)
 FetchContent_Declare(ASWIni
     GIT_REPOSITORY https://github.com/ASWSoftware/asw-ini.git
-    GIT_TAG develop     # A release tag once there is one, e.g. v1.0.0
+    GIT_TAG v1.0.0      # A release tag
     GIT_SUBMODULES ""   # Skip the unit-test framework submodule
 )
 FetchContent_MakeAvailable(ASWIni)
@@ -286,7 +280,7 @@ class and operation.
 
 ASWIni follows [Semantic Versioning](https://semver.org). Releases are tagged on `main` (e.g.
 `v1.0.0`). Between releases, the `develop` branch carries the next planned version with a
-pre-release, e.g. `1.0.0-dev.1`, which comes before `1.0.0`. `ASWIni/ASWIni_Version.h` has the
+pre-release, e.g. `1.1.0-dev.1`, which comes before `1.1.0`. `ASWIni/ASWIni_Version.h` has the
 version as macros, for code that supports several ASWIni versions, and as constants in the `ASWIni`
 namespace:
 

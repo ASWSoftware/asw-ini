@@ -545,8 +545,8 @@ ASW_TEST(TTest_ASWIni_Interface, GetValue_ConvertsTheValue)
     CheckTrue(maximized, __func__, __LINE__, "a bool should be read");
     CheckTrue(zoom == 1.5, __func__, __LINE__, "a double should be read");
     CheckTrue(color == EColor::Green, __func__, __LINE__, "an enum should be read by name");
-    CheckEquals(std::string("{10, 20, 30}"), ListText(columns), __func__, __LINE__, "a list should be read");
-    CheckEquals(std::string("My \"App\""), title, __func__, __LINE__, "a std::string should be the text");
+    CheckEquals("{10, 20, 30}", ListText(columns), __func__, __LINE__, "a list should be read");
+    CheckEquals("My \"App\"", title, __func__, __LINE__, "a std::string should be the text");
     CheckEquals(-7LL, global, __func__, __LINE__, "a key before the first section should be read");
     CheckEquals(std::size_t(0), ini.Reported.size(), __func__, __LINE__, "nothing should be reported");
 }
@@ -571,8 +571,8 @@ ASW_TEST(TTest_ASWIni_Interface, GetValue_InvalidValueGivesTheDefaultAndAWarning
             "converter's code");
         CheckEquals(ConverterMessage("wide"), message.Text, __func__, __LINE__,
             "the message should have the converter's text");
-        CheckEquals(std::string("Window"), message.Section, __func__, __LINE__, "the message should name the section");
-        CheckEquals(std::string("Width"), message.Key, __func__, __LINE__, "the message should name the key");
+        CheckEquals("Window", message.Section, __func__, __LINE__, "the message should name the section");
+        CheckEquals("Width", message.Key, __func__, __LINE__, "the message should name the key");
         CheckEquals(std::string(), message.FilePath, __func__, __LINE__, "the file path should be left to Report()");
         CheckEquals(std::size_t(0), message.Line, __func__, __LINE__, "the message should have no line");
     }
@@ -592,7 +592,7 @@ ASW_TEST(TTest_ASWIni_Interface, GetValue_MissingKeyGivesTheDefault)
     // Assert
     CheckEquals(480, height, __func__, __LINE__, "a missing key should give the default");
     CheckEquals(320, width, __func__, __LINE__, "a key of a missing section should give the default");
-    CheckEquals(std::string("{1, 2}"), ListText(columns), __func__, __LINE__, "a missing list should be the default");
+    CheckEquals("{1, 2}", ListText(columns), __func__, __LINE__, "a missing list should be the default");
     CheckEquals(std::size_t(0), ini.Reported.size(), __func__, __LINE__, "a missing key should report nothing");
 }
 //---------------------------------------------------------------------------
@@ -641,12 +641,12 @@ ASW_TEST(TTest_ASWIni_Interface, GetValue_TextDefaultGivesTheText)
     std::string const fromView = ini.GetValue("App", "Missing", std::string_view("view"));
 
     // Assert
-    CheckEquals(std::string(" My App "), name, __func__, __LINE__, "the text should be the value as it is");
-    CheckEquals(std::string("Default"), literal, __func__, __LINE__, "a missing key should give a literal default");
+    CheckEquals(" My App ", name, __func__, __LINE__, "the text should be the value as it is");
+    CheckEquals("Default", literal, __func__, __LINE__, "a missing key should give a literal default");
     CheckEquals(std::string(), fromNull, __func__, __LINE__, "a nullptr default should be empty");
-    CheckEquals(std::string("buffer"), fromBuffer, __func__, __LINE__, "a char array default should be its text");
-    CheckEquals(std::string("buffer"), fromPointer, __func__, __LINE__, "a char pointer default should be its text");
-    CheckEquals(std::string("view"), fromView, __func__, __LINE__, "a std::string_view default should be its text");
+    CheckEquals("buffer", fromBuffer, __func__, __LINE__, "a char array default should be its text");
+    CheckEquals("buffer", fromPointer, __func__, __LINE__, "a char pointer default should be its text");
+    CheckEquals("view", fromView, __func__, __LINE__, "a std::string_view default should be its text");
     CheckEquals(std::size_t(0), ini.ValueOptionsCalls, __func__, __LINE__,
         "a text needs no converter, so no value options");
 }
@@ -686,7 +686,7 @@ ASW_TEST(TTest_ASWIni_Interface, GetValue_UsesTheGivenValueOptions)
     // Assert
     CheckEquals(std::size_t(2), columns.size(), __func__, __LINE__, "the list should be split at the given delimiter");
     if (columns.size() == 2)
-        CheckEquals(std::string("20, 30"), columns[1], __func__, __LINE__, "the default delimiter should be text");
+        CheckEquals("20, 30", columns[1], __func__, __LINE__, "the default delimiter should be text");
 
     CheckEquals(std::size_t(0), ini.ValueOptionsCalls, __func__, __LINE__,
         "the object's value options shouldn't be asked for");
@@ -753,12 +753,12 @@ ASW_TEST(TTest_ASWIni_Interface, SetValue_ConverterExceptionIsReported)
     // Assert
     CheckEquals(EIniCode::UnexpectedException, stdResult.Code, __func__, __LINE__,
         "a std::exception should be UnexpectedException");
-    CheckEquals(std::string("The key \"Value\" of the section \"Broken\" can't be set: The converter is broken."),
+    CheckEquals("The key \"Value\" of the section \"Broken\" can't be set: The converter is broken.",
         stdResult.Message, __func__, __LINE__, "the message should give what()");
     CheckEquals(EIniCode::UnexpectedException, otherResult.Code, __func__, __LINE__,
         "another exception should be UnexpectedException");
-    CheckEquals(std::string("The key \"Value\" of the section \"Broken\" can't be set: An exception that isn't a "
-        "std::exception was thrown."), otherResult.Message, __func__, __LINE__,
+    CheckEquals("The key \"Value\" of the section \"Broken\" can't be set: An exception that isn't a "
+        "std::exception was thrown.", otherResult.Message, __func__, __LINE__,
         "the message should say what was thrown");
     CheckEquals(std::size_t(2), ini.Reported.size(), __func__, __LINE__, "each failure should be reported");
     if (ini.Reported.size() == 2)
@@ -811,7 +811,7 @@ ASW_TEST(TTest_ASWIni_Interface, SetValue_SetTextFailureIsReturned)
 
     // Assert
     CheckEquals(EIniCode::InvalidArgument, typed.Code, __func__, __LINE__, "SetText()'s failure should be returned");
-    CheckEquals(std::string("The key name is empty."), typed.Message, __func__, __LINE__,
+    CheckEquals("The key name is empty.", typed.Message, __func__, __LINE__,
         "SetText()'s message should be returned as it is");
     CheckEquals(EIniCode::InvalidArgument, text.Code, __func__, __LINE__,
         "SetText()'s failure should be returned for a text too");
@@ -863,7 +863,7 @@ ASW_TEST(TTest_ASWIni_Interface, SetValue_UsesTheGivenValueOptions)
     CheckTrue(result.IsOk(), __func__, __LINE__, "the value should be set");
     CheckEquals(std::size_t(1), ini.SetTextCalls.size(), __func__, __LINE__, "the value should be set with SetText()");
     if (ini.SetTextCalls.size() == 1)
-        CheckEquals(std::string("[Window] Maximized=on"), ini.SetTextCalls[0], __func__, __LINE__,
+        CheckEquals("[Window] Maximized=on", ini.SetTextCalls[0], __func__, __LINE__,
             "the value should be written as the given options say");
 
     CheckEquals(std::size_t(0), ini.ValueOptionsCalls, __func__, __LINE__,
@@ -883,7 +883,7 @@ ASW_TEST(TTest_ASWIni_Interface, SetValue_UsesTheValueOptions)
     CheckTrue(result.IsOk(), __func__, __LINE__, "the value should be set");
     CheckEquals(std::size_t(1), ini.SetTextCalls.size(), __func__, __LINE__, "the value should be set with SetText()");
     if (ini.SetTextCalls.size() == 1)
-        CheckEquals(std::string("[Window] Maximized=yes"), ini.SetTextCalls[0], __func__, __LINE__,
+        CheckEquals("[Window] Maximized=yes", ini.SetTextCalls[0], __func__, __LINE__,
             "the value should be written as the object's options say");
 
     CheckEquals(std::size_t(1), ini.ValueOptionsCalls, __func__, __LINE__,
@@ -906,12 +906,12 @@ ASW_TEST(TTest_ASWIni_Interface, TryGetValue_ConverterExceptionIsReturned)
     // Assert
     CheckEquals(EIniCode::UnexpectedException, stdResult.Code, __func__, __LINE__,
         "a std::exception should be UnexpectedException");
-    CheckEquals(std::string("The key \"Std\" of the section \"Broken\" can't be read: The converter is broken."),
+    CheckEquals("The key \"Std\" of the section \"Broken\" can't be read: The converter is broken.",
         stdResult.Message, __func__, __LINE__, "the message should give what()");
     CheckEquals(EIniCode::UnexpectedException, otherResult.Code, __func__, __LINE__,
         "another exception should be UnexpectedException");
-    CheckEquals(std::string("The key \"Other\" of the section \"Broken\" can't be read: An exception that isn't a "
-        "std::exception was thrown."), otherResult.Message, __func__, __LINE__,
+    CheckEquals("The key \"Other\" of the section \"Broken\" can't be read: An exception that isn't a "
+        "std::exception was thrown.", otherResult.Message, __func__, __LINE__,
         "the message should say what was thrown");
     CheckFalse(value.StdException, __func__, __LINE__, "the value should stay as it was");
     CheckEquals(std::size_t(0), ini.Reported.size(), __func__, __LINE__, "nothing should be reported");
@@ -938,7 +938,7 @@ ASW_TEST(TTest_ASWIni_Interface, TryGetValue_ConvertsTheValue)
         "every value should be read");
     CheckEquals(640, width, __func__, __LINE__, "an int should be read");
     CheckTrue(color == EColor::Green, __func__, __LINE__, "an enum should be read");
-    CheckEquals(std::string(" My App "), title, __func__, __LINE__, "a std::string should be the text as it is");
+    CheckEquals(" My App ", title, __func__, __LINE__, "a std::string should be the text as it is");
     CheckEquals(std::size_t(0), ini.Reported.size(), __func__, __LINE__, "nothing should be reported");
 }
 //---------------------------------------------------------------------------
@@ -980,7 +980,7 @@ ASW_TEST(TTest_ASWIni_Interface, TryGetValue_MissingKeyIsNotFound)
 
     // Assert
     CheckEquals(EIniCode::NotFound, result.Code, __func__, __LINE__, "a missing key should be NotFound");
-    CheckEquals(std::string("The key \"Height\" of the section \"Window\" doesn't exist."), result.Message, __func__,
+    CheckEquals("The key \"Height\" of the section \"Window\" doesn't exist.", result.Message, __func__,
         __LINE__, "the message should name the key and section");
     CheckEquals(480, height, __func__, __LINE__, "the value should stay as it was");
     CheckEquals(std::size_t(0), ini.Reported.size(), __func__, __LINE__, "nothing should be reported");
@@ -1002,7 +1002,7 @@ ASW_TEST(TTest_ASWIni_Interface, TryGetValue_UsesTheGivenValueOptions)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the list should be read");
-    CheckEquals(std::string("{10, 20}"), ListText(columns), __func__, __LINE__,
+    CheckEquals("{10, 20}", ListText(columns), __func__, __LINE__,
         "the list should be split at the given delimiter");
     CheckEquals(std::size_t(0), ini.ValueOptionsCalls, __func__, __LINE__,
         "the object's value options shouldn't be asked for");
@@ -1021,7 +1021,7 @@ ASW_TEST(TTest_ASWIni_Interface, TryGetValue_UsesTheValueOptions)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the list should be read");
-    CheckEquals(std::string("{10, 20}"), ListText(columns), __func__, __LINE__,
+    CheckEquals("{10, 20}", ListText(columns), __func__, __LINE__,
         "the list should be split at the object's delimiter");
     CheckEquals(std::size_t(1), ini.ValueOptionsCalls, __func__, __LINE__,
         "the object's value options should be asked for once");

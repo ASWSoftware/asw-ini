@@ -846,7 +846,7 @@ ASW_TEST(TTest_ASWIni_BoolConverter, FromText_RejectsOtherTexts)
     // The message says what a bool can be
     bool value = false;
     TASWIniResult const result = TASWIniConverter<bool>::FromText("maybe", value, TASWIniValueOptions());
-    CheckEquals(std::string("The value \"maybe\" isn't a bool: it must be true, false, yes, no, on, off, 1 or 0."),
+    CheckEquals("The value \"maybe\" isn't a bool: it must be true, false, yes, no, on, off, 1 or 0.",
         result.Message, __func__, __LINE__, "the message should name the text and the forms");
 }
 //---------------------------------------------------------------------------
@@ -891,8 +891,8 @@ ASW_TEST(TTest_ASWIni_BoolConverter, ToText_UnknownFormatWritesTrueFalse)
 
     // Assert
     CheckTrue(yesResult.IsOk() && noResult.IsOk(), __func__, __LINE__, "writing a bool should never fail");
-    CheckEquals(std::string("true"), yes, __func__, __LINE__, "true with an unknown format");
-    CheckEquals(std::string("false"), no, __func__, __LINE__, "false with an unknown format");
+    CheckEquals("true", yes, __func__, __LINE__, "true with an unknown format");
+    CheckEquals("false", no, __func__, __LINE__, "false with an unknown format");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BoolConverter, ToText_WritesTheFormatsForm)
@@ -921,12 +921,12 @@ ASW_TEST(TTest_ASWIni_BoolConverter, ToText_WritesTheFormatsForm)
         std::string text = "old";
         TASWIniResult result = TASWIniConverter<bool>::ToText(true, text, options);
         CheckTrue(result.IsOk(), __func__, __LINE__, format + ": writing true should succeed");
-        CheckEquals(std::string(c.True), text, __func__, __LINE__, format + ": true");
+        CheckEquals(c.True, text, __func__, __LINE__, format + ": true");
 
         text = "old";
         result = TASWIniConverter<bool>::ToText(false, text, options);
         CheckTrue(result.IsOk(), __func__, __LINE__, format + ": writing false should succeed");
-        CheckEquals(std::string(c.False), text, __func__, __LINE__, format + ": false");
+        CheckEquals(c.False, text, __func__, __LINE__, format + ": false");
     }
 }
 //---------------------------------------------------------------------------
@@ -1101,15 +1101,15 @@ ASW_TEST(TTest_ASWIni_EnumConverter, Messages_NameTheProblem)
 
     // Assert
     // The names listed are those written: a second name of a value, or a nullptr one, isn't
-    CheckEquals(std::string("The value \"Purple\" isn't a name of the enum: it must be Red, Green or Blue."),
+    CheckEquals("The value \"Purple\" isn't a name of the enum: it must be Red, Green or Blue.",
         colorRead.Message, __func__, __LINE__, "the message should list the names written, without Lime");
-    CheckEquals(std::string("The value \"Giant\" isn't a name of the enum: it must be Small, Medium or Large."),
+    CheckEquals("The value \"Giant\" isn't a name of the enum: it must be Small, Medium or Large.",
         sizeRead.Message, __func__, __LINE__, "the message should list each value's name once");
-    CheckEquals(std::string("The value \"Min\" isn't a name of the enum: it must be Normal or Maximized."),
+    CheckEquals("The value \"Min\" isn't a name of the enum: it must be Normal or Maximized.",
         stateRead.Message, __func__, __LINE__, "the message should list two names with \"or\"");
-    CheckEquals(std::string("The value \"Only\" isn't a name of the enum: it has no names."), emptyRead.Message,
+    CheckEquals("The value \"Only\" isn't a name of the enum: it has no names.", emptyRead.Message,
         __func__, __LINE__, "the message should say that the enum has no names");
-    CheckEquals(std::string("The value \"7\" has no name in the enum's ASWIniEnumNames(), so it can't be written."),
+    CheckEquals("The value \"7\" has no name in the enum's ASWIniEnumNames(), so it can't be written.",
         written.Message, __func__, __LINE__, "the message should name the value's number");
 }
 //---------------------------------------------------------------------------
@@ -1153,22 +1153,22 @@ ASW_TEST(TTest_ASWIni_EnumConverter, ToText_UnnamedValueIsInvalid)
     std::string text = "old";
     TASWIniResult const result = TASWIniConverter<EColor>::ToText(EColor::Unlisted, text, TASWIniValueOptions());
     CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__, "an unnamed value should be InvalidValue");
-    CheckEquals(std::string("old"), text, __func__, __LINE__, "an unnamed value should leave the text as it was");
+    CheckEquals("old", text, __func__, __LINE__, "an unnamed value should leave the text as it was");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_EnumConverter, ToText_WritesTheFirstName)
 {
     // Act & Assert
     // Written() starts from "old", so these also check that the text is replaced
-    CheckEquals(std::string("Red"), Written(EColor::Red), __func__, __LINE__, "Red");
-    CheckEquals(std::string("Green"), Written(EColor::Green), __func__, __LINE__, "Green, not its second name Lime");
-    CheckEquals(std::string("Blue"), Written(EColor::Blue), __func__, __LINE__, "Blue");
-    CheckEquals(std::string("Medium"), Written(ESize::Medium), __func__, __LINE__,
+    CheckEquals("Red", Written(EColor::Red), __func__, __LINE__, "Red");
+    CheckEquals("Green", Written(EColor::Green), __func__, __LINE__, "Green, not its second name Lime");
+    CheckEquals("Blue", Written(EColor::Blue), __func__, __LINE__, "Blue");
+    CheckEquals("Medium", Written(ESize::Medium), __func__, __LINE__,
         "Medium, whose first entry has no name");
-    CheckEquals(std::string("Large"), Written(ESize::Large), __func__, __LINE__, "Large");
-    CheckEquals(std::string("Manual"), Written(EMode::Manual), __func__, __LINE__, "Manual, from a std::vector");
-    CheckEquals(std::string("Two"), Written(PlainTwo), __func__, __LINE__, "PlainTwo, of an unscoped enum");
-    CheckEquals(std::string("Maximized"), Written(TWindow::EState::Maximized), __func__, __LINE__,
+    CheckEquals("Large", Written(ESize::Large), __func__, __LINE__, "Large");
+    CheckEquals("Manual", Written(EMode::Manual), __func__, __LINE__, "Manual, from a std::vector");
+    CheckEquals("Two", Written(PlainTwo), __func__, __LINE__, "PlainTwo, of an unscoped enum");
+    CheckEquals("Maximized", Written(TWindow::EState::Maximized), __func__, __LINE__,
         "Maximized, from a friend function");
 }
 //---------------------------------------------------------------------------
@@ -1185,10 +1185,10 @@ ASW_TEST(TTest_ASWIni_EnumConverter, WithoutNames_ConvertsAsTheUnderlyingType)
     CheckReads("0", ESwitch::Off, __func__, __LINE__);
     CheckReads("65535", static_cast<EWide>(65535), __func__, __LINE__);
 
-    CheckEquals(std::string("5"), Written(static_cast<EFlags>(5)), __func__, __LINE__, "flags that are no enumerator");
-    CheckEquals(std::string("-128"), Written(ESmall::Low), __func__, __LINE__, "a std::int8_t enum, as a number");
-    CheckEquals(std::string("1"), Written(ESwitch::On), __func__, __LINE__, "a bool enum, as a number");
-    CheckEquals(std::string("65"), Written(static_cast<EWide>(65)), __func__, __LINE__, "a char16_t enum, as a number");
+    CheckEquals("5", Written(static_cast<EFlags>(5)), __func__, __LINE__, "flags that are no enumerator");
+    CheckEquals("-128", Written(ESmall::Low), __func__, __LINE__, "a std::int8_t enum, as a number");
+    CheckEquals("1", Written(ESwitch::On), __func__, __LINE__, "a bool enum, as a number");
+    CheckEquals("65", Written(static_cast<EWide>(65)), __func__, __LINE__, "a char16_t enum, as a number");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_EnumConverter, WithoutNames_RejectsWhatTheUnderlyingTypeRejects)
@@ -1208,7 +1208,7 @@ ASW_TEST(TTest_ASWIni_EnumConverter, WithoutNames_RejectsWhatTheUnderlyingTypeRe
 
     ESwitch value = ESwitch::Off;
     TASWIniResult const result = TASWIniConverter<ESwitch>::FromText("2", value, TASWIniValueOptions());
-    CheckEquals(std::string("The value \"2\" is out of range: it must be 0 to 1."), result.Message, __func__,
+    CheckEquals("The value \"2\" is out of range: it must be 0 to 1.", result.Message, __func__,
         __LINE__, "the message should name the underlying type's range");
 }
 //---------------------------------------------------------------------------
@@ -1408,8 +1408,8 @@ ASW_TEST(TTest_ASWIni_FloatConverter, Converters_UseTheDefaultConversion)
     CheckTrue(numberRead.IsOk() && number == 0.1, __func__, __LINE__, "\"0.1\" should read as the double 0.1");
     CheckTrue(singleRead.IsOk() && single == 0.1f, __func__, __LINE__, "\"0.1\" should read as the float 0.1");
     CheckTrue(numberWritten.IsOk() && singleWritten.IsOk(), __func__, __LINE__, "writing should succeed");
-    CheckEquals(std::string("0.1"), numberText, __func__, __LINE__, "the double 0.1");
-    CheckEquals(std::string("0.1"), singleText, __func__, __LINE__, "the float 0.1");
+    CheckEquals("0.1", numberText, __func__, __LINE__, "the double 0.1");
+    CheckEquals("0.1", singleText, __func__, __LINE__, "the float 0.1");
     CheckEquals(EIniCode::InvalidValue, invalid.Code, __func__, __LINE__, "\"abc\" should be InvalidValue");
     CheckTrue(invalidNumber == 2.5, __func__, __LINE__, "a failed read should leave the value as it was");
 }
@@ -1566,12 +1566,12 @@ ASW_TEST(TTest_ASWIni_FloatConverter, Messages_NameTheProblem)
     TASWIniResult const floatTooLarge = TASWIniConverter<float>::FromText("1e39", single, TASWIniValueOptions());
 
     // Assert
-    CheckEquals(std::string("The value \"1,5\" isn't a number: it must be digits with an optional '.' and exponent, "
-        "after an optional sign (e.g. 1.5, -2e-3), or inf or nan."), invalid.Message, __func__, __LINE__,
+    CheckEquals("The value \"1,5\" isn't a number: it must be digits with an optional '.' and exponent, "
+        "after an optional sign (e.g. 1.5, -2e-3), or inf or nan.", invalid.Message, __func__, __LINE__,
         "a text that isn't a number");
-    CheckEquals(std::string("The value \"1e400\" is out of range: it must be -1.7976931348623157e+308 to "
-        "1.7976931348623157e+308."), tooLarge.Message, __func__, __LINE__, "a number too large for a double");
-    CheckEquals(std::string("The value \"1e39\" is out of range: it must be -3.4028235e+38 to 3.4028235e+38."),
+    CheckEquals("The value \"1e400\" is out of range: it must be -1.7976931348623157e+308 to "
+        "1.7976931348623157e+308.", tooLarge.Message, __func__, __LINE__, "a number too large for a double");
+    CheckEquals("The value \"1e39\" is out of range: it must be -3.4028235e+38 to 3.4028235e+38.",
         floatTooLarge.Message, __func__, __LINE__, "a number too large for a float");
 }
 //---------------------------------------------------------------------------
@@ -1845,12 +1845,12 @@ ASW_TEST(TTest_ASWIni_IntegerConverter, Messages_NameTheProblem)
     TASWIniResult const invalid = TASWIniConverter<int>::FromText("abc", number, TASWIniValueOptions());
 
     // Assert
-    CheckEquals(std::string("The value \"300\" is out of range: it must be 0 to 255."), above.Message, __func__,
+    CheckEquals("The value \"300\" is out of range: it must be 0 to 255.", above.Message, __func__,
         __LINE__, "a number above the range");
-    CheckEquals(std::string("The value \"-129\" is out of range: it must be -128 to 127."), below.Message, __func__,
+    CheckEquals("The value \"-129\" is out of range: it must be -128 to 127.", below.Message, __func__,
         __LINE__, "a number below the range");
-    CheckEquals(std::string("The value \"abc\" isn't a whole number: it must be decimal digits, or 0x and hex digits, "
-        "after an optional sign."), invalid.Message, __func__, __LINE__, "a text that isn't a number");
+    CheckEquals("The value \"abc\" isn't a whole number: it must be decimal digits, or 0x and hex digits, "
+        "after an optional sign.", invalid.Message, __func__, __LINE__, "a text that isn't a number");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_IntegerConverter, RoundTrip_EveryType)
@@ -1873,15 +1873,15 @@ ASW_TEST(TTest_ASWIni_IntegerConverter, ToText_WritesDecimal)
 {
     // Act & Assert
     // Written() starts from "old", so these also check that the text is replaced
-    CheckEquals(std::string("0"), Written(0), __func__, __LINE__, "0");
-    CheckEquals(std::string("-42"), Written(-42), __func__, __LINE__, "a negative int");
-    CheckEquals(std::string("-128"), Written(static_cast<std::int8_t>(-128)), __func__, __LINE__,
+    CheckEquals("0", Written(0), __func__, __LINE__, "0");
+    CheckEquals("-42", Written(-42), __func__, __LINE__, "a negative int");
+    CheckEquals("-128", Written(static_cast<std::int8_t>(-128)), __func__, __LINE__,
         "std::int8_t's smallest value, as a number");
-    CheckEquals(std::string("255"), Written(static_cast<std::uint8_t>(255)), __func__, __LINE__,
+    CheckEquals("255", Written(static_cast<std::uint8_t>(255)), __func__, __LINE__,
         "std::uint8_t's largest value, as a number");
-    CheckEquals(std::string("-9223372036854775808"), Written(std::numeric_limits<std::int64_t>::min()), __func__,
+    CheckEquals("-9223372036854775808", Written(std::numeric_limits<std::int64_t>::min()), __func__,
         __LINE__, "std::int64_t's smallest value");
-    CheckEquals(std::string("18446744073709551615"), Written(std::numeric_limits<std::uint64_t>::max()), __func__,
+    CheckEquals("18446744073709551615", Written(std::numeric_limits<std::uint64_t>::max()), __func__,
         __LINE__, "std::uint64_t's largest value");
 }
 //---------------------------------------------------------------------------
@@ -2068,8 +2068,8 @@ ASW_TEST(TTest_ASWIni_ListConverter, FromText_FailingItemFailsTheList)
     // The message names the item, and gives its own message
     std::vector<int> value;
     TASWIniResult const result = TASWIniConverter<std::vector<int> >::FromText("1, x, 3", value, m_Options);
-    CheckEquals(std::string("The value \"1, x, 3\" can't be read: item 2: The value \"x\" isn't a whole number: it "
-        "must be decimal digits, or 0x and hex digits, after an optional sign."), result.Message, __func__, __LINE__,
+    CheckEquals("The value \"1, x, 3\" can't be read: item 2: The value \"x\" isn't a whole number: it "
+        "must be decimal digits, or 0x and hex digits, after an optional sign.", result.Message, __func__, __LINE__,
         "the message should name the item that failed");
 }
 //---------------------------------------------------------------------------
@@ -2112,10 +2112,10 @@ ASW_TEST(TTest_ASWIni_ListConverter, FromText_RejectsBadQuoting)
     std::vector<std::string> value;
     TASWIniResult const unclosed = TASWIniConverter<std::vector<std::string> >::FromText("x, \"y", value, m_Options);
     TASWIniResult const after = TASWIniConverter<std::vector<std::string> >::FromText("\"a\"b", value, m_Options);
-    CheckEquals(std::string("The value \"x, \"y\" isn't a list: its item 2 starts with a '\"' that isn't closed."),
+    CheckEquals("The value \"x, \"y\" isn't a list: its item 2 starts with a '\"' that isn't closed.",
         unclosed.Message, __func__, __LINE__, "an unclosed quote");
-    CheckEquals(std::string("The value \"\"a\"b\" isn't a list: its item 1 has more than blanks after its closing "
-        "'\"'."), after.Message, __func__, __LINE__, "text after a closing quote");
+    CheckEquals("The value \"\"a\"b\" isn't a list: its item 1 has more than blanks after its closing "
+        "'\"'.", after.Message, __func__, __LINE__, "text after a closing quote");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_ListConverter, FromText_SplitsAtTheDelimiter)
@@ -2194,10 +2194,10 @@ ASW_TEST(TTest_ASWIni_ListConverter, ToText_FailingItemFailsTheList)
 
     // Assert
     CheckEquals(EIniCode::InvalidValue, result.Code, __func__, __LINE__, "the item's code should be the list's");
-    CheckEquals(std::string("The list can't be written: item 2: The value \"7\" has no name in the enum's "
-        "ASWIniEnumNames(), so it can't be written."), result.Message, __func__, __LINE__,
+    CheckEquals("The list can't be written: item 2: The value \"7\" has no name in the enum's "
+        "ASWIniEnumNames(), so it can't be written.", result.Message, __func__, __LINE__,
         "the message should name the item that failed");
-    CheckEquals(std::string("old"), text, __func__, __LINE__, "the text should be left as it was");
+    CheckEquals("old", text, __func__, __LINE__, "the text should be left as it was");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_ListConverter, ToText_JoinsWithTheDelimiterAndASpace)
@@ -2397,7 +2397,7 @@ ASW_TEST(TTest_ASWIni_TextConverter, Path_ToTextRejectsWhatWouldNotReadBack)
             "a path that wouldn't read back should be InvalidValue");
         CheckContains(result.Message, "is a path that isn't valid Unicode, so it can't be written to read back the "
             "same.", __func__, __LINE__, "the message should say why");
-        CheckEquals(std::string("old"), text, __func__, __LINE__, "the text should be left as it was");
+        CheckEquals("old", text, __func__, __LINE__, "the text should be left as it was");
     }
 }
 //---------------------------------------------------------------------------
@@ -2797,9 +2797,9 @@ ASW_TEST(TTest_ASWIni_Converters, MessageText_CutsLongTextsBetweenSequences)
 ASW_TEST(TTest_ASWIni_Converters, MessageText_QuotesTheText)
 {
     // Act & Assert
-    CheckEquals(std::string("\"abc\""), ASWIni::Detail::MessageText("abc"), __func__, __LINE__, "a text");
-    CheckEquals(std::string("\"\""), ASWIni::Detail::MessageText(""), __func__, __LINE__, "an empty text");
-    CheckEquals(std::string("\" \xC3\xA9 \""), ASWIni::Detail::MessageText(" \xC3\xA9 "), __func__, __LINE__,
+    CheckEquals("\"abc\"", ASWIni::Detail::MessageText("abc"), __func__, __LINE__, "a text");
+    CheckEquals("\"\"", ASWIni::Detail::MessageText(""), __func__, __LINE__, "an empty text");
+    CheckEquals("\" \xC3\xA9 \"", ASWIni::Detail::MessageText(" \xC3\xA9 "), __func__, __LINE__,
         "blanks and UTF-8 should stay");
 }
 //---------------------------------------------------------------------------
@@ -2812,7 +2812,7 @@ ASW_TEST(TTest_ASWIni_Converters, MessageText_ReplacesControlCharacters)
     std::string const message = ASWIni::Detail::MessageText(text);
 
     // Assert
-    CheckEquals(std::string("\"a?b?c?d???\""), message, __func__, __LINE__,
+    CheckEquals("\"a?b?c?d???\"", message, __func__, __LINE__,
         "each control character should be '?', so a message stays one line of text");
 }
 //---------------------------------------------------------------------------
@@ -2824,7 +2824,7 @@ ASW_TEST(TTest_ASWIni_Converters, ValueFailure_MakesTheMessage)
 
     // Assert
     CheckEquals(EIniCode::ValueOutOfRange, result.Code, __func__, __LINE__, "the code");
-    CheckEquals(std::string("The value \"300\" is out of range: it must be 0 to 255."), result.Message, __func__,
+    CheckEquals("The value \"300\" is out of range: it must be 0 to 255.", result.Message, __func__,
         __LINE__, "the message should quote the text, then name the problem");
 }
 //---------------------------------------------------------------------------

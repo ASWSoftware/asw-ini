@@ -890,12 +890,12 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Document_CopyIsIndependent)
     // Assert
     AssertEquals(2, static_cast<int>(copy.GetSections().size()), __func__, __LINE__,
         "the copy should keep its preamble and section");
-    CheckEquals(std::string("General"), std::string(copy.GetSections()[1].GetName()), __func__, __LINE__,
+    CheckEquals("General", std::string(copy.GetSections()[1].GetName()), __func__, __LINE__,
         "the copy should keep its section's name");
-    CheckEquals(std::string("640"), std::string(copy.GetSections()[1].GetLines()[1].GetValue()), __func__, __LINE__,
+    CheckEquals("640", std::string(copy.GetSections()[1].GetLines()[1].GetValue()), __func__, __LINE__,
         "the copy should keep its value");
     CheckTrue(copy.GetOptions().Reading.CaseSensitive, __func__, __LINE__, "the copy should keep its options");
-    CheckEquals(std::string("Other"), std::string(original.GetSections()[1].GetName()), __func__, __LINE__,
+    CheckEquals("Other", std::string(original.GetSections()[1].GetName()), __func__, __LINE__,
         "the original should hold what it parsed last");
     CheckFalse(original.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
         "the original should have the options it parsed with last");
@@ -995,7 +995,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Reset_EmptiesTheDocumentWithNewOptions)
         "a reset document should get the platform's line break");
     CheckTrue(document.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
         "a reset document should have the new reading options");
-    CheckEquals(std::string("="), document.GetOptions().Writing.Separator, __func__, __LINE__,
+    CheckEquals("=", document.GetOptions().Writing.Separator, __func__, __LINE__,
         "a reset document should have the new writing options");
     CheckEquals(std::string(), document.ToText(), __func__, __LINE__, "a reset document should be an empty text");
 }
@@ -1042,9 +1042,9 @@ ASW_TEST(TTest_ASWIni_DocumentModel, Reset_WithItsOwnOptionsOnlyEmptiesIt)
     CheckEquals(0, static_cast<int>(document.GetLineCount()), __func__, __LINE__, "the document should be empty");
     AssertEquals(1, static_cast<int>(document.GetOptions().Reading.CommentPrefixes.size()), __func__, __LINE__,
         "the document should keep its comment prefixes");
-    CheckEquals(std::string("//"), document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
+    CheckEquals("//", document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
         "the document should keep its comment prefix");
-    CheckEquals(std::string("// "), document.GetOptions().Writing.CommentPrefix, __func__, __LINE__,
+    CheckEquals("// ", document.GetOptions().Writing.CommentPrefix, __func__, __LINE__,
         "the document should keep its written comment prefix");
 }
 //---------------------------------------------------------------------------
@@ -1080,7 +1080,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_InvalidOptionsChangeNothing)
     // Assert
     CheckEquals(EIniCode::InvalidOptions, result.Code, __func__, __LINE__, "the options should be rejected");
     CheckFalse(result.Message.empty(), __func__, __LINE__, "the result should describe the problem");
-    CheckEquals(std::string("[A]\nk=1\n"), document.ToText(), __func__, __LINE__, "the document should keep its text");
+    CheckEquals("[A]\nk=1\n", document.ToText(), __func__, __LINE__, "the document should keep its text");
     CheckTrue(document.FindKey("A", "k") != nullptr, __func__, __LINE__, "the document should keep its key");
     CheckTrue(document.GetOptions().Reading.CaseSensitive, __func__, __LINE__,
         "the document should keep its options");
@@ -1105,7 +1105,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_KeepsLineBreaksAndTheModifiedFla
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
-    CheckEquals(std::string("\xEF\xBB\xBF[A]\rk=1\rx = 1\r\ny = 1\r\nz = 1\r\n"), document.ToText(), __func__,
+    CheckEquals("\xEF\xBB\xBF[A]\rk=1\rx = 1\r\ny = 1\r\nz = 1\r\n", document.ToText(), __func__,
         __LINE__, "each line should keep its own line break, and the text its byte order mark");
     CheckTrue(document.HasBom(), __func__, __LINE__, "the document should keep its byte order mark");
     CheckEquals(ELineBreak::CR, document.GetLineBreak(), __func__, __LINE__,
@@ -1132,7 +1132,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_KeepsTheBytesOfAByteOrderMarkInA
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
     CheckFalse(document.HasBom(), __func__, __LINE__, "the document should still have no byte order mark");
-    CheckEquals(std::string("\xEF\xBB\xBFx=2\n"), document.ToText(), __func__, __LINE__,
+    CheckEquals("\xEF\xBB\xBFx=2\n", document.ToText(), __func__, __LINE__,
         "the line should keep the mark's bytes");
     CheckTrue(document.FindKey("", "\xEF\xBB\xBFx") != nullptr, __func__, __LINE__,
         "the key should keep the mark's bytes");
@@ -1167,7 +1167,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_RereadsTheTextWithNewOptions)
     CheckEquals(text, document.ToText(), __func__, __LINE__, "the text should stay byte for byte");
     TASWIniDocumentLine const* const url = document.FindKey("A", "url");
     AssertTrue(url != nullptr, __func__, __LINE__, "the line with ':' should be a key");
-    CheckEquals(std::string("x"), std::string(url->GetValue()), __func__, __LINE__, "the key's value");
+    CheckEquals("x", std::string(url->GetValue()), __func__, __LINE__, "the key's value");
     CheckTrue(document.FindKey("A", "// c") == nullptr, __func__, __LINE__,
         "the line that starts with \"//\" shouldn't be a key");
     AssertEquals(4, static_cast<int>(document.GetSections()[1].GetLines().size()), __func__, __LINE__,
@@ -1176,9 +1176,9 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_RereadsTheTextWithNewOptions)
         "the line that starts with \"//\" should be a comment");
     TASWIniDocumentLine const* const k = document.FindKey("A", "k");
     AssertTrue(k != nullptr, __func__, __LINE__, "the key with an inline comment should be found");
-    CheckEquals(std::string("v"), std::string(k->GetValue()), __func__, __LINE__,
+    CheckEquals("v", std::string(k->GetValue()), __func__, __LINE__,
         "the inline comment shouldn't be part of the value");
-    CheckEquals(std::string("note"), std::string(k->GetComment()), __func__, __LINE__, "the inline comment");
+    CheckEquals("note", std::string(k->GetComment()), __func__, __LINE__, "the inline comment");
     CheckTrue(document.GetOptions().Reading.InlineComments, __func__, __LINE__,
         "the document should have the new options");
     CheckFalse(document.IsModified(), __func__, __LINE__, "the modified flag should stay clear");
@@ -1202,7 +1202,7 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_StrictParsingFailureChangesNothi
     // Assert
     CheckEquals(EIniCode::ParseFailed, result.Code, __func__, __LINE__, "the malformed line should fail the options");
     CheckEquals(2, static_cast<int>(result.Line), __func__, __LINE__, "the result should name the malformed line");
-    CheckEquals(std::string("[A]\nbad\nk=2\n"), document.ToText(), __func__, __LINE__,
+    CheckEquals("[A]\nbad\nk=2\n", document.ToText(), __func__, __LINE__,
         "the document should keep its text");
     CheckFalse(document.GetOptions().Reading.StrictParsing, __func__, __LINE__,
         "the document should keep its options");
@@ -1227,29 +1227,29 @@ ASW_TEST(TTest_ASWIni_DocumentModel, SetOptions_WithItsOwnOptionsKeepsTheDocumen
 
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "the options should be set: " + result.Message);
-    CheckEquals(std::string("// c\n[A]\nk=1\n"), document.ToText(), __func__, __LINE__,
+    CheckEquals("// c\n[A]\nk=1\n", document.ToText(), __func__, __LINE__,
         "the document should keep its text");
     AssertEquals(1, static_cast<int>(document.GetOptions().Reading.CommentPrefixes.size()), __func__, __LINE__,
         "the document should keep its comment prefixes");
-    CheckEquals(std::string("//"), document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
+    CheckEquals("//", document.GetOptions().Reading.CommentPrefixes[0], __func__, __LINE__,
         "the document should keep its comment prefix");
-    CheckEquals(std::string("c"), document.GetSectionComment("A"), __func__, __LINE__,
+    CheckEquals("c", document.GetSectionComment("A"), __func__, __LINE__,
         "the comment should still be read with the comment prefix");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentModel, ToString_LineKindNames)
 {
-    CheckEquals(std::string("Blank"), std::string(ASWIni::ToString(ELineKind::Blank)), __func__, __LINE__,
+    CheckEquals("Blank", ASWIni::ToString(ELineKind::Blank), __func__, __LINE__,
         "Blank's name");
-    CheckEquals(std::string("Comment"), std::string(ASWIni::ToString(ELineKind::Comment)), __func__, __LINE__,
+    CheckEquals("Comment", ASWIni::ToString(ELineKind::Comment), __func__, __LINE__,
         "Comment's name");
-    CheckEquals(std::string("Section"), std::string(ASWIni::ToString(ELineKind::Section)), __func__, __LINE__,
+    CheckEquals("Section", ASWIni::ToString(ELineKind::Section), __func__, __LINE__,
         "Section's name");
-    CheckEquals(std::string("KeyValue"), std::string(ASWIni::ToString(ELineKind::KeyValue)), __func__, __LINE__,
+    CheckEquals("KeyValue", ASWIni::ToString(ELineKind::KeyValue), __func__, __LINE__,
         "KeyValue's name");
-    CheckEquals(std::string("Raw"), std::string(ASWIni::ToString(ELineKind::Raw)), __func__, __LINE__,
+    CheckEquals("Raw", ASWIni::ToString(ELineKind::Raw), __func__, __LINE__,
         "Raw's name");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ELineKind>(99))), __func__,
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ELineKind>(99)), __func__,
         __LINE__, "a value that isn't an ELineKind should be \"Unknown\"");
 }
 //---------------------------------------------------------------------------
@@ -1325,9 +1325,9 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Bom_IsDetectedAndNotPartOfALine)
     CheckTrue(withContent.HasBom(), __func__, __LINE__, "a text with a UTF-8 byte order mark should have one");
     std::vector<TASWIniDocumentLine> const lines = AllLines(withContent);
     AssertEquals(2, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have two lines");
-    CheckEquals(std::string("[S]"), lines[0].GetText(), __func__, __LINE__,
+    CheckEquals("[S]", lines[0].GetText(), __func__, __LINE__,
         "the byte order mark shouldn't be part of the first line");
-    CheckEquals(std::string("S"), std::string(lines[0].GetSectionName()), __func__, __LINE__,
+    CheckEquals("S", std::string(lines[0].GetSectionName()), __func__, __LINE__,
         "the first line should still be the section header");
     CheckTrue(bomOnly.HasBom(), __func__, __LINE__, "a text of only a byte order mark should have one");
     CheckEquals(0, static_cast<int>(bomOnly.GetLineCount()), __func__, __LINE__,
@@ -1348,12 +1348,12 @@ ASW_TEST(TTest_ASWIni_DocumentParse, CommentPrefixes_AreConfigurable)
     // Assert
     AssertEquals(4, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have four lines");
     CheckEquals(ELineKind::Comment, lines[0].GetKind(), __func__, __LINE__, "\"// note\" should be a comment");
-    CheckEquals(std::string("note"), std::string(lines[0].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(lines[0].GetComment()), __func__, __LINE__,
         "the comment's text should follow the \"//\"");
     CheckEquals(ELineKind::Comment, lines[1].GetKind(), __func__, __LINE__,
         "\"//x=1\" should be a comment, since comments come before keys");
     CheckKeyValue(lines[2], "#x", "1", __func__, __LINE__, "\"#x=1\" without '#' as a prefix");
-    CheckEquals(std::string("double"), std::string(lines[3].GetComment()), __func__, __LINE__,
+    CheckEquals("double", std::string(lines[3].GetComment()), __func__, __LINE__,
         "the longest prefix that matches should be the comment's prefix");
 }
 //---------------------------------------------------------------------------
@@ -1374,13 +1374,13 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Comments_KeepTheirText)
         CheckTrue(line.HasComment(), __func__, __LINE__, "\"" + line.GetText() + "\" should have a comment");
     }
 
-    CheckEquals(std::string("first"), std::string(lines[0].GetComment()), __func__, __LINE__, "a ';' comment");
-    CheckEquals(std::string("second"), std::string(lines[1].GetComment()), __func__, __LINE__,
+    CheckEquals("first", std::string(lines[0].GetComment()), __func__, __LINE__, "a ';' comment");
+    CheckEquals("second", std::string(lines[1].GetComment()), __func__, __LINE__,
         "a '#' comment, without its trailing space");
-    CheckEquals(std::string("indented"), std::string(lines[2].GetComment()), __func__, __LINE__,
+    CheckEquals("indented", std::string(lines[2].GetComment()), __func__, __LINE__,
         "an indented comment");
     CheckEquals(std::string(), std::string(lines[3].GetComment()), __func__, __LINE__, "an empty comment");
-    CheckEquals(std::string("  \t;indented"), lines[2].GetText(), __func__, __LINE__,
+    CheckEquals("  \t;indented", lines[2].GetText(), __func__, __LINE__,
         "the line's text should be kept as it is");
 }
 //---------------------------------------------------------------------------
@@ -1422,7 +1422,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, InlineComments_NeedABlankBeforeThePrefix)
     // Assert
     AssertEquals(5, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have five lines");
     CheckKeyValue(lines[0], "a", "v", __func__, __LINE__, "a comment after a space");
-    CheckEquals(std::string("note"), std::string(lines[0].GetComment()), __func__, __LINE__, "the comment's text");
+    CheckEquals("note", std::string(lines[0].GetComment()), __func__, __LINE__, "the comment's text");
     CheckKeyValue(lines[1], "b", "v;x", __func__, __LINE__, "a prefix with no blank before it");
     CheckFalse(lines[1].HasComment(), __func__, __LINE__, "a prefix with no blank before it shouldn't be a comment");
     CheckKeyValue(lines[2], "c", "", __func__, __LINE__, "an empty value with a comment");
@@ -1430,7 +1430,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, InlineComments_NeedABlankBeforeThePrefix)
     CheckKeyValue(lines[3], "d", ";note", __func__, __LINE__, "a prefix right after the separator");
     CheckFalse(lines[3].HasComment(), __func__, __LINE__, "a prefix right after the separator shouldn't be a comment");
     CheckKeyValue(lines[4], "e", "v", __func__, __LINE__, "a comment after a tab");
-    CheckEquals(std::string("tabbed"), std::string(lines[4].GetComment()), __func__, __LINE__,
+    CheckEquals("tabbed", std::string(lines[4].GetComment()), __func__, __LINE__,
         "the comment's text, trimmed");
 }
 //---------------------------------------------------------------------------
@@ -1480,7 +1480,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, KeyValue_KeyAndValueAreTrimmed)
     // Assert
     AssertEquals(3, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have three lines");
     CheckKeyValue(lines[0], "My Key", "value with spaces", __func__, __LINE__, "a key and value with blanks");
-    CheckEquals(std::string("\tMy Key \t=\t value with spaces \t"), lines[0].GetText(), __func__, __LINE__,
+    CheckEquals("\tMy Key \t=\t value with spaces \t", lines[0].GetText(), __func__, __LINE__,
         "the line's text should be kept as it is");
     CheckKeyValue(lines[1], "empty", "", __func__, __LINE__, "an empty value");
     CheckKeyValue(lines[2], "k", "v", __func__, __LINE__, "no blanks");
@@ -1517,7 +1517,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, LineBreaks_AreKeptForEachLine)
     CheckEquals(ELineBreak::CRLF, lines[1].GetLineBreak(), __func__, __LINE__, "line 2 should end with CRLF");
     CheckEquals(ELineBreak::CR, lines[2].GetLineBreak(), __func__, __LINE__, "line 3 should end with CR");
     CheckEquals(ELineBreak::None, lines[3].GetLineBreak(), __func__, __LINE__, "line 4 should have no line break");
-    CheckEquals(std::string("b=2"), lines[1].GetText(), __func__, __LINE__,
+    CheckEquals("b=2", lines[1].GetText(), __func__, __LINE__,
         "a line's text shouldn't hold its line break");
 }
 //---------------------------------------------------------------------------
@@ -1536,9 +1536,9 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Parse_KeepsTheOptions)
         "the document should keep the reading options");
     CheckEquals(ASWIni::ELineEnding::LF, document.GetOptions().Writing.LineEnding, __func__, __LINE__,
         "the document should keep the writing options");
-    CheckEquals(std::string("note"), std::string(AllLines(document)[0].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(AllLines(document)[0].GetComment()), __func__, __LINE__,
         "the text should be read with the reading options");
-    CheckEquals(std::string("a = 1 ; note\nb=2\n"), document.ToText(), __func__, __LINE__,
+    CheckEquals("a = 1 ; note\nb=2\n", document.ToText(), __func__, __LINE__,
         "the text should be written with the writing options");
 }
 //---------------------------------------------------------------------------
@@ -1608,7 +1608,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_DoubledQuoteIsOneQuote)
 
     AssertEquals(7, static_cast<int>(commented.size()), __func__, __LINE__, "the text should have seven lines");
     CheckKeyValue(commented[3], "d", "a\" b", __func__, __LINE__, "doubled quotes with InlineComments");
-    CheckEquals(std::string("note"), std::string(commented[3].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(commented[3].GetComment()), __func__, __LINE__,
         "the comment after doubled quotes");
 }
 //---------------------------------------------------------------------------
@@ -1643,10 +1643,10 @@ ASW_TEST(TTest_ASWIni_DocumentParse, QuotedValues_LoseTheirQuotes)
     AssertEquals(7, static_cast<int>(commented.size()), __func__, __LINE__, "the text should have seven lines");
     CheckKeyValue(commented[4], "e", "x", __func__, __LINE__, "a comment after the quotes with InlineComments");
     CheckTrue(commented[4].IsQuoted(), __func__, __LINE__, "\"x\" ; note should be quoted with InlineComments");
-    CheckEquals(std::string("note"), std::string(commented[4].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(commented[4].GetComment()), __func__, __LINE__,
         "the comment after the quotes");
     CheckKeyValue(commented[5], "f", "a ; b", __func__, __LINE__, "a prefix inside the quotes");
-    CheckEquals(std::string("note"), std::string(commented[5].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(commented[5].GetComment()), __func__, __LINE__,
         "the comment should be searched for after the closing quote");
     CheckKeyValue(commented[6], "g", "\"x\";note", __func__, __LINE__, "a prefix right after the closing quote");
     CheckFalse(commented[6].HasComment(), __func__, __LINE__,
@@ -1687,7 +1687,7 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_HoldTheLinesAfterTheirHeader)
         "the preamble should hold the lines before the first header");
     CheckKeyValue(sections[0].GetLines()[1], "a", "1", __func__, __LINE__, "a key before any section");
     CheckTrue(sections[1].HasHeader(), __func__, __LINE__, "[S] should have a header");
-    CheckEquals(std::string("S"), std::string(sections[1].GetName()), __func__, __LINE__, "[S]'s name");
+    CheckEquals("S", std::string(sections[1].GetName()), __func__, __LINE__, "[S]'s name");
     CheckEquals(3, static_cast<int>(sections[1].GetLines().size()), __func__, __LINE__,
         "[S] should hold its header, b and the comment");
     CheckEquals(ELineKind::Section, sections[1].GetLines()[0].GetKind(), __func__, __LINE__,
@@ -1705,11 +1705,11 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_KeepATrailingComment)
 
     // Assert
     AssertEquals(3, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have three lines");
-    CheckEquals(std::string("General"), std::string(lines[0].GetSectionName()), __func__, __LINE__,
+    CheckEquals("General", std::string(lines[0].GetSectionName()), __func__, __LINE__,
         "the name before the comment");
     CheckTrue(lines[0].HasComment(), __func__, __LINE__, "\"[General] ; note\" should have a comment");
-    CheckEquals(std::string("note"), std::string(lines[0].GetComment()), __func__, __LINE__, "the comment's text");
-    CheckEquals(std::string("x"), std::string(lines[1].GetComment()), __func__, __LINE__,
+    CheckEquals("note", std::string(lines[0].GetComment()), __func__, __LINE__, "the comment's text");
+    CheckEquals("x", std::string(lines[1].GetComment()), __func__, __LINE__,
         "a comment right after the ']' (even with InlineComments off)");
     CheckFalse(lines[2].HasComment(), __func__, __LINE__, "blanks after the ']' aren't a comment");
 }
@@ -1723,15 +1723,15 @@ ASW_TEST(TTest_ASWIni_DocumentParse, Sections_NamesAreTrimmedAndFlat)
 
     // Assert
     AssertEquals(5, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have five lines");
-    CheckEquals(std::string("General"), std::string(lines[0].GetSectionName()), __func__, __LINE__,
+    CheckEquals("General", std::string(lines[0].GetSectionName()), __func__, __LINE__,
         "the blanks around the name should be trimmed");
-    CheckEquals(std::string("Indented"), std::string(lines[1].GetSectionName()), __func__, __LINE__,
+    CheckEquals("Indented", std::string(lines[1].GetSectionName()), __func__, __LINE__,
         "an indented header");
-    CheckEquals(std::string("a.b"), std::string(lines[2].GetSectionName()), __func__, __LINE__,
+    CheckEquals("a.b", std::string(lines[2].GetSectionName()), __func__, __LINE__,
         "a dot should be an ordinary character");
-    CheckEquals(std::string("remote \"origin\""), std::string(lines[3].GetSectionName()), __func__, __LINE__,
+    CheckEquals("remote \"origin\"", std::string(lines[3].GetSectionName()), __func__, __LINE__,
         "git's subsection syntax should be a literal name");
-    CheckEquals(std::string("*.md"), std::string(lines[4].GetSectionName()), __func__, __LINE__,
+    CheckEquals("*.md", std::string(lines[4].GetSectionName()), __func__, __LINE__,
         "an .editorconfig glob should be a literal name");
 }
 //---------------------------------------------------------------------------
@@ -1766,7 +1766,7 @@ void TTest_ASWIni_DocumentMessages::CheckParseFails(std::string_view text, TASWI
     CheckFalse(result.Message.empty(), method, lineNumber, msg + ": the result should describe the error");
     AssertEquals(2, static_cast<int>(document.GetSections().size()), method, lineNumber,
         msg + ": the document should keep its sections");
-    CheckEquals(std::string("Old"), std::string(document.GetSections()[1].GetName()), method, lineNumber,
+    CheckEquals("Old", std::string(document.GetSections()[1].GetName()), method, lineNumber,
         msg + ": the document should keep its section");
     CheckEquals(1, static_cast<int>(messages.size()), method, lineNumber,
         msg + ": no message should be added when parsing fails");
@@ -1817,7 +1817,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, DuplicateKey_IsReportedWithTheFirstLine)
     AssertTrue(result.IsOk(), __func__, __LINE__, "a duplicate key shouldn't fail the parse: " + result.Message);
     AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "one duplicate");
     CheckWarning(messages[0], EIniCode::DuplicateKey, 4, "S", __func__, __LINE__, "the duplicate key");
-    CheckEquals(std::string("WIDTH"), messages[0].Key, __func__, __LINE__, "the key as the duplicate writes it");
+    CheckEquals("WIDTH", messages[0].Key, __func__, __LINE__, "the key as the duplicate writes it");
     CheckContains(messages[0].Text, "line 2", __func__, __LINE__, "the text should name the first line");
     CheckContains(messages[0].Text, "first one's", __func__, __LINE__, "the text should say the first one wins");
     CheckEquals(4, static_cast<int>(document.GetSections()[1].GetLines().size()), __func__, __LINE__,
@@ -1948,8 +1948,8 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, InvalidUtf8_IsReportedOnce)
     CheckWarning(messages[0], EIniCode::InvalidUtf8, 3, "S", __func__, __LINE__, "the first invalid line");
     std::vector<TASWIniDocumentLine> const lines = AllLines(document);
     AssertEquals(4, static_cast<int>(lines.size()), __func__, __LINE__, "the text should have four lines");
-    CheckEquals(std::string("a=\xFF"), lines[2].GetText(), __func__, __LINE__, "the bytes should be kept");
-    CheckEquals(std::string("\xC0\x80"), std::string(lines[3].GetValue()), __func__, __LINE__,
+    CheckEquals("a=\xFF", lines[2].GetText(), __func__, __LINE__, "the bytes should be kept");
+    CheckEquals("\xC0\x80", std::string(lines[3].GetValue()), __func__, __LINE__,
         "an overlong sequence should be kept as a value");
 }
 //---------------------------------------------------------------------------
@@ -1971,7 +1971,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, NoSeparator_IsMalformed)
     TASWIniDocumentLine const& line = document.GetSections()[1].GetLines()[1];
     CheckEquals(ELineKind::Raw, line.GetKind(), __func__, __LINE__, "the line should be kept as a Raw line");
     CheckEquals(std::string(), std::string(line.GetKey()), __func__, __LINE__, "a Raw line should have no key");
-    CheckEquals(std::string("skip-networking"), line.GetText(), __func__, __LINE__, "the text should be kept");
+    CheckEquals("skip-networking", line.GetText(), __func__, __LINE__, "the text should be kept");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentMessages, StrictParsing_FailsAtTheFirstMalformedLine)
@@ -2031,7 +2031,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, TextAfterSectionHeader_IsMalformedButUse
         "\"[a]b]\": the first ']' closes the name");
     AssertEquals(3, static_cast<int>(document.GetSections().size()), __func__, __LINE__,
         "both headers should start a section");
-    CheckEquals(std::string("General"), std::string(document.GetSections()[1].GetName()), __func__, __LINE__,
+    CheckEquals("General", std::string(document.GetSections()[1].GetName()), __func__, __LINE__,
         "the section's name");
     CheckEquals(2, static_cast<int>(document.GetSections()[1].GetLines().size()), __func__, __LINE__,
         "the key should be in [General]");
@@ -2108,7 +2108,7 @@ ASW_TEST(TTest_ASWIni_DocumentMessages, Warnings_AreAppended)
     // Assert
     AssertTrue(result.IsOk(), __func__, __LINE__, "the text should parse: " + result.Message);
     AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__, "the earlier message and the new one");
-    CheckEquals(std::string("earlier"), messages[0].Text, __func__, __LINE__, "the earlier message should be kept");
+    CheckEquals("earlier", messages[0].Text, __func__, __LINE__, "the earlier message should be kept");
     CheckWarning(messages[1], EIniCode::MalformedLine, 1, "", __func__, __LINE__, "the new warning");
 }
 //---------------------------------------------------------------------------
@@ -2220,9 +2220,9 @@ ASW_TEST(TTest_ASWIni_DocumentToText, EmptyDocument_IsEmptyText)
     // Act & Assert
     CheckEquals(std::string(), TASWIniDocument().ToText(), __func__, __LINE__,
         "a new document should be an empty text");
-    CheckEquals(std::string("\xEF\xBB\xBF"), alwaysDocument.ToText(), __func__, __LINE__,
+    CheckEquals("\xEF\xBB\xBF", alwaysDocument.ToText(), __func__, __LINE__,
         "an empty document with Always should be only the mark");
-    CheckEquals(std::string("\xEF\xBB\xBF"), WriteBack("\xEF\xBB\xBF", TASWIniWritingOptions(), __func__,
+    CheckEquals("\xEF\xBB\xBF", WriteBack("\xEF\xBB\xBF", TASWIniWritingOptions(), __func__,
         __LINE__), __func__, __LINE__, "a text of only the mark should be written back as it was");
 }
 //---------------------------------------------------------------------------
@@ -2258,9 +2258,9 @@ ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_ConvertsEveryLine)
 #endif
 
     // Act & Assert
-    CheckEquals(std::string("a=1\nb=2\nc=3\nd=4\n"), WriteBack(text, lf, __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("a=1\nb=2\nc=3\nd=4\n", WriteBack(text, lf, __func__, __LINE__), __func__, __LINE__,
         "LF should end every line with LF");
-    CheckEquals(std::string("a=1\r\nb=2\r\nc=3\r\nd=4\r\n"), WriteBack(text, crlf, __func__, __LINE__), __func__,
+    CheckEquals("a=1\r\nb=2\r\nc=3\r\nd=4\r\n", WriteBack(text, crlf, __func__, __LINE__), __func__,
         __LINE__, "CRLF should end every line with CRLF");
     CheckEquals(nativeText, WriteBack(text, native, __func__, __LINE__), __func__, __LINE__,
         "Native should end every line with the platform's line break");
@@ -2275,9 +2275,9 @@ ASW_TEST(TTest_ASWIni_DocumentToText, LineEnding_NeverAddsAFinalLineBreak)
     lf.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("a=1\r\nb=2"), WriteBack("a=1\nb=2", crlf, __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("a=1\r\nb=2", WriteBack("a=1\nb=2", crlf, __func__, __LINE__), __func__, __LINE__,
         "a last line with no line break should get none with CRLF");
-    CheckEquals(std::string("a=1"), WriteBack("a=1", lf, __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("a=1", WriteBack("a=1", lf, __func__, __LINE__), __func__, __LINE__,
         "a single line with no line break should get none with LF");
 }
 //---------------------------------------------------------------------------
@@ -2921,15 +2921,15 @@ ASW_TEST(TTest_ASWIni_DocumentLookup, GetKeyNames_EachKeyOnceInFileOrder)
     TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("b|a|c"), JoinedNames(ignoringCase.GetKeyNames("a")), __func__, __LINE__,
+    CheckEquals("b|a|c", JoinedNames(ignoringCase.GetKeyNames("a")), __func__, __LINE__,
         "the keys of both [A] and [a], each once, as first written");
-    CheckEquals(std::string("p|q"), JoinedNames(ignoringCase.GetKeyNames("")), __func__, __LINE__,
+    CheckEquals("p|q", JoinedNames(ignoringCase.GetKeyNames("")), __func__, __LINE__,
         "the keys before the first header");
     CheckEquals(std::string(), JoinedNames(ignoringCase.GetKeyNames("Missing")), __func__, __LINE__,
         "a missing section has no keys");
-    CheckEquals(std::string("b|a|B"), JoinedNames(matchingCase.GetKeyNames("A")), __func__, __LINE__,
+    CheckEquals("b|a|B", JoinedNames(matchingCase.GetKeyNames("A")), __func__, __LINE__,
         "the keys of [A] with CaseSensitive");
-    CheckEquals(std::string("c|A"), JoinedNames(matchingCase.GetKeyNames("a")), __func__, __LINE__,
+    CheckEquals("c|A", JoinedNames(matchingCase.GetKeyNames("a")), __func__, __LINE__,
         "the keys of [a] with CaseSensitive");
 }
 //---------------------------------------------------------------------------
@@ -2946,9 +2946,9 @@ ASW_TEST(TTest_ASWIni_DocumentLookup, GetSectionNames_EachNameOnceInFileOrder)
     TASWIniDocument const preambleOnly = Parsed("k=1\n", TASWIniOptions(), __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("B|A|C"), JoinedNames(ignoringCase.GetSectionNames()), __func__, __LINE__,
+    CheckEquals("B|A|C", JoinedNames(ignoringCase.GetSectionNames()), __func__, __LINE__,
         "each name once, as first written, without the preamble");
-    CheckEquals(std::string("B|A|b|C"), JoinedNames(matchingCase.GetSectionNames()), __func__, __LINE__,
+    CheckEquals("B|A|b|C", JoinedNames(matchingCase.GetSectionNames()), __func__, __LINE__,
         "names that differ in case are different names with CaseSensitive");
     CheckEquals(std::string(), JoinedNames(preambleOnly.GetSectionNames()), __func__, __LINE__,
         "a document with no header has no section names");
@@ -2968,13 +2968,13 @@ ASW_TEST(TTest_ASWIni_DocumentLookup, GetSectionNames_PrefixSelectsTheNames)
     TASWIniDocument const matchingCase = Parsed(text, caseSensitive, __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("Window.Main|window.Tools"), JoinedNames(ignoringCase.GetSectionNames("Window.")),
+    CheckEquals("Window.Main|window.Tools", JoinedNames(ignoringCase.GetSectionNames("Window.")),
         __func__, __LINE__, "the names that start with \"Window.\" in any case");
-    CheckEquals(std::string("Window.Main"), JoinedNames(matchingCase.GetSectionNames("Window.")), __func__,
+    CheckEquals("Window.Main", JoinedNames(matchingCase.GetSectionNames("Window.")), __func__,
         __LINE__, "the names that start with \"Window.\" with CaseSensitive");
-    CheckEquals(std::string("Window.Main|window.Tools|Window"), JoinedNames(ignoringCase.GetSectionNames("WINDOW")),
+    CheckEquals("Window.Main|window.Tools|Window", JoinedNames(ignoringCase.GetSectionNames("WINDOW")),
         __func__, __LINE__, "a prefix that is a whole name");
-    CheckEquals(std::string("Window.Main|Other|window.Tools|Window"), JoinedNames(ignoringCase.GetSectionNames("")),
+    CheckEquals("Window.Main|Other|window.Tools|Window", JoinedNames(ignoringCase.GetSectionNames("")),
         __func__, __LINE__, "an empty prefix selects every name");
     CheckEquals(std::string(), JoinedNames(ignoringCase.GetSectionNames("Window.Main.Extra")), __func__, __LINE__,
         "a prefix longer than every name");
@@ -3092,15 +3092,15 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, AddSection_AddsAnEmptySectionAtTheEnd)
     lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n[B]\n"), AddAndWrite("[A]\nk=1\n", options, "B", __func__, __LINE__),
+    CheckEquals("[A]\nk=1\n\n[B]\n", AddAndWrite("[A]\nk=1\n", options, "B", __func__, __LINE__),
         __func__, __LINE__, "after a blank line");
-    CheckEquals(std::string("[A]\nk=1\n[B]\n"), AddAndWrite("[A]\nk=1\n", noBlankLine, "B", __func__, __LINE__),
+    CheckEquals("[A]\nk=1\n[B]\n", AddAndWrite("[A]\nk=1\n", noBlankLine, "B", __func__, __LINE__),
         __func__, __LINE__, "without a blank line when BlankLineBeforeNewSection is off");
-    CheckEquals(std::string("[A]\n\n[B]\n"), AddAndWrite("[A]\n\n", options, "B", __func__, __LINE__), __func__,
+    CheckEquals("[A]\n\n[B]\n", AddAndWrite("[A]\n\n", options, "B", __func__, __LINE__), __func__,
         __LINE__, "after the blank line the text ends with");
-    CheckEquals(std::string("[B]\n"), AddAndWrite("", lf, "B", __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("[B]\n", AddAndWrite("", lf, "B", __func__, __LINE__), __func__, __LINE__,
         "first in an empty document, with no blank line");
-    CheckEquals(std::string("[A]\n\n[B]\n"), AddAndWrite("[A]", lf, "B", __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("[A]\n\n[B]\n", AddAndWrite("[A]", lf, "B", __func__, __LINE__), __func__, __LINE__,
         "a last line without a line break gets one");
 }
 //---------------------------------------------------------------------------
@@ -3137,7 +3137,7 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, AddSection_RejectsNamesThatWouldntReadBa
         std::string const msg = "the name \"" + name + "\"";
         CheckEquals(EIniCode::InvalidArgument, result.Code, __func__, __LINE__, msg + " should be rejected");
         CheckFalse(result.Message.empty(), __func__, __LINE__, msg + ": the result should describe the problem");
-        CheckEquals(std::string("[A]\n"), document.ToText(), __func__, __LINE__, msg + ": the text shouldn't change");
+        CheckEquals("[A]\n", document.ToText(), __func__, __LINE__, msg + ": the text shouldn't change");
         CheckFalse(document.IsModified(), __func__, __LINE__, msg + ": the document shouldn't be modified");
     }
 }
@@ -3174,9 +3174,9 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_GoesAfterTheHeaderOfASectionWitho
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk = v\n; about\n\n[B]\n"), SetAndWrite("[A]\n; about\n\n[B]\n", options, "A", "k",
+    CheckEquals("[A]\nk = v\n; about\n\n[B]\n", SetAndWrite("[A]\n; about\n\n[B]\n", options, "A", "k",
         "v", __func__, __LINE__), __func__, __LINE__, "before the comments and blank lines of the section");
-    CheckEquals(std::string("  [A]\nk = v\n"), SetAndWrite("  [A]\n", options, "A", "k", "v", __func__, __LINE__),
+    CheckEquals("  [A]\nk = v\n", SetAndWrite("  [A]\n", options, "A", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "without the indentation of the header");
 }
 //---------------------------------------------------------------------------
@@ -3186,12 +3186,12 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_GoesAfterTheLastKey)
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\na = 1\n  b = 2\n  c = 3\n; old = 3\n\n[B]\n"), SetAndWrite(
+    CheckEquals("[A]\na = 1\n  b = 2\n  c = 3\n; old = 3\n\n[B]\n", SetAndWrite(
         "[A]\na = 1\n  b = 2\n; old = 3\n\n[B]\n", options, "A", "c", "3", __func__, __LINE__), __func__, __LINE__,
         "after the last key, with its indentation, before a comment and a blank line");
-    CheckEquals(std::string("[A]\n\tk=1\n\tl = 2\n"), SetAndWrite("[A]\n\tk=1\n", options, "A", "l", "2", __func__,
+    CheckEquals("[A]\n\tk=1\n\tl = 2\n", SetAndWrite("[A]\n\tk=1\n", options, "A", "l", "2", __func__,
         __LINE__), __func__, __LINE__, "a tab as indentation");
-    CheckEquals(std::string("[A]\nk=1\nl = 2\nraw\n"), SetAndWrite("[A]\nk=1\nraw\n", options, "A", "l", "2",
+    CheckEquals("[A]\nk=1\nl = 2\nraw\n", SetAndWrite("[A]\nk=1\nraw\n", options, "A", "l", "2",
         __func__, __LINE__), __func__, __LINE__, "a Raw line isn't a key");
 }
 //---------------------------------------------------------------------------
@@ -3202,7 +3202,7 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_GoesInTheFirstSectionOfThatName)
         __LINE__);
 
     // Assert
-    CheckEquals(std::string("[A]\na=1\nc = 3\n[B]\n[a]\nb=2\n"), written, __func__, __LINE__,
+    CheckEquals("[A]\na=1\nc = 3\n[B]\n[a]\nb=2\n", written, __func__, __LINE__,
         "in the first section named A, in any case");
 }
 //---------------------------------------------------------------------------
@@ -3214,19 +3214,19 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_GoesUnderTheFileCommentInThePream
     lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("x=1\ny = 2\n\n[A]\n"), SetAndWrite("x=1\n\n[A]\n", options, "", "y", "2", __func__,
+    CheckEquals("x=1\ny = 2\n\n[A]\n", SetAndWrite("x=1\n\n[A]\n", options, "", "y", "2", __func__,
         __LINE__), __func__, __LINE__, "after the last key of the preamble");
-    CheckEquals(std::string("; file\n\nk = v\n; about A\n[A]\n"), SetAndWrite("; file\n\n; about A\n[A]\n", options,
+    CheckEquals("; file\n\nk = v\n; about A\n[A]\n", SetAndWrite("; file\n\n; about A\n[A]\n", options,
         "", "k", "v", __func__, __LINE__), __func__, __LINE__, "after the file comment and the blank line under it");
-    CheckEquals(std::string("; file\n\n\nk = v\n"), SetAndWrite("; file\n\n\n", options, "", "k", "v", __func__,
+    CheckEquals("; file\n\n\nk = v\n", SetAndWrite("; file\n\n\n", options, "", "k", "v", __func__,
         __LINE__), __func__, __LINE__, "after every blank line under the file comment");
-    CheckEquals(std::string("k = v\n; about A\n[A]\n"), SetAndWrite("; about A\n[A]\n", options, "", "k", "v",
+    CheckEquals("k = v\n; about A\n[A]\n", SetAndWrite("; about A\n[A]\n", options, "", "k", "v",
         __func__, __LINE__), __func__, __LINE__, "before a comment that leads into the first header");
-    CheckEquals(std::string("; file\n\nk = v\n"), SetAndWrite("; file\n", options, "", "k", "v", __func__, __LINE__),
+    CheckEquals("; file\n\nk = v\n", SetAndWrite("; file\n", options, "", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "a blank line between the file comment and the key when there is none");
-    CheckEquals(std::string("; file\n\nk = v\n"), SetAndWrite("; file", lf, "", "k", "v", __func__, __LINE__),
+    CheckEquals("; file\n\nk = v\n", SetAndWrite("; file", lf, "", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "a file comment without a line break");
-    CheckEquals(std::string("k = v\n"), SetAndWrite("", lf, "", "k", "v", __func__, __LINE__), __func__, __LINE__,
+    CheckEquals("k = v\n", SetAndWrite("", lf, "", "k", "v", __func__, __LINE__), __func__, __LINE__,
         "an empty document");
 }
 //---------------------------------------------------------------------------
@@ -3239,13 +3239,13 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_IsQuotedWhenItNeedsIt)
     quotedWithComments.Reading.InlineComments = true;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk = \" x \"\n"), SetAndWrite("[A]\n", quoted, "A", "k", " x ", __func__, __LINE__),
+    CheckEquals("[A]\nk = \" x \"\n", SetAndWrite("[A]\n", quoted, "A", "k", " x ", __func__, __LINE__),
         __func__, __LINE__, "blanks at either end");
-    CheckEquals(std::string("[A]\nk = \"a ; b\"\n"), SetAndWrite("[A]\n", quotedWithComments, "A", "k", "a ; b",
+    CheckEquals("[A]\nk = \"a ; b\"\n", SetAndWrite("[A]\n", quotedWithComments, "A", "k", "a ; b",
         __func__, __LINE__), __func__, __LINE__, "a comment prefix after a blank, with InlineComments");
-    CheckEquals(std::string("[A]\nk = a\n"), SetAndWrite("[A]\n", quoted, "A", "k", "a", __func__, __LINE__),
+    CheckEquals("[A]\nk = a\n", SetAndWrite("[A]\n", quoted, "A", "k", "a", __func__, __LINE__),
         __func__, __LINE__, "a value that doesn't need quotes");
-    CheckEquals(std::string("[A]\nk = \"\"\"x\"\"\"\n"), SetAndWrite("[A]\n", quoted, "A", "k", "\"x\"", __func__,
+    CheckEquals("[A]\nk = \"\"\"x\"\"\"\n", SetAndWrite("[A]\n", quoted, "A", "k", "\"x\"", __func__,
         __LINE__), __func__, __LINE__, "a value in quotes, with its quotes doubled");
 }
 //---------------------------------------------------------------------------
@@ -3257,13 +3257,13 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_LineBreaks)
     crlf.Writing.LineEnding = ASWIni::ELineEnding::CRLF;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\r\nk=1\r\nl = 2\r\n"), SetAndWrite("[A]\r\nk=1", options, "A", "l", "2", __func__,
+    CheckEquals("[A]\r\nk=1\r\nl = 2\r\n", SetAndWrite("[A]\r\nk=1", options, "A", "l", "2", __func__,
         __LINE__), __func__, __LINE__, "the document's line break, also for a last line without one");
-    CheckEquals(std::string("[A]\rk=1\rl = 2\r"), SetAndWrite("[A]\rk=1\r", options, "A", "l", "2", __func__,
+    CheckEquals("[A]\rk=1\rl = 2\r", SetAndWrite("[A]\rk=1\r", options, "A", "l", "2", __func__,
         __LINE__), __func__, __LINE__, "CR, the document's line break");
-    CheckEquals(std::string("[A]\nk=1\nl = 2\n[B]\nx=1"), SetAndWrite("[A]\nk=1\n[B]\nx=1", options, "A", "l", "2",
+    CheckEquals("[A]\nk=1\nl = 2\n[B]\nx=1", SetAndWrite("[A]\nk=1\n[B]\nx=1", options, "A", "l", "2",
         __func__, __LINE__), __func__, __LINE__, "a last line elsewhere keeps having no line break");
-    CheckEquals(std::string("[A]\r\nk=1\r\nl = 2\r\n"), SetAndWrite("[A]\nk=1\n", crlf, "A", "l", "2", __func__,
+    CheckEquals("[A]\r\nk=1\r\nl = 2\r\n", SetAndWrite("[A]\nk=1\n", crlf, "A", "l", "2", __func__,
         __LINE__), __func__, __LINE__, "the converted line break");
 }
 //---------------------------------------------------------------------------
@@ -3300,17 +3300,17 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewKey_UsesTheWritingSeparator)
     tabbed.Writing.Separator = "\t=\t";
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk = v\n"), SetAndWrite("[A]\n", spaced, "A", "k", "v", __func__, __LINE__),
+    CheckEquals("[A]\nk = v\n", SetAndWrite("[A]\n", spaced, "A", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "the default \" = \"");
-    CheckEquals(std::string("[A]\nk=v\n"), SetAndWrite("[A]\n", plain, "A", "k", "v", __func__, __LINE__), __func__,
+    CheckEquals("[A]\nk=v\n", SetAndWrite("[A]\n", plain, "A", "k", "v", __func__, __LINE__), __func__,
         __LINE__, "\"=\"");
-    CheckEquals(std::string("[A]\nk: v\n"), SetAndWrite("[A]\n", colon, "A", "k", "v", __func__, __LINE__), __func__,
+    CheckEquals("[A]\nk: v\n", SetAndWrite("[A]\n", colon, "A", "k", "v", __func__, __LINE__), __func__,
         __LINE__, "\": \"");
-    CheckEquals(std::string("[A]\nk\t=\tv\n"), SetAndWrite("[A]\n", tabbed, "A", "k", "v", __func__, __LINE__),
+    CheckEquals("[A]\nk\t=\tv\n", SetAndWrite("[A]\n", tabbed, "A", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "\"\\t=\\t\"");
-    CheckEquals(std::string("[A]\nk =\n"), SetAndWrite("[A]\n", spaced, "A", "k", "", __func__, __LINE__), __func__,
+    CheckEquals("[A]\nk =\n", SetAndWrite("[A]\n", spaced, "A", "k", "", __func__, __LINE__), __func__,
         __LINE__, "an empty value without the blank after the separator");
-    CheckEquals(std::string("[A]\nk:\n"), SetAndWrite("[A]\n", colon, "A", "k", "", __func__, __LINE__), __func__,
+    CheckEquals("[A]\nk:\n", SetAndWrite("[A]\n", colon, "A", "k", "", __func__, __LINE__), __func__,
         __LINE__, "an empty value with \": \"");
 }
 //---------------------------------------------------------------------------
@@ -3324,15 +3324,15 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewSection_GoesAtTheEnd)
     lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n[B]\nx = 1\n"), SetAndWrite("[A]\nk=1\n", options, "B", "x", "1", __func__,
+    CheckEquals("[A]\nk=1\n\n[B]\nx = 1\n", SetAndWrite("[A]\nk=1\n", options, "B", "x", "1", __func__,
         __LINE__), __func__, __LINE__, "after a blank line, with the key right after the header");
-    CheckEquals(std::string("[A]\nk=1\n[B]\nx = 1\n"), SetAndWrite("[A]\nk=1\n", noBlankLine, "B", "x", "1",
+    CheckEquals("[A]\nk=1\n[B]\nx = 1\n", SetAndWrite("[A]\nk=1\n", noBlankLine, "B", "x", "1",
         __func__, __LINE__), __func__, __LINE__, "without a blank line when BlankLineBeforeNewSection is off");
-    CheckEquals(std::string("; c\n\n[B]\nx = 1\n"), SetAndWrite("; c\n", options, "B", "x", "1", __func__,
+    CheckEquals("; c\n\n[B]\nx = 1\n", SetAndWrite("; c\n", options, "B", "x", "1", __func__,
         __LINE__), __func__, __LINE__, "after a preamble");
-    CheckEquals(std::string("[B]\nx = 1\n"), SetAndWrite("", lf, "B", "x", "1", __func__, __LINE__), __func__,
+    CheckEquals("[B]\nx = 1\n", SetAndWrite("", lf, "B", "x", "1", __func__, __LINE__), __func__,
         __LINE__, "first in an empty document");
-    CheckEquals(std::string("[A]\nk=1\n\n[B]\nx = 1\n"), SetAndWrite("[A]\nk=1", lf, "B", "x", "1", __func__,
+    CheckEquals("[A]\nk=1\n\n[B]\nx = 1\n", SetAndWrite("[A]\nk=1", lf, "B", "x", "1", __func__,
         __LINE__), __func__, __LINE__, "after a last line without a line break");
 }
 //---------------------------------------------------------------------------
@@ -3348,7 +3348,7 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, NewSection_KeepsALineThatEndsWithCrApart
     std::string const written = AddAndWrite(text, TASWIniOptions(), "B", __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("[A]\nk=1\nl=2\r\n\n[B]\n"), written, __func__, __LINE__,
+    CheckEquals("[A]\nk=1\nl=2\r\n\n[B]\n", written, __func__, __LINE__,
         "the line that ends with CR should end with CRLF instead");
     CheckEquals(5, static_cast<int>(ParseText(written, TASWIniOptions(), result, messages).GetLineCount()),
         __func__, __LINE__, "the text should read back as five lines");
@@ -3362,9 +3362,9 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_ChangesTheWinningDuplicate)
     lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=x\nk=2\n[a]\nk=3\n"), SetAndWrite(text, TASWIniOptions(), "A", "K", "x", __func__,
+    CheckEquals("[A]\nk=x\nk=2\n[a]\nk=3\n", SetAndWrite(text, TASWIniOptions(), "A", "K", "x", __func__,
         __LINE__), __func__, __LINE__, "the first line with FirstWins");
-    CheckEquals(std::string("[A]\nk=1\nk=2\n[a]\nk=x\n"), SetAndWrite(text, lastWins, "A", "K", "x", __func__,
+    CheckEquals("[A]\nk=1\nk=2\n[a]\nk=x\n", SetAndWrite(text, lastWins, "A", "K", "x", __func__,
         __LINE__), __func__, __LINE__, "the last line, in the duplicate section, with LastWins");
 }
 //---------------------------------------------------------------------------
@@ -3374,15 +3374,15 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_EmptyGetsTheBlanksBeforeTheSeparat
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("a = v\n"), SetAndWrite("a =\n", options, "", "a", "v", __func__, __LINE__), __func__,
+    CheckEquals("a = v\n", SetAndWrite("a =\n", options, "", "a", "v", __func__, __LINE__), __func__,
         __LINE__, "a blank before the separator");
-    CheckEquals(std::string("b=v\n"), SetAndWrite("b=\n", options, "", "b", "v", __func__, __LINE__), __func__,
+    CheckEquals("b=v\n", SetAndWrite("b=\n", options, "", "b", "v", __func__, __LINE__), __func__,
         __LINE__, "no blank before the separator");
-    CheckEquals(std::string("c\t=\tv\n"), SetAndWrite("c\t=\n", options, "", "c", "v", __func__, __LINE__), __func__,
+    CheckEquals("c\t=\tv\n", SetAndWrite("c\t=\n", options, "", "c", "v", __func__, __LINE__), __func__,
         __LINE__, "a tab before the separator");
-    CheckEquals(std::string("d  :  v\n"), SetAndWrite("d  :\n", options, "", "d", "v", __func__, __LINE__), __func__,
+    CheckEquals("d  :  v\n", SetAndWrite("d  :\n", options, "", "d", "v", __func__, __LINE__), __func__,
         __LINE__, "two blanks before a ':'");
-    CheckEquals(std::string("e = v\n"), SetAndWrite("e = \n", options, "", "e", "v", __func__, __LINE__), __func__,
+    CheckEquals("e = v\n", SetAndWrite("e = \n", options, "", "e", "v", __func__, __LINE__), __func__,
         __LINE__, "a blank after the separator is kept");
 }
 //---------------------------------------------------------------------------
@@ -3393,13 +3393,13 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_KeepsTheInlineComment)
     withComments.Reading.InlineComments = true;
 
     // Act & Assert
-    CheckEquals(std::string("k = x ; note\n"), SetAndWrite("k = v ; note\n", withComments, "", "k", "x", __func__,
+    CheckEquals("k = x ; note\n", SetAndWrite("k = v ; note\n", withComments, "", "k", "x", __func__,
         __LINE__), __func__, __LINE__, "a comment after the value");
-    CheckEquals(std::string("k=x\t# note\n"), SetAndWrite("k=v\t# note\n", withComments, "", "k", "x", __func__,
+    CheckEquals("k=x\t# note\n", SetAndWrite("k=v\t# note\n", withComments, "", "k", "x", __func__,
         __LINE__), __func__, __LINE__, "a comment after a tab");
-    CheckEquals(std::string("k = x ; note\n"), SetAndWrite("k = ; note\n", withComments, "", "k", "x", __func__,
+    CheckEquals("k = x ; note\n", SetAndWrite("k = ; note\n", withComments, "", "k", "x", __func__,
         __LINE__), __func__, __LINE__, "a comment after an empty value gets a blank before it");
-    CheckEquals(std::string("k = x\n"), SetAndWrite("k = v ; note\n", TASWIniOptions(), "", "k", "x", __func__,
+    CheckEquals("k = x\n", SetAndWrite("k = v ; note\n", TASWIniOptions(), "", "k", "x", __func__,
         __LINE__), __func__, __LINE__, "without InlineComments, the prefix and the note are part of the value");
 }
 //---------------------------------------------------------------------------
@@ -3409,11 +3409,11 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_KeepsTheLineBreak)
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("a=1\r\nb=x\n"), SetAndWrite("a=1\r\nb=2\n", options, "", "b", "x", __func__, __LINE__),
+    CheckEquals("a=1\r\nb=x\n", SetAndWrite("a=1\r\nb=2\n", options, "", "b", "x", __func__, __LINE__),
         __func__, __LINE__, "the line's own line break");
-    CheckEquals(std::string("a=x\rb=2\r"), SetAndWrite("a=1\rb=2\r", options, "", "a", "x", __func__, __LINE__),
+    CheckEquals("a=x\rb=2\r", SetAndWrite("a=1\rb=2\r", options, "", "a", "x", __func__, __LINE__),
         __func__, __LINE__, "CR");
-    CheckEquals(std::string("k=2"), SetAndWrite("k=1", options, "", "k", "2", __func__, __LINE__), __func__,
+    CheckEquals("k=2", SetAndWrite("k=1", options, "", "k", "2", __func__, __LINE__), __func__,
         __LINE__, "a last line without a line break keeps having none");
 }
 //---------------------------------------------------------------------------
@@ -3426,15 +3426,15 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_QuotedStaysQuoted)
     quotedWithComments.Reading.InlineComments = true;
 
     // Act & Assert
-    CheckEquals(std::string("k = \"new\"\n"), SetAndWrite("k = \"old\"\n", quoted, "", "k", "new", __func__,
+    CheckEquals("k = \"new\"\n", SetAndWrite("k = \"old\"\n", quoted, "", "k", "new", __func__,
         __LINE__), __func__, __LINE__, "a quoted value");
-    CheckEquals(std::string("k = \"x\"\n"), SetAndWrite("k = \"\"\n", quoted, "", "k", "x", __func__, __LINE__),
+    CheckEquals("k = \"x\"\n", SetAndWrite("k = \"\"\n", quoted, "", "k", "x", __func__, __LINE__),
         __func__, __LINE__, "an empty quoted value");
-    CheckEquals(std::string("k = \"b\" ; c\n"), SetAndWrite("k = \"a\" ; c\n", quotedWithComments, "", "k", "b",
+    CheckEquals("k = \"b\" ; c\n", SetAndWrite("k = \"a\" ; c\n", quotedWithComments, "", "k", "b",
         __func__, __LINE__), __func__, __LINE__, "a quoted value with a comment");
-    CheckEquals(std::string("k = \"a\"\"b\"\n"), SetAndWrite("k = \"old\"\n", quoted, "", "k", "a\"b", __func__,
+    CheckEquals("k = \"a\"\"b\"\n", SetAndWrite("k = \"old\"\n", quoted, "", "k", "a\"b", __func__,
         __LINE__), __func__, __LINE__, "a value with a '\"' stays quoted, with the '\"' doubled");
-    CheckEquals(std::string("k = \"new\"\n"), SetAndWrite("k = \"a\"\"b\"\n", quoted, "", "k", "new", __func__,
+    CheckEquals("k = \"new\"\n", SetAndWrite("k = \"a\"\"b\"\n", quoted, "", "k", "new", __func__,
         __LINE__), __func__, __LINE__, "a value with doubled quotes is replaced as a whole");
 }
 //---------------------------------------------------------------------------
@@ -3447,27 +3447,27 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_QuotedWhenItNeedsIt)
     quotedWithComments.Reading.InlineComments = true;
 
     // Act & Assert
-    CheckEquals(std::string("k = \"  spaced  \"\n"), SetAndWrite("k = v\n", quoted, "", "k", "  spaced  ", __func__,
+    CheckEquals("k = \"  spaced  \"\n", SetAndWrite("k = v\n", quoted, "", "k", "  spaced  ", __func__,
         __LINE__), __func__, __LINE__, "blanks at either end");
-    CheckEquals(std::string("k = \"open\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"open", __func__, __LINE__),
+    CheckEquals("k = \"open\n", SetAndWrite("k = v\n", quoted, "", "k", "\"open", __func__, __LINE__),
         __func__, __LINE__, "a leading '\"' with no closing one reads back without quotes");
-    CheckEquals(std::string("k = \"a ; b\"\n"), SetAndWrite("k = v\n", quotedWithComments, "", "k", "a ; b",
+    CheckEquals("k = \"a ; b\"\n", SetAndWrite("k = v\n", quotedWithComments, "", "k", "a ; b",
         __func__, __LINE__), __func__, __LINE__, "a comment prefix after a blank");
-    CheckEquals(std::string("k = \";x\"\n"), SetAndWrite("k = v\n", quotedWithComments, "", "k", ";x", __func__,
+    CheckEquals("k = \";x\"\n", SetAndWrite("k = v\n", quotedWithComments, "", "k", ";x", __func__,
         __LINE__), __func__, __LINE__, "a leading comment prefix, after the separator's blank");
-    CheckEquals(std::string("k = a;b\n"), SetAndWrite("k = v\n", quotedWithComments, "", "k", "a;b", __func__,
+    CheckEquals("k = a;b\n", SetAndWrite("k = v\n", quotedWithComments, "", "k", "a;b", __func__,
         __LINE__), __func__, __LINE__, "a comment prefix with no blank before it doesn't need quotes");
-    CheckEquals(std::string("k = \"\"\"x\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"x\"", __func__,
+    CheckEquals("k = \"\"\"x\"\"\"\n", SetAndWrite("k = v\n", quoted, "", "k", "\"x\"", __func__,
         __LINE__), __func__, __LINE__, "a value in quotes, with its quotes doubled");
-    CheckEquals(std::string("k = \" a\"\"b \"\n"), SetAndWrite("k = v\n", quoted, "", "k", " a\"b ", __func__,
+    CheckEquals("k = \" a\"\"b \"\n", SetAndWrite("k = v\n", quoted, "", "k", " a\"b ", __func__,
         __LINE__), __func__, __LINE__, "a value that needs quotes and holds one");
-    CheckEquals(std::string("k = \"\"\"\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"\"", __func__,
+    CheckEquals("k = \"\"\"\"\"\"\n", SetAndWrite("k = v\n", quoted, "", "k", "\"\"", __func__,
         __LINE__), __func__, __LINE__, "a value of two quotes");
-    CheckEquals(std::string("k = \"\"\"a, b\"\"\"\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\"", __func__,
+    CheckEquals("k = \"\"\"a, b\"\"\"\n", SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\"", __func__,
         __LINE__), __func__, __LINE__, "a list of one quoted item");
-    CheckEquals(std::string("k = \"a, b\", c\n"), SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\", c", __func__,
+    CheckEquals("k = \"a, b\", c\n", SetAndWrite("k = v\n", quoted, "", "k", "\"a, b\", c", __func__,
         __LINE__), __func__, __LINE__, "a leading quoted part that doesn't make the value quoted needs no quotes");
-    CheckEquals(std::string("k = \"a\"\" ; b\" ; c\n"), SetAndWrite("k = v ; c\n", quotedWithComments, "", "k",
+    CheckEquals("k = \"a\"\" ; b\" ; c\n", SetAndWrite("k = v ; c\n", quotedWithComments, "", "k",
         "a\" ; b", __func__, __LINE__), __func__, __LINE__, "a quote and a comment prefix, with InlineComments");
 }
 //---------------------------------------------------------------------------
@@ -3497,13 +3497,13 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_ReplacesOnlyTheValue)
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("  Width \t=\t 800 \t\n"), SetAndWrite("  Width \t=\t 640 \t\n", options, "", "width",
+    CheckEquals("  Width \t=\t 800 \t\n", SetAndWrite("  Width \t=\t 640 \t\n", options, "", "width",
         "800", __func__, __LINE__), __func__, __LINE__, "the indentation, key, spacing and trailing blanks stay");
-    CheckEquals(std::string("a: 2\n"), SetAndWrite("a: 1\n", options, "", "a", "2", __func__, __LINE__), __func__,
+    CheckEquals("a: 2\n", SetAndWrite("a: 1\n", options, "", "a", "2", __func__, __LINE__), __func__,
         __LINE__, "a ':' separator stays");
-    CheckEquals(std::string("k=a=b\n"), SetAndWrite("k=v\n", options, "", "k", "a=b", __func__, __LINE__), __func__,
+    CheckEquals("k=a=b\n", SetAndWrite("k=v\n", options, "", "k", "a=b", __func__, __LINE__), __func__,
         __LINE__, "a value with a separator");
-    CheckEquals(std::string("[S]\nurl = http://b:8080\n"), SetAndWrite("[S]\nurl = http://a\n", options, "S", "url",
+    CheckEquals("[S]\nurl = http://b:8080\n", SetAndWrite("[S]\nurl = http://a\n", options, "S", "url",
         "http://b:8080", __func__, __LINE__), __func__, __LINE__, "a value with ':'");
 }
 //---------------------------------------------------------------------------
@@ -3517,11 +3517,11 @@ ASW_TEST(TTest_ASWIni_DocumentSetValue, Value_SameValueChangesNothing)
 
     // Act & Assert
     // SetAndWrite() also checks that the document isn't modified when its text doesn't change
-    CheckEquals(std::string("k = v\n"), SetAndWrite("k = v\n", TASWIniOptions(), "", "K", "v", __func__, __LINE__),
+    CheckEquals("k = v\n", SetAndWrite("k = v\n", TASWIniOptions(), "", "K", "v", __func__, __LINE__),
         __func__, __LINE__, "the same value");
-    CheckEquals(std::string("k = \"v\"\n"), SetAndWrite("k = \"v\"\n", quoted, "", "k", "v", __func__, __LINE__),
+    CheckEquals("k = \"v\"\n", SetAndWrite("k = \"v\"\n", quoted, "", "k", "v", __func__, __LINE__),
         __func__, __LINE__, "the same quoted value");
-    CheckEquals(std::string("k = v ; note\n"), SetAndWrite("k = v ; note\n", withComments, "", "k", "v", __func__,
+    CheckEquals("k = v ; note\n", SetAndWrite("k = v ; note\n", withComments, "", "k", "v", __func__,
         __LINE__), __func__, __LINE__, "the same value with a comment");
 }
 //---------------------------------------------------------------------------
@@ -3613,16 +3613,16 @@ ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_KeepsALineThatEndsWithCrApart)
     std::string const written = RemoveKeyAndWrite("a=1\rk=1\n\nb=2\n", "", "k", true, __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("a=1\r\n\nb=2\n"), written, __func__, __LINE__,
+    CheckEquals("a=1\r\n\nb=2\n", written, __func__, __LINE__,
         "the line that ends with CR should end with CRLF instead");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_KeepsTheLinesAroundIt)
 {
     // Act & Assert
-    CheckEquals(std::string("[A]\nj=0\n; about B\n[B]\n"), RemoveKeyAndWrite("[A]\nj=0\nk=1\n; about B\n[B]\n", "A",
+    CheckEquals("[A]\nj=0\n; about B\n[B]\n", RemoveKeyAndWrite("[A]\nj=0\nk=1\n; about B\n[B]\n", "A",
         "k", true, __func__, __LINE__), __func__, __LINE__, "the comment below the key belongs to the next section");
-    CheckEquals(std::string("[A]\nj=0\n"), RemoveKeyAndWrite("[A]\nj=0\nk=1", "A", "k", true, __func__, __LINE__),
+    CheckEquals("[A]\nj=0\n", RemoveKeyAndWrite("[A]\nj=0\nk=1", "A", "k", true, __func__, __LINE__),
         __func__, __LINE__, "a last line without a line break");
 }
 //---------------------------------------------------------------------------
@@ -3633,20 +3633,20 @@ ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_RemovesEveryDuplicate)
         __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("[A]\n[B]\nk=3\n[a]\n"), written, __func__, __LINE__,
+    CheckEquals("[A]\n[B]\nk=3\n[a]\n", written, __func__, __LINE__,
         "every line of the key in both [A] and [a], with their comments, and not the key of [B]");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_RemovesItsComment)
 {
     // Act & Assert
-    CheckEquals(std::string("[A]\n\nl=2\n"), RemoveKeyAndWrite("[A]\n; about k\n; more\nk=1\n\nl=2\n", "A", "k",
+    CheckEquals("[A]\n\nl=2\n", RemoveKeyAndWrite("[A]\n; about k\n; more\nk=1\n\nl=2\n", "A", "k",
         true, __func__, __LINE__), __func__, __LINE__, "the comment lines directly above the key");
-    CheckEquals(std::string("[A]\n; c\n\nl=2\n"), RemoveKeyAndWrite("[A]\n; c\n\nk=1\nl=2\n", "A", "k", true,
+    CheckEquals("[A]\n; c\n\nl=2\n", RemoveKeyAndWrite("[A]\n; c\n\nk=1\nl=2\n", "A", "k", true,
         __func__, __LINE__), __func__, __LINE__, "a comment with a blank line under it isn't the key's");
     CheckEquals(std::string(), RemoveKeyAndWrite("; c\nk=1\n", "", "k", true, __func__, __LINE__), __func__,
         __LINE__, "a comment directly above a key at the start of the file is the key's");
-    CheckEquals(std::string("; file\n\n[A]\n"), RemoveKeyAndWrite("; file\n\n; about k\nk=1\n[A]\n", "", "k", true,
+    CheckEquals("; file\n\n[A]\n", RemoveKeyAndWrite("; file\n\n; about k\nk=1\n[A]\n", "", "k", true,
         __func__, __LINE__), __func__, __LINE__, "the file comment stays");
 }
 //---------------------------------------------------------------------------
@@ -3669,10 +3669,10 @@ ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveKey_ReturnsFalseWhenMissing)
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_KeepsTheCommentOfTheNextSection)
 {
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n; about C\n[C]\n"), RemoveSectionAndWrite(
+    CheckEquals("[A]\nk=1\n\n; about C\n[C]\n", RemoveSectionAndWrite(
         "[A]\nk=1\n\n[B]\nx=1\n\n; about C\n[C]\n", "B", true, __func__, __LINE__), __func__, __LINE__,
         "the comment above [C] moves to [A]");
-    CheckEquals(std::string("; about C\n[C]\n"), RemoveSectionAndWrite("[B]\nx=1\n; about C\n[C]\n", "B", true,
+    CheckEquals("; about C\n[C]\n", RemoveSectionAndWrite("[B]\nx=1\n; about C\n[C]\n", "B", true,
         __func__, __LINE__), __func__, __LINE__, "the comment above [C] moves to the preamble");
 }
 //---------------------------------------------------------------------------
@@ -3683,16 +3683,16 @@ ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesEveryDuplicate)
         true, __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("[A]\n; about C\n[C]\n"), written, __func__, __LINE__,
+    CheckEquals("[A]\n; about C\n[C]\n", written, __func__, __LINE__,
         "both [B] and [b] with their comments, and not the comment of [C]");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesItsComment)
 {
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n[C]\n"), RemoveSectionAndWrite("[A]\nk=1\n\n; about B\n[B]\nx=1\n\n[C]\n",
+    CheckEquals("[A]\nk=1\n\n[C]\n", RemoveSectionAndWrite("[A]\nk=1\n\n; about B\n[B]\nx=1\n\n[C]\n",
         "B", true, __func__, __LINE__), __func__, __LINE__, "the comment lines directly above the header");
-    CheckEquals(std::string("; file\n\n[B]\n"), RemoveSectionAndWrite("; file\n\n; about A\n[A]\nk=1\n[B]\n", "a",
+    CheckEquals("; file\n\n[B]\n", RemoveSectionAndWrite("; file\n\n; about A\n[A]\nk=1\n[B]\n", "a",
         true, __func__, __LINE__), __func__, __LINE__, "the first section's comment, but not the file comment");
     CheckEquals(std::string(), RemoveSectionAndWrite("; about A\n[A]\n", "A", true, __func__, __LINE__), __func__,
         __LINE__, "a comment that leads straight into the first header is its comment");
@@ -3701,9 +3701,9 @@ ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesItsComment)
 ASW_TEST(TTest_ASWIni_DocumentRemove, RemoveSection_RemovesTheLastSection)
 {
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n"), RemoveSectionAndWrite("[A]\nk=1\n\n[B]\nx=1\n; trailing\n", "B", true,
+    CheckEquals("[A]\nk=1\n\n", RemoveSectionAndWrite("[A]\nk=1\n\n[B]\nx=1\n; trailing\n", "B", true,
         __func__, __LINE__), __func__, __LINE__, "the comment at the end of the file goes with the last section");
-    CheckEquals(std::string("[A]\nk=1\n"), RemoveSectionAndWrite("[A]\nk=1\n[B]\nx=1", "B", true, __func__,
+    CheckEquals("[A]\nk=1\n", RemoveSectionAndWrite("[A]\nk=1\n[B]\nx=1", "B", true, __func__,
         __LINE__), __func__, __LINE__, "a last line without a line break");
 }
 //---------------------------------------------------------------------------
@@ -3850,11 +3850,11 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_ChangesOnlyTheName)
     quotedWithComments.Reading.InlineComments = true;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\n  Height \t=\t 640\n"), RenameKeyAndWrite("[A]\n  Width \t=\t 640\n", options, "A",
+    CheckEquals("[A]\n  Height \t=\t 640\n", RenameKeyAndWrite("[A]\n  Width \t=\t 640\n", options, "A",
         "width", "Height", __func__, __LINE__), __func__, __LINE__, "the indentation, spacing and value stay");
-    CheckEquals(std::string("[A]\nn = \"v\" ; c\n"), RenameKeyAndWrite("[A]\nk = \"v\" ; c\n", quotedWithComments,
+    CheckEquals("[A]\nn = \"v\" ; c\n", RenameKeyAndWrite("[A]\nk = \"v\" ; c\n", quotedWithComments,
         "A", "k", "n", __func__, __LINE__), __func__, __LINE__, "the quotes and the comment stay");
-    CheckEquals(std::string("Max Width: 1\n"), RenameKeyAndWrite("k: 1\n", options, "", "k", "Max Width", __func__,
+    CheckEquals("Max Width: 1\n", RenameKeyAndWrite("k: 1\n", options, "", "k", "Max Width", __func__,
         __LINE__), __func__, __LINE__, "a key of the preamble, renamed to a name with a space");
 }
 //---------------------------------------------------------------------------
@@ -3878,9 +3878,9 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_MayChangeOnlyTheCase)
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nWidth=1\n"), RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "width", "Width",
+    CheckEquals("[A]\nWidth=1\n", RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "width", "Width",
         __func__, __LINE__), __func__, __LINE__, "a new case");
-    CheckEquals(std::string("[A]\nwidth=1\n"), RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "WIDTH", "width",
+    CheckEquals("[A]\nwidth=1\n", RenameKeyAndWrite("[A]\nwidth=1\n", options, "A", "WIDTH", "width",
         __func__, __LINE__), __func__, __LINE__, "the name it has changes nothing");
 }
 //---------------------------------------------------------------------------
@@ -3904,18 +3904,18 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameKey_RenamesEveryDuplicate)
         "n", __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("[A]\nn=1\nn=2\n[a]\nn=3\n[B]\nk=4\n"), written, __func__, __LINE__,
+    CheckEquals("[A]\nn=1\nn=2\n[a]\nn=3\n[B]\nk=4\n", written, __func__, __LINE__,
         "every line of the key in both [A] and [a], and not the key of [B]");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_ChangesOnlyTheName)
 {
     // Act & Assert
-    CheckEquals(std::string("[ Main ] ; note\nk=1\n"), RenameSectionAndWrite("[ General ] ; note\nk=1\n", "general",
+    CheckEquals("[ Main ] ; note\nk=1\n", RenameSectionAndWrite("[ General ] ; note\nk=1\n", "general",
         "Main", __func__, __LINE__), __func__, __LINE__, "the blanks and the comment stay");
-    CheckEquals(std::string("  [B]\n"), RenameSectionAndWrite("  [A]\n", "A", "B", __func__, __LINE__), __func__,
+    CheckEquals("  [B]\n", RenameSectionAndWrite("  [A]\n", "A", "B", __func__, __LINE__), __func__,
         __LINE__, "the indentation stays");
-    CheckEquals(std::string("[B] junk\n"), RenameSectionAndWrite("[A] junk\n", "A", "B", __func__, __LINE__),
+    CheckEquals("[B] junk\n", RenameSectionAndWrite("[A] junk\n", "A", "B", __func__, __LINE__),
         __func__, __LINE__, "text after the header stays");
 }
 //---------------------------------------------------------------------------
@@ -3935,9 +3935,9 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_FailsWhenMissing)
 ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_MayChangeOnlyTheCase)
 {
     // Act & Assert
-    CheckEquals(std::string("[General]\n"), RenameSectionAndWrite("[general]\n", "general", "General", __func__,
+    CheckEquals("[General]\n", RenameSectionAndWrite("[general]\n", "general", "General", __func__,
         __LINE__), __func__, __LINE__, "a new case");
-    CheckEquals(std::string("[general]\n"), RenameSectionAndWrite("[general]\n", "GENERAL", "general", __func__,
+    CheckEquals("[general]\n", RenameSectionAndWrite("[general]\n", "GENERAL", "general", __func__,
         __LINE__), __func__, __LINE__, "the name it has changes nothing");
 }
 //---------------------------------------------------------------------------
@@ -3962,7 +3962,7 @@ ASW_TEST(TTest_ASWIni_DocumentRename, RenameSection_RenamesEveryDuplicate)
     std::string const written = RenameSectionAndWrite("[A]\nk=1\n[B]\n[a]\nl=2\n", "A", "C", __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("[C]\nk=1\n[B]\n[C]\nl=2\n"), written, __func__, __LINE__, "both [A] and [a]");
+    CheckEquals("[C]\nk=1\n[B]\n[C]\nl=2\n", written, __func__, __LINE__, "both [A] and [a]");
 }
 //---------------------------------------------------------------------------
 
@@ -4082,9 +4082,9 @@ ASW_TEST(TTest_ASWIni_DocumentComments, GetFileComment_IsTheBlockAtTheStartBefor
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("a\nb"), Parsed("; a\n# b\n\n[A]\n", options, __func__, __LINE__).GetFileComment(),
+    CheckEquals("a\nb", Parsed("; a\n# b\n\n[A]\n", options, __func__, __LINE__).GetFileComment(),
         __func__, __LINE__, "the comment lines at the start, before a blank line");
-    CheckEquals(std::string("only"), Parsed("; only\n", options, __func__, __LINE__).GetFileComment(), __func__,
+    CheckEquals("only", Parsed("; only\n", options, __func__, __LINE__).GetFileComment(), __func__,
         __LINE__, "comment lines before the end of the file");
     CheckEquals(std::string(), Parsed("; a\n[A]\n", options, __func__, __LINE__).GetFileComment(), __func__,
         __LINE__, "comment lines that lead into the first header are its comment");
@@ -4104,9 +4104,9 @@ ASW_TEST(TTest_ASWIni_DocumentComments, GetKeyComment_IsTheBlockDirectlyAboveThe
     std::string const duplicates = "[A]\n; first\nk=1\n; second\nk=2\n";
 
     // Act & Assert
-    CheckEquals(std::string("one\ntwo"), Parsed("[A]\n; one\n  ;two\nk=1\n", options, __func__, __LINE__)
+    CheckEquals("one\ntwo", Parsed("[A]\n; one\n  ;two\nk=1\n", options, __func__, __LINE__)
         .GetKeyComment("A", "k"), __func__, __LINE__, "the comment lines directly above the key");
-    CheckEquals(std::string("\nb"), Parsed("[A]\n;\n; b\nk=1\n", options, __func__, __LINE__).GetKeyComment("A",
+    CheckEquals("\nb", Parsed("[A]\n;\n; b\nk=1\n", options, __func__, __LINE__).GetKeyComment("A",
         "k"), __func__, __LINE__, "an empty comment line");
     CheckEquals(std::string(), Parsed("[A]\n; x\n\nk=1\n", options, __func__, __LINE__).GetKeyComment("A", "k"),
         __func__, __LINE__, "a comment with a blank line under it isn't the key's");
@@ -4114,9 +4114,9 @@ ASW_TEST(TTest_ASWIni_DocumentComments, GetKeyComment_IsTheBlockDirectlyAboveThe
         __func__, __LINE__, "a comment above the header isn't the key's");
     CheckEquals(std::string(), Parsed("[A]\n; c\nk=1\n", options, __func__, __LINE__).GetKeyComment("A", "x"),
         __func__, __LINE__, "a missing key has no comment");
-    CheckEquals(std::string("first"), Parsed(duplicates, options, __func__, __LINE__).GetKeyComment("A", "k"),
+    CheckEquals("first", Parsed(duplicates, options, __func__, __LINE__).GetKeyComment("A", "k"),
         __func__, __LINE__, "the first line's, with FirstWins");
-    CheckEquals(std::string("second"), Parsed(duplicates, lastWins, __func__, __LINE__).GetKeyComment("A", "k"),
+    CheckEquals("second", Parsed(duplicates, lastWins, __func__, __LINE__).GetKeyComment("A", "k"),
         __func__, __LINE__, "the last line's, with LastWins");
 }
 //---------------------------------------------------------------------------
@@ -4128,15 +4128,15 @@ ASW_TEST(TTest_ASWIni_DocumentComments, GetSectionComment_IsTheBlockDirectlyAbov
         __LINE__);
 
     // Act & Assert
-    CheckEquals(std::string("about A"), document.GetSectionComment("a"), __func__, __LINE__,
+    CheckEquals("about A", document.GetSectionComment("a"), __func__, __LINE__,
         "the comment above the first header, after the file comment");
-    CheckEquals(std::string("about B"), document.GetSectionComment("B"), __func__, __LINE__,
+    CheckEquals("about B", document.GetSectionComment("B"), __func__, __LINE__,
         "the comment at the end of the section before");
-    CheckEquals(std::string("file"), document.GetFileComment(), __func__, __LINE__, "the file comment");
+    CheckEquals("file", document.GetFileComment(), __func__, __LINE__, "the file comment");
     CheckEquals(std::string(), document.GetKeyComment("A", "k"), __func__, __LINE__, "k has no comment");
     CheckEquals(std::string(), document.GetSectionComment(""), __func__, __LINE__, "the preamble has no header");
     CheckEquals(std::string(), document.GetSectionComment("X"), __func__, __LINE__, "a missing section");
-    CheckEquals(std::string("about A"), Parsed("; about A\n[A]\n", options, __func__, __LINE__).GetSectionComment(
+    CheckEquals("about A", Parsed("; about A\n[A]\n", options, __func__, __LINE__).GetSectionComment(
         "A"), __func__, __LINE__, "comment lines that lead into the first header");
     CheckEquals(std::string(), Parsed("[A]\n; about a\n[a]\n", options, __func__, __LINE__).GetSectionComment("a"),
         __func__, __LINE__, "the first section of that name's");
@@ -4213,11 +4213,11 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetComment_UsesTheWritingCommentPrefix)
     slashes.Writing.CommentPrefix = "// ";
 
     // Act & Assert
-    CheckEquals(std::string("#note\n\n[A]\n"), FileCommentAndWrite("[A]\n", hash, "note", __func__, __LINE__),
+    CheckEquals("#note\n\n[A]\n", FileCommentAndWrite("[A]\n", hash, "note", __func__, __LINE__),
         __func__, __LINE__, "\"#\"");
-    CheckEquals(std::string("// note\n\n[A]\n"), FileCommentAndWrite("[A]\n", slashes, "note", __func__, __LINE__),
+    CheckEquals("// note\n\n[A]\n", FileCommentAndWrite("[A]\n", slashes, "note", __func__, __LINE__),
         __func__, __LINE__, "\"// \"");
-    CheckEquals(std::string("; a\n;\n; b\n\n[A]\n"), FileCommentAndWrite("[A]\n", options, "a\n\nb", __func__,
+    CheckEquals("; a\n;\n; b\n\n[A]\n", FileCommentAndWrite("[A]\n", options, "a\n\nb", __func__,
         __LINE__), __func__, __LINE__, "an empty line gets the prefix without its trailing blank");
 }
 //---------------------------------------------------------------------------
@@ -4229,15 +4229,15 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_AddsItAtTheStartWithABlan
     lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("; File\n\n[A]\nk=1\n"), FileCommentAndWrite("[A]\nk=1\n", options, "File", __func__,
+    CheckEquals("; File\n\n[A]\nk=1\n", FileCommentAndWrite("[A]\nk=1\n", options, "File", __func__,
         __LINE__), __func__, __LINE__, "before the first header, with a blank line");
-    CheckEquals(std::string("; File\n\n[A]\n"), FileCommentAndWrite("\n[A]\n", options, "File", __func__, __LINE__),
+    CheckEquals("; File\n\n[A]\n", FileCommentAndWrite("\n[A]\n", options, "File", __func__, __LINE__),
         __func__, __LINE__, "no second blank line when one follows already");
-    CheckEquals(std::string("; File\n\n; about A\n[A]\n"), FileCommentAndWrite("; about A\n[A]\n", options, "File",
+    CheckEquals("; File\n\n; about A\n[A]\n", FileCommentAndWrite("; about A\n[A]\n", options, "File",
         __func__, __LINE__), __func__, __LINE__, "above the comment of the first section");
-    CheckEquals(std::string("; File\n\n"), FileCommentAndWrite("", lf, "File", __func__, __LINE__), __func__,
+    CheckEquals("; File\n\n", FileCommentAndWrite("", lf, "File", __func__, __LINE__), __func__,
         __LINE__, "an empty document");
-    CheckEquals(std::string("; a\n; b\n;\n; c\n\n[A]\n"), FileCommentAndWrite("[A]\n", options, "a\r\nb\n\n c ",
+    CheckEquals("; a\n; b\n;\n; c\n\n[A]\n", FileCommentAndWrite("[A]\n", options, "a\r\nb\n\n c ",
         __func__, __LINE__), __func__, __LINE__, "a line for each line of the text, trimmed");
 }
 //---------------------------------------------------------------------------
@@ -4251,7 +4251,7 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_RemovingItLeavesNoFileCom
     std::string const written = FileCommentAndWrite("; old\n\n; a\n\n[A]\n", options, "", __func__, __LINE__);
 
     // Assert
-    CheckEquals(std::string("\n; a\n\n[A]\n"), written, __func__, __LINE__,
+    CheckEquals("\n; a\n\n[A]\n", written, __func__, __LINE__,
         "the blank line under the file comment should stay");
     CheckEquals(std::string(), Parsed(written, options, __func__, __LINE__).GetFileComment(), __func__, __LINE__,
         "the text should have no file comment");
@@ -4265,15 +4265,15 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_ReplacesAndRemovesIt)
     lf.Writing.LineEnding = ASWIni::ELineEnding::LF;
 
     // Act & Assert
-    CheckEquals(std::string("; new\n\n[A]\n"), FileCommentAndWrite("# old\n# more\n\n[A]\n", options, "new",
+    CheckEquals("; new\n\n[A]\n", FileCommentAndWrite("# old\n# more\n\n[A]\n", options, "new",
         __func__, __LINE__), __func__, __LINE__, "every line is replaced; the blank line stays");
-    CheckEquals(std::string("[A]\n"), FileCommentAndWrite("# old\n\n[A]\n", options, "", __func__, __LINE__),
+    CheckEquals("[A]\n", FileCommentAndWrite("# old\n\n[A]\n", options, "", __func__, __LINE__),
         __func__, __LINE__, "an empty text removes it with the blank line under it");
-    CheckEquals(std::string("\n[A]\n"), FileCommentAndWrite("# old\n\n\n[A]\n", options, "", __func__, __LINE__),
+    CheckEquals("\n[A]\n", FileCommentAndWrite("# old\n\n\n[A]\n", options, "", __func__, __LINE__),
         __func__, __LINE__, "only one blank line goes with it");
     CheckEquals(std::string(), FileCommentAndWrite("; only", lf, "", __func__, __LINE__), __func__, __LINE__,
         "a file comment with nothing after it");
-    CheckEquals(std::string("[A]\n"), FileCommentAndWrite("[A]\n", options, "", __func__, __LINE__), __func__,
+    CheckEquals("[A]\n", FileCommentAndWrite("[A]\n", options, "", __func__, __LINE__), __func__,
         __LINE__, "removing a file comment that isn't there changes nothing");
 }
 //---------------------------------------------------------------------------
@@ -4293,11 +4293,11 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetFileComment_StaysAboveNewKeys)
         "the section's comment should be set");
 
     // Assert
-    CheckEquals(std::string("; c\n\nk = v\n\n; about A\n[A]\nx = 1\n"), document.ToText(), __func__, __LINE__,
+    CheckEquals("; c\n\nk = v\n\n; about A\n[A]\nx = 1\n", document.ToText(), __func__, __LINE__,
         "the text");
-    CheckEquals(std::string("c"), document.GetFileComment(), __func__, __LINE__, "the file comment");
+    CheckEquals("c", document.GetFileComment(), __func__, __LINE__, "the file comment");
     CheckEquals(std::string(), document.GetKeyComment("", "k"), __func__, __LINE__, "k has no comment");
-    CheckEquals(std::string("about A"), document.GetSectionComment("A"), __func__, __LINE__, "the section's comment");
+    CheckEquals("about A", document.GetSectionComment("A"), __func__, __LINE__, "the section's comment");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_DocumentComments, SetKeyComment_GoesDirectlyAboveTheKey)
@@ -4308,17 +4308,17 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetKeyComment_GoesDirectlyAboveTheKey)
     lastWins.Reading.DuplicateKeys = ASWIni::EDuplicateKeys::LastWins;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\n  ; note\n  k=1\n"), KeyCommentAndWrite("[A]\n  k=1\n", options, "A", "k", "note",
+    CheckEquals("[A]\n  ; note\n  k=1\n", KeyCommentAndWrite("[A]\n  k=1\n", options, "A", "k", "note",
         __func__, __LINE__), __func__, __LINE__, "with the key's indentation");
-    CheckEquals(std::string("[A]\n; new\nk=1\n"), KeyCommentAndWrite("[A]\n; old\nk=1\n", options, "A", "k", "new",
+    CheckEquals("[A]\n; new\nk=1\n", KeyCommentAndWrite("[A]\n; old\nk=1\n", options, "A", "k", "new",
         __func__, __LINE__), __func__, __LINE__, "replacing the comment");
-    CheckEquals(std::string("[A]\nk=1\n"), KeyCommentAndWrite("[A]\n; old\n# more\nk=1\n", options, "A", "k", "",
+    CheckEquals("[A]\nk=1\n", KeyCommentAndWrite("[A]\n; old\n# more\nk=1\n", options, "A", "k", "",
         __func__, __LINE__), __func__, __LINE__, "an empty text removes it");
-    CheckEquals(std::string("[A]\n; c\n\n; n\nk=1\n"), KeyCommentAndWrite("[A]\n; c\n\nk=1\n", options, "A", "k",
+    CheckEquals("[A]\n; c\n\n; n\nk=1\n", KeyCommentAndWrite("[A]\n; c\n\nk=1\n", options, "A", "k",
         "n", __func__, __LINE__), __func__, __LINE__, "a comment with a blank line under it stays");
-    CheckEquals(std::string("[A]\nk=1\n; n\nk=2\n"), KeyCommentAndWrite("[A]\nk=1\nk=2\n", lastWins, "A", "k", "n",
+    CheckEquals("[A]\nk=1\n; n\nk=2\n", KeyCommentAndWrite("[A]\nk=1\nk=2\n", lastWins, "A", "k", "n",
         __func__, __LINE__), __func__, __LINE__, "above the winning line");
-    CheckEquals(std::string("; n\nk=1\n[A]\n"), KeyCommentAndWrite("k=1\n[A]\n", options, "", "k", "n", __func__,
+    CheckEquals("; n\nk=1\n[A]\n", KeyCommentAndWrite("k=1\n[A]\n", options, "", "k", "n", __func__,
         __LINE__), __func__, __LINE__, "a key at the start of the file, whose comment isn't the file comment");
 }
 //---------------------------------------------------------------------------
@@ -4328,15 +4328,15 @@ ASW_TEST(TTest_ASWIni_DocumentComments, SetSectionComment_GoesDirectlyAboveTheHe
     TASWIniOptions const options;
 
     // Act & Assert
-    CheckEquals(std::string("[A]\nk=1\n\n  ; about B\n  [B]\n"), SectionCommentAndWrite("[A]\nk=1\n\n  [B]\n",
+    CheckEquals("[A]\nk=1\n\n  ; about B\n  [B]\n", SectionCommentAndWrite("[A]\nk=1\n\n  [B]\n",
         options, "B", "about B", __func__, __LINE__), __func__, __LINE__, "with the header's indentation");
-    CheckEquals(std::string("; about A\n[A]\n"), SectionCommentAndWrite("[A]\n", options, "A", "about A", __func__,
+    CheckEquals("; about A\n[A]\n", SectionCommentAndWrite("[A]\n", options, "A", "about A", __func__,
         __LINE__), __func__, __LINE__, "the first header, with an empty preamble");
-    CheckEquals(std::string("; file\n\n; about A\n[A]\n"), SectionCommentAndWrite("; file\n\n[A]\n", options, "A",
+    CheckEquals("; file\n\n; about A\n[A]\n", SectionCommentAndWrite("; file\n\n[A]\n", options, "A",
         "about A", __func__, __LINE__), __func__, __LINE__, "under the file comment");
-    CheckEquals(std::string("[A]\n[B]\n"), SectionCommentAndWrite("[A]\n; old\n[B]\n", options, "B", "", __func__,
+    CheckEquals("[A]\n[B]\n", SectionCommentAndWrite("[A]\n; old\n[B]\n", options, "B", "", __func__,
         __LINE__), __func__, __LINE__, "an empty text removes it");
-    CheckEquals(std::string("; x\n[A]\n[B]\n[a]\n"), SectionCommentAndWrite("[A]\n[B]\n[a]\n", options, "a", "x",
+    CheckEquals("; x\n[A]\n[B]\n[a]\n", SectionCommentAndWrite("[A]\n[B]\n[a]\n", options, "a", "x",
         __func__, __LINE__), __func__, __LINE__, "the first section of that name");
 }
 //---------------------------------------------------------------------------

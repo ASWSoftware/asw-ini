@@ -368,7 +368,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Edits_FailureChangesNothing)
     CheckEquals(EIniCode::InvalidArgument, setText.Code, __func__, __LINE__, "an invalid key should fail");
     CheckEquals(EIniCode::InvalidArgument, addSection.Code, __func__, __LINE__, "an invalid section name should fail");
     CheckEquals(EIniCode::NotFound, sectionComment.Code, __func__, __LINE__, "a missing section should fail");
-    CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__, "the text should be unchanged");
+    CheckEquals(SampleText, ini.ToText(), __func__, __LINE__, "the text should be unchanged");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "the object shouldn't be modified");
 }
 //---------------------------------------------------------------------------
@@ -433,7 +433,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, GetDocument_IsACopy)
         "the copy should have the document's lines");
     std::string width;
     CheckTrue(ini.TryGetText("Window", "Width", width), __func__, __LINE__, "the key should exist");
-    CheckEquals(std::string("640"), width, __func__, __LINE__, "editing the copy shouldn't change the object");
+    CheckEquals("640", width, __func__, __LINE__, "editing the copy shouldn't change the object");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "the object shouldn't be modified");
 }
 //---------------------------------------------------------------------------
@@ -472,7 +472,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_ReplacesTheDocument)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the text should be loaded");
-    CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__, "the text should be written back as it is");
+    CheckEquals(SampleText, ini.ToText(), __func__, __LINE__, "the text should be written back as it is");
     CheckFalse(ini.HasSection("Old"), __func__, __LINE__, "the old document should be gone");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
     CheckEquals(std::string(), ini.GetFilePath(), __func__, __LINE__, "there should still be no file path");
@@ -499,7 +499,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, LoadText_UsesTheOptions)
     // Assert
     std::string name;
     CheckTrue(ini.TryGetText("General", "Name", name), __func__, __LINE__, "the key should exist");
-    CheckEquals(std::string("My App"), name, __func__, __LINE__, "the text should be read with the object's options");
+    CheckEquals("My App", name, __func__, __LINE__, "the text should be read with the object's options");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BaseAccess, Locks_WorkLikeStandardMutexes)
@@ -606,14 +606,14 @@ ASW_TEST(TTest_ASWIni_BaseAccess, Lookups_MatchTheDocument)
         "the section names with a prefix should be the document's");
     CheckEquals(document.GetFileComment(), ini.GetFileComment(), __func__, __LINE__,
         "the file comment should be the document's");
-    CheckEquals(std::string("The main window"), ini.GetSectionComment("Window"), __func__, __LINE__,
+    CheckEquals("The main window", ini.GetSectionComment("Window"), __func__, __LINE__,
         "the section comment should be the document's");
-    CheckEquals(std::string("In pixels"), ini.GetKeyComment("Window", "Height"), __func__, __LINE__,
+    CheckEquals("In pixels", ini.GetKeyComment("Window", "Height"), __func__, __LINE__,
         "the key comment should be the document's");
     CheckFalse(ini.TryGetText("Window", "Depth", text), __func__, __LINE__, "a missing key should have no text");
-    CheckEquals(std::string("unchanged"), text, __func__, __LINE__, "the text should stay as it was");
+    CheckEquals("unchanged", text, __func__, __LINE__, "the text should stay as it was");
     CheckTrue(ini.TryGetText("General", "Name", text), __func__, __LINE__, "the key should have a text");
-    CheckEquals(std::string("My App ; not a comment"), text, __func__, __LINE__, "the text should be the value's");
+    CheckEquals("My App ; not a comment", text, __func__, __LINE__, "the text should be the value's");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BaseAccess, New_IsEmptyWithTheDefaultOptions)
@@ -634,7 +634,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, New_IsEmptyWithTheDefaultOptions)
         "the options should be the defaults");
     CheckTrue(ini.GetValueOptions().BoolFormat == EBoolFormat::TrueFalse, __func__, __LINE__,
         "the value options should be the defaults");
-    CheckEquals(std::string(ASWIni::Version), std::string(ini.GetVersionStr()), __func__, __LINE__,
+    CheckEquals(ASWIni::Version, std::string(ini.GetVersionStr()), __func__, __LINE__,
         "the version should be the library's");
 }
 //---------------------------------------------------------------------------
@@ -673,9 +673,9 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_EditChangesNothing)
             CheckTrue(failed, __func__, __LINE__, "the edit should only fail when an allocation fails" + which);
             CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
                 "a failed allocation should be UnexpectedException" + which);
-            CheckStartsWith(result.Message, std::string("An unexpected exception was thrown: "), __func__, __LINE__,
+            CheckStartsWith(result.Message, "An unexpected exception was thrown: ", __func__, __LINE__,
                 "the message should say what was thrown" + which);
-            CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__,
+            CheckEquals(SampleText, ini.ToText(), __func__, __LINE__,
                 "a failed edit should change nothing" + which);
             CheckFalse(ini.IsModified(), __func__, __LINE__, "a failed edit shouldn't set the modified flag" + which);
         }
@@ -713,7 +713,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_LoadTextChangesNothing)
 
         if (result.IsOk())
         {
-            CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__,
+            CheckEquals(SampleText, ini.ToText(), __func__, __LINE__,
                 "a load that succeeded should have loaded the text" + which);
             CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified" + which);
         }
@@ -774,7 +774,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, OutOfMemory_SetOptionsChangesNothing)
                 "a failed allocation should be UnexpectedException" + which);
             CheckFalse(ini.GetOptions().Reading.InlineComments, __func__, __LINE__,
                 "a failed SetOptions() should keep the options" + which);
-            CheckEquals(std::string("My App ; not a comment"), name, __func__, __LINE__,
+            CheckEquals("My App ; not a comment", name, __func__, __LINE__,
                 "a failed SetOptions() should keep the lines as they were read" + which);
         }
 
@@ -824,7 +824,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_InvalidOptionsChangeNothing)
     CheckEquals(TASWIniOptions().Reading.Separators, ini.GetOptions().Reading.Separators, __func__, __LINE__,
         "the options should be unchanged");
     CheckFalse(ini.GetOptions().Reading.InlineComments, __func__, __LINE__, "the options should be unchanged");
-    CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__, "the text should be unchanged");
+    CheckEquals(SampleText, ini.ToText(), __func__, __LINE__, "the text should be unchanged");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_ReadsTheTextAgain)
@@ -848,7 +848,7 @@ ASW_TEST(TTest_ASWIni_BaseAccess, SetOptions_ReadsTheTextAgain)
     CheckTrue(ini.GetValueOptions().BoolFormat == EBoolFormat::YesNo, __func__, __LINE__,
         "the value options should be the new ones");
     CheckTrue(ini.TryGetText("General", "Name", name), __func__, __LINE__, "the key should exist");
-    CheckEquals(std::string("My App"), name, __func__, __LINE__, "the text should be read again with the new options");
+    CheckEquals("My App", name, __func__, __LINE__, "the text should be read again with the new options");
     CheckEquals(before, ini.ToText(), __func__, __LINE__, "the text should be unchanged");
     CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be kept");
 }
@@ -967,10 +967,10 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayCallTheObject)
     CheckEquals(std::size_t(5), seen.size(), __func__, __LINE__, "the callback should have run three times");
     if (seen.size() == 5)
     {
-        CheckEquals(std::string("1"), seen[1], __func__, __LINE__, "the callback should see the loaded document");
+        CheckEquals("1", seen[1], __func__, __LINE__, "the callback should see the loaded document");
         CheckEquals(seen[0], seen[2], __func__, __LINE__,
             "the callback's SetOptions() should report the warning again, inside the callback");
-        CheckContains(seen[3], std::string("[Callback]"), __func__, __LINE__,
+        CheckContains(seen[3], "[Callback]", __func__, __LINE__,
             "the callback's edit should be in the document");
         CheckEquals(failed.Message, seen[4], __func__, __LINE__, "the failed rename should be reported");
     }
@@ -1054,7 +1054,7 @@ ASW_TEST(TTest_ASWIni_BaseCallback, Callback_MayLoadAndSave)
     CheckEquals(std::size_t(4), messagesOfSave, __func__, __LINE__,
         "Save() should report its warning, and the callback's Load() the file's three");
     CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
-    CheckEquals(std::string(WarningsText), contents, __func__, __LINE__, "the saves should write the text as it was");
+    CheckEquals(WarningsText, contents, __func__, __LINE__, "the saves should write the text as it was");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "the loaded document shouldn't be modified");
 }
 //---------------------------------------------------------------------------
@@ -1129,9 +1129,9 @@ ASW_TEST(TTest_ASWIni_BaseCallback, GetValue_WarningIsReported)
     {
         CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "the message should be a Warning");
         CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "the message should be InvalidValue");
-        CheckEquals(std::string("Window.Tools"), messages[0].Section, __func__, __LINE__,
+        CheckEquals("Window.Tools", messages[0].Section, __func__, __LINE__,
             "the message should name the section");
-        CheckEquals(std::string("Visible"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+        CheckEquals("Visible", messages[0].Key, __func__, __LINE__, "the message should name the key");
     }
 }
 //---------------------------------------------------------------------------
@@ -1411,7 +1411,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, FileOperations_DontOverlap)
     CheckTrue(loaded.IsOk() && saved.IsOk(), __func__, __LINE__, "the file should be loaded and saved");
     CheckTrue(saveWaited, __func__, __LINE__, "a save should wait for a load to finish");
     CheckTrue(loadWaited, __func__, __LINE__, "a load should wait for a save to finish");
-    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__, "the file path should be set");
+    CheckEquals("app.ini", ini.GetFilePath(), __func__, __LINE__, "the file path should be set");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_BaseFile, Load_FileErrorsChangeNothing)
@@ -1556,7 +1556,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, Load_ReadsTheFile)
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be loaded: " + result.Message);
     CheckEquals(std::string(), result.FilePath, __func__, __LINE__, "a result that is Ok should be only that");
-    CheckEquals(std::string(WarningsText), ini.ToText(), __func__, __LINE__,
+    CheckEquals(WarningsText, ini.ToText(), __func__, __LINE__,
         "the document should have the file's text");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
     CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the file path should be the path as it was given");
@@ -1598,10 +1598,10 @@ ASW_TEST(TTest_ASWIni_BaseFile, Load_ReadsWithoutTheLock)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be loaded: " + result.Message);
-    CheckEquals(std::string("640"), widthDuringLoad, __func__, __LINE__,
+    CheckEquals("640", widthDuringLoad, __func__, __LINE__,
         "a lookup during the load should see the old document");
     CheckTrue(editDuringLoad.IsOk(), __func__, __LINE__, "an edit during the load should succeed");
-    CheckEquals(std::string("[Loaded]\nKey = 1\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[Loaded]\nKey = 1\n", ini.ToText(), __func__, __LINE__,
         "the loaded file should replace the edited document");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a loaded document shouldn't be modified");
 }
@@ -1638,7 +1638,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_LoadChangesNothing)
 
         if (result.IsOk())
         {
-            CheckEquals(std::string(SampleText), ini.ToText(), __func__, __LINE__,
+            CheckEquals(SampleText, ini.ToText(), __func__, __LINE__,
                 "a load that succeeded should have loaded the file" + which);
             CheckEquals(path, ini.GetFilePath(), __func__, __LINE__,
                 "a load that succeeded should set the file path" + which);
@@ -1707,7 +1707,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, OutOfMemory_SaveChangesNothing)
             CheckTrue(failed, __func__, __LINE__, "the save should only fail when an allocation fails" + which);
             CheckEquals(EIniCode::UnexpectedException, result.Code, __func__, __LINE__,
                 "a failed allocation should be UnexpectedException" + which);
-            CheckEquals(std::string(SampleText), contents, __func__, __LINE__,
+            CheckEquals(SampleText, contents, __func__, __LINE__,
                 "a failed save should leave the file as it was" + which);
             CheckTrue(ini.IsModified(), __func__, __LINE__, "a failed save should keep the modified flag" + which);
         }
@@ -1854,7 +1854,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, Save_EditDuringSaveKeepsTheModifiedFlag)
     CheckTrue(ini.IsModified(), __func__, __LINE__, "a key set during the save should keep the modified flag");
     CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should exist");
     CheckEquals(textOfFirstSave, contents, __func__, __LINE__, "the file should have the text before the edit");
-    CheckEquals(std::string("600"), ini.GetValue("Window", "Height", ""), __func__, __LINE__,
+    CheckEquals("600", ini.GetValue("Window", "Height", ""), __func__, __LINE__,
         "the document should have the edit");
 
     // Act
@@ -1944,7 +1944,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, Save_ReadOnlyFileChangesNothing)
     CheckEquals(static_cast<int>(ERROR_ACCESS_DENIED), result.SystemError, __func__, __LINE__,
         "the system error should be access denied");
     CheckTrue(read, __func__, __LINE__, "the file should still be readable");
-    CheckEquals(std::string(SampleText), contents, __func__, __LINE__, "the file should be unchanged");
+    CheckEquals(SampleText, contents, __func__, __LINE__, "the file should be unchanged");
     CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
     CheckEquals(path, ini.GetFilePath(), __func__, __LINE__, "the file path should be unchanged");
     CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the failure should be reported");
@@ -1981,9 +1981,9 @@ ASW_TEST(TTest_ASWIni_BaseFile, Save_RoundTripsByteForByte)
     CheckTrue(savedAs.IsOk(), __func__, __LINE__, "the copy should be saved: " + savedAs.Message);
     CheckTrue(ReadTestFile(source, sourceContents), __func__, __LINE__, "the file should be readable");
     CheckTrue(ReadTestFile(copy, copyContents), __func__, __LINE__, "the copy should be readable");
-    CheckEquals(std::string(TrickyText), sourceContents, __func__, __LINE__,
+    CheckEquals(TrickyText, sourceContents, __func__, __LINE__,
         "the saved file should have the bytes it was loaded from");
-    CheckEquals(std::string(TrickyText), copyContents, __func__, __LINE__,
+    CheckEquals(TrickyText, copyContents, __func__, __LINE__,
         "the copy should have the bytes the file was loaded from");
 }
 //---------------------------------------------------------------------------
@@ -2070,7 +2070,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, Save_WritesAndClearsTheModifiedFlag)
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a saved document shouldn't be modified");
     CheckTrue(ReadTestFile(file, contents), __func__, __LINE__, "the file should be readable");
     CheckEquals(ini.ToText(), contents, __func__, __LINE__, "the file should have the document's text");
-    CheckContains(contents, std::string("Width = 800"), __func__, __LINE__, "the file should have the edit");
+    CheckContains(contents, "Width = 800", __func__, __LINE__, "the file should have the edit");
 
     // Act
     // A document that isn't modified is saved too
@@ -2110,7 +2110,7 @@ ASW_TEST(TTest_ASWIni_BaseFile, Seams_ExceptionIsUnexpectedException)
     // Assert
     CheckEquals(EIniCode::UnexpectedException, load.Code, __func__, __LINE__,
         "an exception from ReadFile() should be UnexpectedException");
-    CheckContains(load.Message, std::string("The disk is gone."), __func__, __LINE__,
+    CheckContains(load.Message, "The disk is gone.", __func__, __LINE__,
         "the message should say what was thrown");
     CheckEquals(EIniCode::UnexpectedException, saveAs.Code, __func__, __LINE__,
         "an exception from WriteFile() should be UnexpectedException");
@@ -2155,27 +2155,27 @@ ASW_TEST(TTest_ASWIni_BaseFile, Seams_FailuresChangeNothing)
 
     // Assert
     CheckEquals(EIniCode::WriteFailed, writeFailed.Code, __func__, __LINE__, "Save() should fail as WriteFile() did");
-    CheckEquals(std::string("app.ini"), writeFailed.FilePath, __func__, __LINE__,
+    CheckEquals("app.ini", writeFailed.FilePath, __func__, __LINE__,
         "the failed Save() should name the file path");
     CheckEquals(EIniCode::ReplaceFailed, replaceFailed.Code, __func__, __LINE__,
         "SaveAs() should fail as WriteFile() did");
-    CheckEquals(std::string("app.ini.tmp"), replaceFailed.FilePath, __func__, __LINE__,
+    CheckEquals("app.ini.tmp", replaceFailed.FilePath, __func__, __LINE__,
         "a failure that names a file should keep it");
     CheckEquals(EIniCode::ReadFailed, readFailed.Code, __func__, __LINE__, "Load() should fail as ReadFile() did");
-    CheckEquals(std::string("other.ini"), readFailed.FilePath, __func__, __LINE__,
+    CheckEquals("other.ini", readFailed.FilePath, __func__, __LINE__,
         "the failed Load() should name the file it read");
     CheckEquals(before, ini.ToText(), __func__, __LINE__, "the document should be unchanged");
     CheckTrue(ini.IsModified(), __func__, __LINE__, "the modified flag should be unchanged");
-    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__, "the file path should be unchanged");
+    CheckEquals("app.ini", ini.GetFilePath(), __func__, __LINE__, "the file path should be unchanged");
     CheckEquals(std::size_t(3), messages.size(), __func__, __LINE__, "each failure should be reported");
     if (messages.size() == 3)
     {
-        CheckEquals(std::string("app.ini"), messages[0].FilePath, __func__, __LINE__,
+        CheckEquals("app.ini", messages[0].FilePath, __func__, __LINE__,
             "the failed Save() should be reported with the file path");
-        CheckEquals(std::string("app.ini.tmp"), messages[1].FilePath, __func__, __LINE__,
+        CheckEquals("app.ini.tmp", messages[1].FilePath, __func__, __LINE__,
             "the failed SaveAs() should be reported with the file it names");
         CheckEquals(5, messages[1].SystemError, __func__, __LINE__, "the system error should be reported");
-        CheckEquals(std::string("other.ini"), messages[2].FilePath, __func__, __LINE__,
+        CheckEquals("other.ini", messages[2].FilePath, __func__, __LINE__,
             "the failed Load() should be reported with the file it read, not the file path");
     }
 }
@@ -2202,13 +2202,13 @@ ASW_TEST(TTest_ASWIni_BaseFile, Seams_FileNotFoundIsAMissingFile)
     // Assert
     CheckEquals(EIniCode::FileNotFound, result.Code, __func__, __LINE__, "Load() should fail as ReadFile() did");
     CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "the document should be emptied");
-    CheckEquals(std::string("app.ini"), ini.GetFilePath(), __func__, __LINE__,
+    CheckEquals("app.ini", ini.GetFilePath(), __func__, __LINE__,
         "the file Load() was given should become the file path");
     CheckEquals(std::size_t(1), messages.size(), __func__, __LINE__, "the missing file should be reported once");
     if (messages.size() == 1)
     {
         CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "a missing file should be a Warning");
-        CheckEquals(std::string("elsewhere.ini"), messages[0].FilePath, __func__, __LINE__,
+        CheckEquals("elsewhere.ini", messages[0].FilePath, __func__, __LINE__,
             "the warning should name the file ReadFile() named");
         CheckEquals(2, messages[0].SystemError, __func__, __LINE__, "the warning should have the system error");
     }
@@ -2255,9 +2255,9 @@ ASW_TEST(TTest_ASWIni_BaseFile, Seams_GetTheirArguments)
 
     // Assert
     CheckTrue(loaded.IsOk() && saved.IsOk(), __func__, __LINE__, "the file should be loaded and saved");
-    CheckEquals(std::string("Folder/app.ini"), readPath, __func__, __LINE__, "ReadFile() should get the path as given");
+    CheckEquals("Folder/app.ini", readPath, __func__, __LINE__, "ReadFile() should get the path as given");
     CheckEquals(std::size_t(1000), readMaxSize, __func__, __LINE__, "ReadFile() should get MaxFileSize");
-    CheckEquals(std::string("Folder/app.ini"), writePath, __func__, __LINE__, "WriteFile() should get the file path");
+    CheckEquals("Folder/app.ini", writePath, __func__, __LINE__, "WriteFile() should get the file path");
     CheckEquals(ini.ToText(), writeText, __func__, __LINE__, "WriteFile() should get the document's text");
     CheckTrue(writeOptions.Backup && !writeOptions.AtomicSave && writeOptions.BackupSuffix == ".old", __func__,
         __LINE__, "WriteFile() should get the saving options");
@@ -2722,7 +2722,7 @@ ASW_TEST(TTest_ASWIni_BaseThreads, SetOptions_LookupsSeeTheOldOrTheNewOptions)
     CheckEquals(std::string(), failures.Summary(), __func__, __LINE__, "no thread should find a problem");
     CheckFalse(ini.GetOptions().Reading.InlineComments, __func__, __LINE__, "the last options set should be kept");
     CheckTrue(ini.TryGetText("Values", "Name", name), __func__, __LINE__, "the key should exist");
-    CheckEquals(std::string("My App ; note"), name, __func__, __LINE__,
+    CheckEquals("My App ; note", name, __func__, __LINE__,
         "the text should be read with the last options");
     CheckEquals(iterations, ini.GetValue("Values", WriterKey(0), -1), __func__, __LINE__,
         "the key should have the writer's last value");

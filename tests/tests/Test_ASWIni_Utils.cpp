@@ -226,13 +226,13 @@ ASW_TEST(TTest_ASWIni_Utils, IsValidUtf8_RejectsInvalidSequences)
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Utils, LineBreakText_MatchesEachBreak)
 {
-    CheckEquals(std::string(""), std::string(ASWIni::Detail::LineBreakText(ELineBreak::None)), __func__, __LINE__,
+    CheckEquals("", std::string(ASWIni::Detail::LineBreakText(ELineBreak::None)), __func__, __LINE__,
         "None");
-    CheckEquals(std::string("\n"), std::string(ASWIni::Detail::LineBreakText(ELineBreak::LF)), __func__, __LINE__,
+    CheckEquals("\n", std::string(ASWIni::Detail::LineBreakText(ELineBreak::LF)), __func__, __LINE__,
         "LF");
-    CheckEquals(std::string("\r"), std::string(ASWIni::Detail::LineBreakText(ELineBreak::CR)), __func__, __LINE__,
+    CheckEquals("\r", std::string(ASWIni::Detail::LineBreakText(ELineBreak::CR)), __func__, __LINE__,
         "CR");
-    CheckEquals(std::string("\r\n"), std::string(ASWIni::Detail::LineBreakText(ELineBreak::CRLF)), __func__,
+    CheckEquals("\r\n", std::string(ASWIni::Detail::LineBreakText(ELineBreak::CRLF)), __func__,
         __LINE__, "CRLF");
 }
 //---------------------------------------------------------------------------
@@ -292,13 +292,13 @@ ASW_TEST(TTest_ASWIni_Utils, SplitLines_KeepsEachLineBreak)
 
     // Assert
     AssertEquals(4, static_cast<int>(lines.size()), __func__, __LINE__, "there should be four lines");
-    CheckEquals(std::string("a"), std::string(lines[0].Text), __func__, __LINE__, "line 1's text");
+    CheckEquals("a", std::string(lines[0].Text), __func__, __LINE__, "line 1's text");
     CheckEquals(ELineBreak::LF, lines[0].Break, __func__, __LINE__, "line 1 should end with LF");
-    CheckEquals(std::string("b"), std::string(lines[1].Text), __func__, __LINE__, "line 2's text");
+    CheckEquals("b", std::string(lines[1].Text), __func__, __LINE__, "line 2's text");
     CheckEquals(ELineBreak::CR, lines[1].Break, __func__, __LINE__, "line 2 should end with CR");
-    CheckEquals(std::string(""), std::string(lines[2].Text), __func__, __LINE__, "line 3 should be empty");
+    CheckEquals("", std::string(lines[2].Text), __func__, __LINE__, "line 3 should be empty");
     CheckEquals(ELineBreak::CRLF, lines[2].Break, __func__, __LINE__, "line 3 should end with CRLF");
-    CheckEquals(std::string("c"), std::string(lines[3].Text), __func__, __LINE__, "line 4's text");
+    CheckEquals("c", std::string(lines[3].Text), __func__, __LINE__, "line 4's text");
     CheckEquals(ELineBreak::CRLF, lines[3].Break, __func__, __LINE__, "line 4 should end with CRLF");
 }
 //---------------------------------------------------------------------------
@@ -309,7 +309,7 @@ ASW_TEST(TTest_ASWIni_Utils, SplitLines_LastLineWithoutBreak)
 
     // Assert
     AssertEquals(2, static_cast<int>(lines.size()), __func__, __LINE__, "there should be two lines");
-    CheckEquals(std::string("Last=2"), std::string(lines[1].Text), __func__, __LINE__, "the last line's text");
+    CheckEquals("Last=2", std::string(lines[1].Text), __func__, __LINE__, "the last line's text");
     CheckEquals(ELineBreak::None, lines[1].Break, __func__, __LINE__, "the last line should have no line break");
 }
 //---------------------------------------------------------------------------
@@ -329,17 +329,17 @@ ASW_TEST(TTest_ASWIni_Utils, ToLowerAscii_ChangesOnlyUpperCaseLetters)
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Utils, Trim_RemovesSpacesAndTabsOnly)
 {
-    CheckEquals(std::string("a b"), std::string(ASWIni::Detail::Trim(" \t a b\t ")), __func__, __LINE__,
+    CheckEquals("a b", std::string(ASWIni::Detail::Trim(" \t a b\t ")), __func__, __LINE__,
         "spaces and tabs at both ends should go, the inner space should stay");
-    CheckEquals(std::string("a b\t "), std::string(ASWIni::Detail::TrimLeft(" \t a b\t ")), __func__, __LINE__,
+    CheckEquals("a b\t ", std::string(ASWIni::Detail::TrimLeft(" \t a b\t ")), __func__, __LINE__,
         "TrimLeft should only trim the start");
-    CheckEquals(std::string(" \t a b"), std::string(ASWIni::Detail::TrimRight(" \t a b\t ")), __func__, __LINE__,
+    CheckEquals(" \t a b", std::string(ASWIni::Detail::TrimRight(" \t a b\t ")), __func__, __LINE__,
         "TrimRight should only trim the end");
-    CheckEquals(std::string(""), std::string(ASWIni::Detail::Trim(" \t\t ")), __func__, __LINE__,
+    CheckEquals("", std::string(ASWIni::Detail::Trim(" \t\t ")), __func__, __LINE__,
         "only blanks should trim to empty");
-    CheckEquals(std::string("\r a \n"), std::string(ASWIni::Detail::Trim("\r a \n")), __func__, __LINE__,
+    CheckEquals("\r a \n", std::string(ASWIni::Detail::Trim("\r a \n")), __func__, __LINE__,
         "line breaks should not be trimmed");
-    CheckEquals(std::string(""), std::string(ASWIni::Detail::Trim("")), __func__, __LINE__,
+    CheckEquals("", std::string(ASWIni::Detail::Trim("")), __func__, __LINE__,
         "an empty text should stay empty");
 }
 //---------------------------------------------------------------------------

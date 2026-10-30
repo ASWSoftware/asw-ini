@@ -194,7 +194,7 @@ ASW_TEST(TTest_ASWIni_File, ReadWholeFile_LargerThanMaxSize)
     CheckContains(tooLarge.Message, "11 bytes", __func__, __LINE__, "the message should give the file's size");
     CheckEmpty(contentsAfterFailure, __func__, __LINE__, "nothing should be read from a file that is too large");
     CheckTrue(exactSize.IsOk(), __func__, __LINE__, "a file of exactly the limit should be read: " + exactSize.Message);
-    CheckEquals(std::string("0123456789A"), contents, __func__, __LINE__, "the whole file should be read");
+    CheckEquals("0123456789A", contents, __func__, __LINE__, "the whole file should be read");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, ReadWholeFile_MissingFile)
@@ -304,9 +304,9 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_CopiesPreviousFile)
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be saved: " + result.Message);
     CheckEmpty(warnings, __func__, __LINE__, "there should be no warnings");
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should be readable");
-    CheckEquals(std::string("new"), contents, __func__, __LINE__, "the file should have the new contents");
+    CheckEquals("new", contents, __func__, __LINE__, "the file should have the new contents");
     CheckTrue(ReadTestFile(folder.Path() / "app.ini.bak", backup), __func__, __LINE__, "the backup should exist");
-    CheckEquals(std::string("old"), backup, __func__, __LINE__, "the backup should have the previous contents");
+    CheckEquals("old", backup, __func__, __LINE__, "the backup should have the previous contents");
 
     // Act: a second save replaces the older backup
     ASWIni::TASWIniResult const second = ASWIni::Detail::WriteWholeFile(path, "newer", options, warnings);
@@ -314,7 +314,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_CopiesPreviousFile)
     // Assert
     CheckTrue(second.IsOk(), __func__, __LINE__, "the second save should succeed: " + second.Message);
     CheckTrue(ReadTestFile(folder.Path() / "app.ini.bak", backup), __func__, __LINE__, "the backup should exist");
-    CheckEquals(std::string("new"), backup, __func__, __LINE__, "the backup should be replaced");
+    CheckEquals("new", backup, __func__, __LINE__, "the backup should be replaced");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, WriteWholeFile_Backup_SkippedForNewFile)
@@ -375,7 +375,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_CreatesMissingFolders)
     std::string contents;
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be saved: " + result.Message);
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should be in the new folders");
-    CheckEquals(std::string("x"), contents, __func__, __LINE__, "the file should have its contents");
+    CheckEquals("x", contents, __func__, __LINE__, "the file should have its contents");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, WriteWholeFile_EmptyPath)
@@ -415,7 +415,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_FailedReplace_KeepsTargetAndRemovesTe
     CheckEquals(1, static_cast<int>(CountEntries(folder.Path())), __func__, __LINE__,
         "no temporary file should be left");
     CheckTrue(ReadTestFile(path / "inside.txt", inside), __func__, __LINE__, "the folder should be untouched");
-    CheckEquals(std::string("kept"), inside, __func__, __LINE__, "the folder's file should be unchanged");
+    CheckEquals("kept", inside, __func__, __LINE__, "the folder's file should be unchanged");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_File, WriteWholeFile_InPlace_OverwritesAndTruncates)
@@ -437,7 +437,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_InPlace_OverwritesAndTruncates)
     std::string contents;
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be saved: " + result.Message);
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should be readable");
-    CheckEquals(std::string("short"), contents, __func__, __LINE__, "the old contents should be cut off");
+    CheckEquals("short", contents, __func__, __LINE__, "the old contents should be cut off");
     CheckEquals(1, static_cast<int>(CountEntries(folder.Path())), __func__, __LINE__,
         "no other file should be made");
 }
@@ -472,7 +472,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_KeepsHiddenAttribute)
     CheckTrue((attributesAfterInPlace & FILE_ATTRIBUTE_HIDDEN) != 0, __func__, __LINE__,
         "the file should still be hidden after an in-place save");
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should be readable");
-    CheckEquals(std::string("newer"), contents, __func__, __LINE__, "the file should have the last contents");
+    CheckEquals("newer", contents, __func__, __LINE__, "the file should have the last contents");
 }
 #endif
 //---------------------------------------------------------------------------
@@ -521,7 +521,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_KeepsSymbolicLink)
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be saved: " + result.Message);
     CheckTrue(std::filesystem::is_symlink(link, error), __func__, __LINE__, "the link should still be a link");
     CheckTrue(ReadTestFile(real, contents), __func__, __LINE__, "the linked file should be readable");
-    CheckEquals(std::string("new"), contents, __func__, __LINE__, "the linked file should have the new contents");
+    CheckEquals("new", contents, __func__, __LINE__, "the linked file should have the new contents");
 }
 #endif
 //---------------------------------------------------------------------------
@@ -543,7 +543,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_NonAsciiPath)
     // Assert
     CheckTrue(written.IsOk(), __func__, __LINE__, "the file should be saved: " + written.Message);
     CheckTrue(read.IsOk(), __func__, __LINE__, "the file should be read: " + read.Message);
-    CheckEquals(std::string("x"), contents, __func__, __LINE__, "the file should have its contents");
+    CheckEquals("x", contents, __func__, __LINE__, "the file should have its contents");
 #if defined(_WIN32)
     std::error_code error;
     CheckTrue(std::filesystem::exists(folder.Path() / L"caf\x00E9" / L"\x03BB.ini", error), __func__, __LINE__,
@@ -573,7 +573,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_ReadOnlyFile_Fails)
     CheckEquals(static_cast<int>(ERROR_ACCESS_DENIED), result.SystemError, __func__, __LINE__,
         "the system error should be access denied");
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should still be readable");
-    CheckEquals(std::string("old"), contents, __func__, __LINE__, "the file should be unchanged");
+    CheckEquals("old", contents, __func__, __LINE__, "the file should be unchanged");
     CheckEquals(1, static_cast<int>(CountEntries(folder.Path())), __func__, __LINE__,
         "no temporary file should be left");
 
@@ -600,7 +600,7 @@ ASW_TEST(TTest_ASWIni_File, WriteWholeFile_ReplacesFile)
     CheckTrue(result.IsOk(), __func__, __LINE__, "the file should be saved: " + result.Message);
     CheckEmpty(warnings, __func__, __LINE__, "there should be no warnings");
     CheckTrue(ReadTestFile(path, contents), __func__, __LINE__, "the file should be readable");
-    CheckEquals(std::string("new"), contents, __func__, __LINE__, "the file should have only the new contents");
+    CheckEquals("new", contents, __func__, __LINE__, "the file should have only the new contents");
     CheckEquals(1, static_cast<int>(CountEntries(folder.Path())), __func__, __LINE__,
         "no temporary file should be left");
 }

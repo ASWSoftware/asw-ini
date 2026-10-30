@@ -405,8 +405,8 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Get_InvalidValueGivesTheDefault)
     CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "the code should be the converter's");
     CheckEquals(widthProblem + " The default value \"640\" is used.", messages[0].Text, __func__, __LINE__,
         "the text should give the converter's problem and the default value");
-    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
-    CheckEquals(std::string("Width"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("General", messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals("Width", messages[0].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(levelProblem + " The default value is used.", messages[1].Text, __func__, __LINE__,
         "a default value that can't be written should be left out of the text");
     CheckEquals(text, ini.ToText(), __func__, __LINE__, "Get() shouldn't change the document");
@@ -429,7 +429,7 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Get_ReadsTheDocument)
     // Act & Assert
     CheckEquals(16, number.Get(), __func__, __LINE__, "the value should be read, with the names' case ignored");
     CheckTrue(enabled.Get(), __func__, __LINE__, "a bool should be read in any of its forms");
-    CheckEquals(std::string("spaced"), name.Get(), __func__, __LINE__, "a text should be the document's value");
+    CheckEquals("spaced", name.Get(), __func__, __LINE__, "a text should be the document's value");
     CheckTrue(level.Get() == ELevel::High, __func__, __LINE__, "an enum should be read by name");
     CheckTrue(items.Get() == std::vector<int>{ 1, 2, 3 }, __func__, __LINE__, "a list should be read");
     CheckTrue(number.IsPresent(), __func__, __LINE__, "a key in the document should be present");
@@ -443,7 +443,7 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Get_ReadsTheDocument)
 
     static_cast<void>(ini.LoadText(""));
     CheckFalse(enabled.Get(), __func__, __LINE__, "a document loaded again should be read");
-    CheckEquals(std::string("none"), name.Get(), __func__, __LINE__, "an empty document should give the defaults");
+    CheckEquals("none", name.Get(), __func__, __LINE__, "an empty document should give the defaults");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsAccess, New_GivesTheDefaults)
@@ -462,16 +462,16 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, New_GivesTheDefaults)
 
     // Assert
     CheckEquals(640, widthValue, __func__, __LINE__, "a missing key should give the default");
-    CheckEquals(std::string("app"), nameValue, __func__, __LINE__, "a missing key should give the default");
+    CheckEquals("app", nameValue, __func__, __LINE__, "a missing key should give the default");
     CheckFalse(width.IsPresent(), __func__, __LINE__, "a missing key shouldn't be present");
     CheckTrue(&general.GetOwner() == &ini, __func__, __LINE__, "the section should keep its owner");
-    CheckEquals(std::string("General"), general.GetName(), __func__, __LINE__, "the section should keep its name");
-    CheckEquals(std::string("The general settings"), general.GetComment(), __func__, __LINE__,
+    CheckEquals("General", general.GetName(), __func__, __LINE__, "the section should keep its name");
+    CheckEquals("The general settings", general.GetComment(), __func__, __LINE__,
         "the section should keep its comment");
-    CheckEquals(std::string("General"), width.GetSectionName(), __func__, __LINE__,
+    CheckEquals("General", width.GetSectionName(), __func__, __LINE__,
         "the setting should keep its section's name");
-    CheckEquals(std::string("Width"), width.GetKey(), __func__, __LINE__, "the setting should keep its key");
-    CheckEquals(std::string("In pixels"), width.GetComment(), __func__, __LINE__,
+    CheckEquals("Width", width.GetKey(), __func__, __LINE__, "the setting should keep its key");
+    CheckEquals("In pixels", width.GetComment(), __func__, __LINE__,
         "the setting should keep its comment");
     CheckEquals(std::string(), name.GetComment(), __func__, __LINE__, "a setting without a comment should have none");
     CheckEquals(640, width.GetDefault(), __func__, __LINE__, "the setting should keep its default");
@@ -569,25 +569,25 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Range_ChecksGetAndSet)
     CheckEquals(2, read, __func__, __LINE__, "a value out of the range should give the default");
     CheckEquals(EIniCode::ValueOutOfRange, belowRange.Code, __func__, __LINE__, "a value below should be refused");
     CheckEquals(EIniCode::ValueOutOfRange, aboveRange.Code, __func__, __LINE__, "a value above should be refused");
-    CheckEquals(std::string("The key \"Level\" of the section \"General\" can't be set: The value \"5\" is out of the "
-        "setting's range: it must be 0 to 4."), aboveRange.Message, __func__, __LINE__,
+    CheckEquals("The key \"Level\" of the section \"General\" can't be set: The value \"5\" is out of the "
+        "setting's range: it must be 0 to 4.", aboveRange.Message, __func__, __LINE__,
         "the message should name the key and give the range");
     CheckTrue(top.IsOk() && bottom.IsOk(), __func__, __LINE__, "the range's ends should be in it");
     CheckEquals(0, level.Get(), __func__, __LINE__, "the last value set should be read");
     CheckEquals(EIniCode::ValueOutOfRange, belowMin.Code, __func__, __LINE__, "a value below Min should be refused");
-    CheckEndsWith(belowMin.Message, std::string("\"0\" is out of the setting's range: it must be at least 1."),
+    CheckEndsWith(belowMin.Message, "\"0\" is out of the setting's range: it must be at least 1.",
         __func__, __LINE__, "a range with only a Min should say so");
     CheckEquals(EIniCode::ValueOutOfRange, aboveMax.Code, __func__, __LINE__, "a value above Max should be refused");
-    CheckEndsWith(aboveMax.Message, std::string("\"1.5\" is out of the setting's range: it must be at most 1."),
+    CheckEndsWith(aboveMax.Message, "\"1.5\" is out of the setting's range: it must be at most 1.",
         __func__, __LINE__, "a range with only a Max should say so");
-    CheckEquals(std::string("[General]\nLevel = 0\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nLevel = 0\n", ini.ToText(), __func__, __LINE__,
         "only the values in the range should be written");
     AssertEquals(5, static_cast<int>(messages.size()), __func__, __LINE__,
         "the Warning of Get() and each failed Set() should be reported");
     CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "Get() should report a Warning");
     CheckEquals(EIniCode::ValueOutOfRange, messages[0].Code, __func__, __LINE__, "Get() should report the code");
-    CheckEquals(std::string("The value \"7\" is out of the setting's range: it must be 0 to 4. The default value \"2\" "
-        "is used."), messages[0].Text, __func__, __LINE__, "Get()'s Warning should give the range and the default");
+    CheckEquals("The value \"7\" is out of the setting's range: it must be 0 to 4. The default value \"2\" "
+        "is used.", messages[0].Text, __func__, __LINE__, "Get()'s Warning should give the range and the default");
     CheckEquals(ESeverity::Error, messages[2].Severity, __func__, __LINE__, "a failed Set() should be an Error");
     CheckEquals(aboveRange.Message, messages[2].Text, __func__, __LINE__, "the Error should have the result's text");
 }
@@ -607,7 +607,7 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Reset_SetsTheDefault)
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "Reset() should succeed");
     CheckEquals(640, width.Get(), __func__, __LINE__, "the value should be the default");
-    CheckEquals(std::string("[General]\nWidth = 640\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nWidth = 640\n", ini.ToText(), __func__, __LINE__,
         "the default should be written to the document");
 }
 //---------------------------------------------------------------------------
@@ -635,8 +635,8 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Set_AddsTheKeyWithItsComment)
     // Assert
     CheckTrue(keptResult.IsOk() && plainResult.IsOk() && addedResult.IsOk() && bareResult.IsOk() &&
         elsewhereResult.IsOk(), __func__, __LINE__, "each Set() should succeed");
-    CheckEquals(std::string("[General]\n; The user's note\nKept = 10\nPlain = 20\n; First line\n; Second line\n"
-        "Added = 30\nBare = 40\n\n[Other]\n; In a new section\nKey = 50\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\n; The user's note\nKept = 10\nPlain = 20\n; First line\n; Second line\n"
+        "Added = 30\nBare = 40\n\n[Other]\n; In a new section\nKey = 50\n", ini.ToText(), __func__, __LINE__,
         "a key Set() adds should get the setting's comment, and a key that exists should keep its own");
 }
 //---------------------------------------------------------------------------
@@ -673,7 +673,7 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Set_CommentThatCantBeWrittenChangesNothing
     CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "the failure should be an Error");
     CheckEquals(addedResult.Message, messages[0].Text, __func__, __LINE__, "the Error should have the result's text");
     CheckTrue(existingResult.IsOk(), __func__, __LINE__, "a key that exists doesn't get the comment, so it is set");
-    CheckEquals(std::string("[General]\nExisting = 2\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nExisting = 2\n", ini.ToText(), __func__, __LINE__,
         "only the value of the key that exists should change");
 }
 //---------------------------------------------------------------------------
@@ -714,11 +714,11 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Set_FailuresAreReported)
         "a key that can't be written should fail as SetText() does");
     CheckEquals(EIniCode::UnexpectedException, stdException.Code, __func__, __LINE__,
         "a validator's exception should be UnexpectedException");
-    CheckEquals(std::string("The key \"StdThrower\" of the section \"General\" can't be set: broken"),
+    CheckEquals("The key \"StdThrower\" of the section \"General\" can't be set: broken",
         stdException.Message, __func__, __LINE__, "the message should name the key and give what() of the exception");
     CheckEquals(EIniCode::UnexpectedException, otherException.Code, __func__, __LINE__,
         "an exception that isn't a std::exception should be UnexpectedException");
-    CheckContains(otherException.Message, std::string("isn't a std::exception"), __func__, __LINE__,
+    CheckContains(otherException.Message, "isn't a std::exception", __func__, __LINE__,
         "the message should say what was thrown");
     CheckEquals(std::string(), ini.ToText(), __func__, __LINE__, "the failures should change nothing");
     AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each failure should be reported once");
@@ -751,14 +751,14 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Set_WritesTheDocument)
 
     // Assert
     CheckTrue(allOk, __func__, __LINE__, "each Set() should succeed");
-    CheckEquals(std::string("[Values]\nNumber = -42\nCount = 7\nEnabled = true\nRatio = 0.5\nName = some name\n"
-        "Level = High\nItems = 1, 2, 3\nFile = app.log\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[Values]\nNumber = -42\nCount = 7\nEnabled = true\nRatio = 0.5\nName = some name\n"
+        "Level = High\nItems = 1, 2, 3\nFile = app.log\n", ini.ToText(), __func__, __LINE__,
         "each value should be written with its converter, in the order set");
     CheckTrue(ini.IsModified(), __func__, __LINE__, "the document should be modified");
     CheckEquals(-42, number.Get(), __func__, __LINE__, "the value set should be read back");
     CheckEquals(7u, count.Get(), __func__, __LINE__, "the value set should be read back");
     CheckTrue(enabled.Get(), __func__, __LINE__, "the value set should be read back");
-    CheckEquals(std::string("some name"), name.Get(), __func__, __LINE__, "the value set should be read back");
+    CheckEquals("some name", name.Get(), __func__, __LINE__, "the value set should be read back");
     CheckTrue(level.Get() == ELevel::High, __func__, __LINE__, "the value set should be read back");
     CheckTrue(items.Get() == std::vector<int>{ 1, 2, 3 }, __func__, __LINE__, "the value set should be read back");
     CheckTrue(file.Get() == std::filesystem::path("app.log"), __func__, __LINE__, "the value set should be read back");
@@ -789,7 +789,7 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Types_WithoutOperatorLessWork)
     CheckTrue(valid.IsOk(), __func__, __LINE__, "a value of an application's type should be set");
     CheckEquals(EIniCode::InvalidValue, refused.Code, __func__, __LINE__, "the validator should refuse a value");
     CheckTrue(listSet.IsOk(), __func__, __LINE__, "a list of an application's type should be set");
-    CheckEquals(std::string("[Room]\nTemperature = 21\nMarks = 2, 3\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[Room]\nTemperature = 21\nMarks = 2, 3\n", ini.ToText(), __func__, __LINE__,
         "the values should be written with the application's converter");
     CheckEquals(21, temperature.Get().Degrees, __func__, __LINE__, "the value should be read back");
     CheckEquals(std::size_t(2), listRead.size(), __func__, __LINE__, "the list should be read back");
@@ -830,23 +830,23 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, Validator_ChecksGetAndSet)
     TASWIniResult const validEven = evenNumber.Set(4);
 
     // Assert
-    CheckEquals(std::string("App_"), readPrefix, __func__, __LINE__, "a value the validator refuses gives the default");
+    CheckEquals("App_", readPrefix, __func__, __LINE__, "a value the validator refuses gives the default");
     AssertGreaterThan(messages.size(), std::size_t(0), __func__, __LINE__, "Get() should report the refused value");
     CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "Get() should report a Warning");
     CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "a refused value is InvalidValue");
-    CheckEquals(std::string("The value \"\" isn't valid: it can't be empty. The default value \"App_\" is used."),
+    CheckEquals("The value \"\" isn't valid: it can't be empty. The default value \"App_\" is used.",
         messages[0].Text, __func__, __LINE__, "the Warning should give the validator's problem and the default");
     CheckEquals(EIniCode::InvalidValue, emptyPrefix.Code, __func__, __LINE__, "Set() should be refused");
-    CheckEquals(std::string("The key \"Prefix\" of the section \"General\" can't be set: The value \"\" isn't valid: "
-        "it can't be empty."), emptyPrefix.Message, __func__, __LINE__, "the message should give the problem");
+    CheckEquals("The key \"Prefix\" of the section \"General\" can't be set: The value \"\" isn't valid: "
+        "it can't be empty.", emptyPrefix.Message, __func__, __LINE__, "the message should give the problem");
     CheckTrue(validPrefix.IsOk(), __func__, __LINE__, "a value the validator accepts should be set");
     CheckEquals(2, readEven, __func__, __LINE__, "a value the validator refuses gives the default");
-    CheckEndsWith(odd.Message, std::string("The value \"5\" isn't valid: it must be even."), __func__, __LINE__,
+    CheckEndsWith(odd.Message, "The value \"5\" isn't valid: it must be even.", __func__, __LINE__,
         "a problem that ends with a period shouldn't get another one");
     CheckTrue(validEven.IsOk(), __func__, __LINE__, "a value the validator accepts should be set");
     CheckTrue(checked == std::vector<int>{ 3, 5, 4 }, __func__, __LINE__,
         "the validator should be given each value read or set");
-    CheckEquals(std::string("[General]\nPrefix = Log_\nEven = 4\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nPrefix = Log_\nEven = 4\n", ini.ToText(), __func__, __LINE__,
         "only the values the validator accepts should be written");
 }
 //---------------------------------------------------------------------------
@@ -877,9 +877,9 @@ ASW_TEST(TTest_ASWIni_SettingsAccess, ValueOptions_AreTheSettingsOwnOrTheOwners)
     AssertTrue(own.GetOptions().GetValues() != nullptr, __func__, __LINE__, "the setting should keep its value options");
     CheckEquals(EBoolFormat::OneZero, own.GetOptions().GetValues()->BoolFormat, __func__, __LINE__,
         "the setting should keep its value options");
-    CheckEquals(std::string("[General]\nOwn = 1\nOwners = true\nList = 1; 2\n"), textBefore, __func__, __LINE__,
+    CheckEquals("[General]\nOwn = 1\nOwners = true\nList = 1; 2\n", textBefore, __func__, __LINE__,
         "a setting with value options of its own should be written with them, another with the owner's");
-    CheckEquals(std::string("[General]\nOwn = 0\nOwners = no\nList = 1; 2\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nOwn = 0\nOwners = no\nList = 1; 2\n", ini.ToText(), __func__, __LINE__,
         "a setting without value options of its own should follow the owner's");
     CheckTrue(list.Get() == std::vector<int>{ 1, 2 }, __func__, __LINE__,
         "a setting should be read with its own value options");
@@ -954,15 +954,15 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, AppSettings_OldFileIsBroughtUpToDate)
     CheckTrue(loaded.IsOk(), __func__, __LINE__, "the old file should load");
     CheckTrue(modified, __func__, __LINE__, "the old file should need saving");
     CheckTrue(saved.IsOk() && read, __func__, __LINE__, "the file should be saved");
-    CheckEquals(std::string("[General]\r\n;Leave blank for default (exe directory).\r\nImagesPath=\r\n"
+    CheckEquals("[General]\r\n;Leave blank for default (exe directory).\r\nImagesPath=\r\n"
         "DirLogs=%localAppData%\\ASWSoftware\\SweepThemMines\\Logs\\\r\nLogPrefix=GeneralSTM_\r\n;Valid range for "
         "LogLevel: 0-4. 0=System/forced logs only, 1=errors/warnings, 2=medium, 3=heavy, 4=debug/verbose\r\n"
         "LogLevel=0\r\n; Valid value for NDaysRetainLogs: 0 to N days. 0=retain forever.\r\nNDaysRetainLogs=14\r\n"
-        "UseQuestionMarksInit = true\r\n"), written, __func__, __LINE__,
+        "UseQuestionMarksInit = true\r\n", written, __func__, __LINE__,
         "only the lines that needed it should change, and the missing key should be added in the file's line ending");
     AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each change should be reported");
     CheckEquals(EIniCode::KeyAdded, messages[0].Code, __func__, __LINE__, "the missing key should be added");
-    CheckEquals(std::string("UseQuestionMarksInit"), messages[0].Key, __func__, __LINE__,
+    CheckEquals("UseQuestionMarksInit", messages[0].Key, __func__, __LINE__,
         "the changes should be reported in the order the settings are declared");
     CheckEquals(EIniCode::InvalidValue, messages[1].Code, __func__, __LINE__, "the empty DirLogs should be refused");
     CheckEquals(EIniCode::ValueOutOfRange, messages[2].Code, __func__, __LINE__, "LogLevel should be out of range");
@@ -1000,10 +1000,10 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Bindings_FollowTheirLifetimes)
     static_cast<void>(ini.LoadText(""));
 
     // Assert
-    CheckEquals(std::string("[General]\nKept = 1\n"), textBefore, __func__, __LINE__,
+    CheckEquals("[General]\nKept = 1\n", textBefore, __func__, __LINE__,
         "a setting or section that was destroyed should no longer be applied");
     CheckEquals(textBefore, textDeclared, __func__, __LINE__, "declaring a setting shouldn't change the document");
-    CheckEquals(std::string("[General]\nKept = 1\nLater = 3\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nKept = 1\nLater = 3\n", ini.ToText(), __func__, __LINE__,
         "a setting declared later should be applied by the next load");
 }
 //---------------------------------------------------------------------------
@@ -1031,9 +1031,9 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Comments_CodeWinsReplacesTheFilesComments)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("; The code's file comment\n\n; The code's section comment\n[General]\n"
+    CheckEquals("; The code's file comment\n\n; The code's section comment\n[General]\n"
         "; The code's key comment\n; in two lines\nA = 1\n; The user's note, which the code has no comment for\n"
-        "B = 2\n\n; The user's note on a section the code has no comment for\n[Other]\n"), text, __func__, __LINE__,
+        "B = 2\n\n; The user's note on a section the code has no comment for\n[Other]\n", text, __func__, __LINE__,
         "the code's comments should replace the file's, and a comment the code doesn't declare should stay");
     CheckTrue(modified, __func__, __LINE__, "the replaced comments should set the modified flag");
     CheckTrue(messages.empty(), __func__, __LINE__, "replacing a comment isn't reported");
@@ -1064,13 +1064,13 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Comments_FileWinsKeepsTheFilesComments)
     static_cast<void>(ini.LoadText("[General]\nA = 1\nC = 3\nE = 5\n"));
 
     // Assert
-    CheckEquals(std::string("; The user's file comment\n\n; The user's section comment\n[General]\n"
+    CheckEquals("; The user's file comment\n\n; The user's section comment\n[General]\n"
         "; The user's key comment\nA = 1\n; C's comment\nC = 3\n; E's comment\nE = 5\n\n; Bare's comment\n[Bare]\n"
-        "D = 4\n"), withComments, __func__, __LINE__,
+        "D = 4\n", withComments, __func__, __LINE__,
         "the file's comments should stay, and the code's should be written only where there is none");
-    CheckEquals(std::string("; The code's file comment\n\n; The code's section comment\n[General]\n"
+    CheckEquals("; The code's file comment\n\n; The code's section comment\n[General]\n"
         "; The code's key comment\nA = 1\n; C's comment\nC = 3\n; E's comment\nE = 5\n\n; Bare's comment\n[Bare]\n"
-        "D = 0\n"), ini.ToText(), __func__, __LINE__, "a file without comments should get all the code's");
+        "D = 0\n", ini.ToText(), __func__, __LINE__, "a file without comments should get all the code's");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_SettingsLoad, Load_AddsMissingKeysInDeclarationOrder)
@@ -1096,18 +1096,18 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_AddsMissingKeysInDeclarationOrder)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\nB = 2\n; A's comment\nA = 1\nC = three\n\n[Window]\nWidth = 640\n"), text,
+    CheckEquals("[General]\nB = 2\n; A's comment\nA = 1\nC = three\n\n[Window]\nWidth = 640\n", text,
         __func__, __LINE__, "the missing keys and sections should be added in the order they are declared");
     CheckTrue(modified, __func__, __LINE__, "adding keys should set the modified flag");
     AssertEquals(3, static_cast<int>(reported), __func__, __LINE__, "each added key should be reported");
     CheckEquals(ESeverity::Info, messages[0].Severity, __func__, __LINE__, "an added key is an Info message");
     CheckEquals(EIniCode::KeyAdded, messages[0].Code, __func__, __LINE__, "an added key is KeyAdded");
-    CheckEquals(std::string("The key \"A\" of the section \"General\" is missing: it is added with its default value "
-        "\"1\"."), messages[0].Text, __func__, __LINE__, "the message should name the key and the default value");
-    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
-    CheckEquals(std::string("A"), messages[0].Key, __func__, __LINE__, "the message should name the key");
-    CheckEquals(std::string("C"), messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
-    CheckEquals(std::string("Window"), messages[2].Section, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals("The key \"A\" of the section \"General\" is missing: it is added with its default value "
+        "\"1\".", messages[0].Text, __func__, __LINE__, "the message should name the key and the default value");
+    CheckEquals("General", messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals("A", messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("C", messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals("Window", messages[2].Section, __func__, __LINE__, "the keys should be reported in order");
     CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document with every setting should stay as it is");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a document with every setting isn't modified");
     CheckEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
@@ -1134,7 +1134,7 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_FailureAppliesNothing)
 
     // Assert
     CheckEquals(EIniCode::ParseFailed, result.Code, __func__, __LINE__, "a malformed line should fail the load");
-    CheckEquals(std::string("[General]\nA = 5\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nA = 5\n", ini.ToText(), __func__, __LINE__,
         "a failed load shouldn't change the document, nor apply the settings to it");
     CheckFalse(ini.IsModified(), __func__, __LINE__, "a failed load shouldn't set the modified flag");
     AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "only the failure should be reported");
@@ -1165,10 +1165,10 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_InvalidDefaultIsAnError)
     AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__, "each default should be reported");
     CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a default that isn't valid is an Error");
     CheckEquals(EIniCode::ValueOutOfRange, messages[0].Code, __func__, __LINE__, "the code should be the range's");
-    CheckEquals(std::string("The key \"Level\" of the section \"General\" can't be given its default value: The value "
-        "\"9\" is out of the setting's range: it must be 0 to 4."), messages[0].Text, __func__, __LINE__,
+    CheckEquals("The key \"Level\" of the section \"General\" can't be given its default value: The value "
+        "\"9\" is out of the setting's range: it must be 0 to 4.", messages[0].Text, __func__, __LINE__,
         "the message should name the key and give the problem");
-    CheckEquals(std::string("Level"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("Level", messages[0].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(EIniCode::InvalidValue, messages[1].Code, __func__, __LINE__, "the code should be the converter's");
     CheckEndsWith(messages[1].Text, unnamedProblem, __func__, __LINE__, "the message should give the problem");
 }
@@ -1289,7 +1289,7 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_MissingFileGetsEverySetting)
     CheckEquals(EIniCode::FileNotFound, loaded.Code, __func__, __LINE__, "a missing file is FileNotFound");
     CheckTrue(modified, __func__, __LINE__, "the settings added should set the modified flag");
     CheckTrue(saved.IsOk() && read, __func__, __LINE__, "Save() should create the file");
-    CheckEquals(std::string("; My application's settings\n\n[General]\n; A's comment\nA = 1\nB = x\n"), written,
+    CheckEquals("; My application's settings\n\n[General]\n; A's comment\nA = 1\nB = x\n", written,
         __func__, __LINE__, "the file should hold every setting with its comment");
     AssertEquals(3, static_cast<int>(messages.size()), __func__, __LINE__,
         "the missing file and each key added should be reported");
@@ -1316,14 +1316,14 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OldKeyThatCantBeRenamedIsAnError)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\nOld = 5\nGood = 3\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nOld = 5\nGood = 3\n", ini.ToText(), __func__, __LINE__,
         "an old key that can't be renamed should stay as it is, and the next setting should still be applied");
     AssertEquals(2, static_cast<int>(messages.size()), __func__, __LINE__,
         "the failure should be reported once, then the next key renamed");
     CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a key that can't be renamed is an Error");
     CheckEquals(EIniCode::InvalidArgument, messages[0].Code, __func__, __LINE__, "the code should be RenameKey()'s");
-    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
-    CheckEquals(std::string("a=b"), messages[0].Key, __func__, __LINE__, "the message should name the setting's key");
+    CheckEquals("General", messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals("a=b", messages[0].Key, __func__, __LINE__, "the message should name the setting's key");
     CheckEquals(EIniCode::KeyRenamed, messages[1].Code, __func__, __LINE__, "the next key should still be renamed");
 }
 //---------------------------------------------------------------------------
@@ -1347,16 +1347,16 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_OptionalKeyIsNotAdded)
     TASWIniResult const set = cheats.Set(true);
 
     // Assert
-    CheckEquals(std::string("[General]\nOther = 1\n"), missingText, __func__, __LINE__,
+    CheckEquals("[General]\nOther = 1\n", missingText, __func__, __LINE__,
         "a missing optional key shouldn't be added");
     CheckFalse(missingModified, __func__, __LINE__, "the document shouldn't be modified");
     CheckFalse(missingReported, __func__, __LINE__, "a missing optional key shouldn't be reported");
-    CheckEquals(std::string("[General]\nEnableCheats = false\n"), invalidText, __func__, __LINE__,
+    CheckEquals("[General]\nEnableCheats = false\n", invalidText, __func__, __LINE__,
         "an optional key that is there should be applied as any other");
     AssertEquals(1, static_cast<int>(messages.size()), __func__, __LINE__, "the invalid value should be reported");
     CheckEquals(ESeverity::Warning, messages[0].Severity, __func__, __LINE__, "the invalid value is a Warning");
     CheckTrue(set.IsOk(), __func__, __LINE__, "Set() should write an optional setting");
-    CheckEquals(std::string("[General]\nEnableCheats = true\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nEnableCheats = true\n", ini.ToText(), __func__, __LINE__,
         "Set() should write an optional setting");
 }
 //---------------------------------------------------------------------------
@@ -1382,17 +1382,17 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_RenamedKeyIsAppliedAsAnyOther)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\n; From 0 to 4\nLogLevel = 2\nEnableCheats = false\n; The user's note\n"
-        "Width = 800\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\n; From 0 to 4\nLogLevel = 2\nEnableCheats = false\n; The user's note\n"
+        "Width = 800\n", ini.ToText(), __func__, __LINE__,
         "a renamed key's value should be checked and its comment written as for any key, also for an optional one");
     AssertEquals(5, static_cast<int>(messages.size()), __func__, __LINE__,
         "each key renamed and each value replaced should be reported");
     CheckEquals(EIniCode::KeyRenamed, messages[0].Code, __func__, __LINE__, "the rename should come first");
     CheckEquals(EIniCode::ValueOutOfRange, messages[1].Code, __func__, __LINE__, "then the value replaced");
     CheckEquals(ESeverity::Warning, messages[1].Severity, __func__, __LINE__, "a value replaced is a Warning");
-    CheckEquals(std::string("LogLevel"), messages[1].Key, __func__, __LINE__, "the warning should name the new key");
+    CheckEquals("LogLevel", messages[1].Key, __func__, __LINE__, "the warning should name the new key");
     CheckEquals(EIniCode::KeyRenamed, messages[2].Code, __func__, __LINE__, "an optional key should be renamed");
-    CheckEquals(std::string("EnableCheats"), messages[2].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("EnableCheats", messages[2].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(EIniCode::InvalidValue, messages[3].Code, __func__, __LINE__,
         "an optional key's renamed value should be checked");
     CheckEquals(EIniCode::KeyRenamed, messages[4].Code, __func__, __LINE__, "the last key should be renamed");
@@ -1425,8 +1425,8 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_RenamesAnOldKey)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\n  ; Days to keep the logs\n  NDaysRetainLogs: 30\nSizeX = 800\nWidth = 900\n"
-        "Height = 480\n\n[Other]\nH = 1\n"), text, __func__, __LINE__,
+    CheckEquals("[General]\n  ; Days to keep the logs\n  NDaysRetainLogs: 30\nSizeX = 800\nWidth = 900\n"
+        "Height = 480\n\n[Other]\nH = 1\n", text, __func__, __LINE__,
         "the first old key in the setting's order should be renamed in place, keeping its spacing and value");
     CheckTrue(modified, __func__, __LINE__, "renaming keys should set the modified flag");
     CheckEquals(30, daysValue, __func__, __LINE__, "the setting should read the renamed key's value");
@@ -1434,13 +1434,13 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_RenamesAnOldKey)
     AssertEquals(3, static_cast<int>(reported), __func__, __LINE__, "each key renamed or added should be reported");
     CheckEquals(ESeverity::Info, messages[0].Severity, __func__, __LINE__, "a renamed key is an Info message");
     CheckEquals(EIniCode::KeyRenamed, messages[0].Code, __func__, __LINE__, "a renamed key is KeyRenamed");
-    CheckEquals(std::string("The key \"NDaysRetainLogs\" of the section \"General\" is missing: its earlier name "
-        "\"LogDays\" is renamed to it."), messages[0].Text, __func__, __LINE__,
+    CheckEquals("The key \"NDaysRetainLogs\" of the section \"General\" is missing: its earlier name "
+        "\"LogDays\" is renamed to it.", messages[0].Text, __func__, __LINE__,
         "the message should name the key and its earlier name");
-    CheckEquals(std::string("General"), messages[0].Section, __func__, __LINE__, "the message should name the section");
-    CheckEquals(std::string("NDaysRetainLogs"), messages[0].Key, __func__, __LINE__,
+    CheckEquals("General", messages[0].Section, __func__, __LINE__, "the message should name the section");
+    CheckEquals("NDaysRetainLogs", messages[0].Key, __func__, __LINE__,
         "the message should name the setting's key");
-    CheckEquals(std::string("Width"), messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
+    CheckEquals("Width", messages[1].Key, __func__, __LINE__, "the keys should be reported in order");
     CheckEquals(EIniCode::KeyAdded, messages[2].Code, __func__, __LINE__,
         "a key whose old key is in another section should be added");
     CheckEquals(text, ini.ToText(), __func__, __LINE__, "a document with the new keys should stay as it is");
@@ -1477,7 +1477,7 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_ReplacesAnInvalidValueWithTheDefault)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\n; In pixels\nWidth = 640\nLevel = 2\nPrefix = App_\nFlag = 1\n"),
+    CheckEquals("[General]\n; In pixels\nWidth = 640\nLevel = 2\nPrefix = App_\nFlag = 1\n",
         ini.ToText(), __func__, __LINE__,
         "each value that isn't valid should be replaced by the default, written with the setting's value options");
     CheckTrue(ini.IsModified(), __func__, __LINE__, "the values replaced should set the modified flag");
@@ -1486,10 +1486,10 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_ReplacesAnInvalidValueWithTheDefault)
     CheckEquals(EIniCode::InvalidValue, messages[0].Code, __func__, __LINE__, "the code should be the converter's");
     CheckEquals(widthProblem + " The default value \"640\" is used.", messages[0].Text, __func__, __LINE__,
         "the text should give the problem and the default");
-    CheckEquals(std::string("Width"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("Width", messages[0].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(EIniCode::ValueOutOfRange, messages[1].Code, __func__, __LINE__, "the code should be the range's");
-    CheckEquals(std::string("The value \"9\" is out of the setting's range: it must be 0 to 4. The default value "
-        "\"2\" is used."), messages[1].Text, __func__, __LINE__, "the text should give the range and the default");
+    CheckEquals("The value \"9\" is out of the setting's range: it must be 0 to 4. The default value "
+        "\"2\" is used.", messages[1].Text, __func__, __LINE__, "the text should give the range and the default");
     CheckEquals(EIniCode::InvalidValue, messages[2].Code, __func__, __LINE__, "a refused value is InvalidValue");
 }
 //---------------------------------------------------------------------------
@@ -1515,17 +1515,17 @@ ASW_TEST(TTest_ASWIni_SettingsLoad, Load_WriteFailuresAreErrors)
 
     // Assert
     CheckTrue(result.IsOk(), __func__, __LINE__, "the load should succeed");
-    CheckEquals(std::string("[General]\nCommented = 2\nGood = 3\n"), ini.ToText(), __func__, __LINE__,
+    CheckEquals("[General]\nCommented = 2\nGood = 3\n", ini.ToText(), __func__, __LINE__,
         "the keys that can be written should be added, the one whose comment can't be without it");
     AssertEquals(4, static_cast<int>(messages.size()), __func__, __LINE__, "each failure should be reported");
     CheckEquals(ESeverity::Error, messages[0].Severity, __func__, __LINE__, "a key that can't be written is an Error");
     CheckEquals(EIniCode::InvalidArgument, messages[0].Code, __func__, __LINE__, "the code should be SetValue()'s");
-    CheckEquals(std::string("a=b"), messages[0].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("a=b", messages[0].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(EIniCode::KeyAdded, messages[1].Code, __func__, __LINE__, "the key should be added");
     CheckEquals(ESeverity::Error, messages[2].Severity, __func__, __LINE__,
         "a comment that can't be written is an Error");
     CheckEquals(EIniCode::InvalidArgument, messages[2].Code, __func__, __LINE__, "the code should be SetKeyComment()'s");
-    CheckEquals(std::string("Commented"), messages[2].Key, __func__, __LINE__, "the message should name the key");
+    CheckEquals("Commented", messages[2].Key, __func__, __LINE__, "the message should name the key");
     CheckEquals(EIniCode::KeyAdded, messages[3].Code, __func__, __LINE__, "the next key should still be added");
 }
 //---------------------------------------------------------------------------

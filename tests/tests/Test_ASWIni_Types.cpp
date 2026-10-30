@@ -186,24 +186,24 @@ ASW_TEST(TTest_ASWIni_Types, ToString_IniCodeNamesAreUnique)
         std::string const name = ASWIni::ToString(code);
 
         // Assert
-        CheckNotEquals(std::string("Unknown"), name, __func__, __LINE__,
+        CheckNotEquals("Unknown", name, __func__, __LINE__,
             "code " + std::to_string(static_cast<int>(code)) + " should have a name");
         CheckTrue(names.insert(name).second, __func__, __LINE__, "the name \"" + name + "\" should be unique");
     }
 
-    CheckEquals(std::string("FileNotFound"), std::string(ASWIni::ToString(ASWIni::EIniCode::FileNotFound)), __func__,
+    CheckEquals("FileNotFound", ASWIni::ToString(ASWIni::EIniCode::FileNotFound), __func__,
         __LINE__, "the name should be the enumerator's");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Types, ToString_LineBreakNames)
 {
-    CheckEquals(std::string("None"), std::string(ASWIni::ToString(ASWIni::ELineBreak::None)), __func__, __LINE__,
+    CheckEquals("None", ASWIni::ToString(ASWIni::ELineBreak::None), __func__, __LINE__,
         "None's name");
-    CheckEquals(std::string("LF"), std::string(ASWIni::ToString(ASWIni::ELineBreak::LF)), __func__, __LINE__,
+    CheckEquals("LF", ASWIni::ToString(ASWIni::ELineBreak::LF), __func__, __LINE__,
         "LF's name");
-    CheckEquals(std::string("CR"), std::string(ASWIni::ToString(ASWIni::ELineBreak::CR)), __func__, __LINE__,
+    CheckEquals("CR", ASWIni::ToString(ASWIni::ELineBreak::CR), __func__, __LINE__,
         "CR's name");
-    CheckEquals(std::string("CRLF"), std::string(ASWIni::ToString(ASWIni::ELineBreak::CRLF)), __func__, __LINE__,
+    CheckEquals("CRLF", ASWIni::ToString(ASWIni::ELineBreak::CRLF), __func__, __LINE__,
         "CRLF's name");
 }
 //---------------------------------------------------------------------------
@@ -224,8 +224,8 @@ ASW_TEST(TTest_ASWIni_Types, ToString_MessageWithAllParts)
     std::string const text = ASWIni::ToString(message);
 
     // Assert
-    CheckEquals(std::string("Warning DuplicateKey: The key appears again; the first one is used. (file \"app.ini\", "
-        "line 12, section \"General\", key \"LogLevel\", system error 5)"), text, __func__, __LINE__,
+    CheckEquals("Warning DuplicateKey: The key appears again; the first one is used. (file \"app.ini\", "
+        "line 12, section \"General\", key \"LogLevel\", system error 5)", text, __func__, __LINE__,
         "every part should be written, in order");
 }
 //---------------------------------------------------------------------------
@@ -241,17 +241,17 @@ ASW_TEST(TTest_ASWIni_Types, ToString_MessageWithTextOnly)
     std::string const text = ASWIni::ToString(message);
 
     // Assert
-    CheckEquals(std::string("Error InvalidOptions: Separators is empty."), text, __func__, __LINE__,
+    CheckEquals("Error InvalidOptions: Separators is empty.", text, __func__, __LINE__,
         "the parts that aren't set should be left out, with no parentheses");
 }
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_Types, ToString_SeverityNames)
 {
-    CheckEquals(std::string("Info"), std::string(ASWIni::ToString(ASWIni::ESeverity::Info)), __func__, __LINE__,
+    CheckEquals("Info", ASWIni::ToString(ASWIni::ESeverity::Info), __func__, __LINE__,
         "Info's name");
-    CheckEquals(std::string("Warning"), std::string(ASWIni::ToString(ASWIni::ESeverity::Warning)), __func__,
+    CheckEquals("Warning", ASWIni::ToString(ASWIni::ESeverity::Warning), __func__,
         __LINE__, "Warning's name");
-    CheckEquals(std::string("Error"), std::string(ASWIni::ToString(ASWIni::ESeverity::Error)), __func__, __LINE__,
+    CheckEquals("Error", ASWIni::ToString(ASWIni::ESeverity::Error), __func__, __LINE__,
         "Error's name");
 }
 //---------------------------------------------------------------------------
@@ -264,11 +264,11 @@ ASW_TEST(TTest_ASWIni_Types, ToString_UnknownValues)
     ASWIni::ESeverity const severity = static_cast<ASWIni::ESeverity>(-1);
 
     // Act & Assert
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(code)), __func__, __LINE__,
+    CheckEquals("Unknown", ASWIni::ToString(code), __func__, __LINE__,
         "an unknown code should be \"Unknown\"");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(lineBreak)), __func__, __LINE__,
+    CheckEquals("Unknown", ASWIni::ToString(lineBreak), __func__, __LINE__,
         "an unknown line break should be \"Unknown\"");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(severity)), __func__, __LINE__,
+    CheckEquals("Unknown", ASWIni::ToString(severity), __func__, __LINE__,
         "an unknown severity should be \"Unknown\"");
 }
 //---------------------------------------------------------------------------

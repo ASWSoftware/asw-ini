@@ -97,10 +97,10 @@ ASW_TEST(TTest_ASWIni_ReadingOptions, Defaults_MatchDocumentedValues)
 
     // Assert
     // The defaults the README and the 1.0 decisions document
-    CheckEquals(std::string("=:"), options.Separators, __func__, __LINE__, "Separators");
+    CheckEquals("=:", options.Separators, __func__, __LINE__, "Separators");
     AssertEquals(2, static_cast<int>(options.CommentPrefixes.size()), __func__, __LINE__, "two comment prefixes");
-    CheckEquals(std::string(";"), options.CommentPrefixes[0], __func__, __LINE__, "the first comment prefix");
-    CheckEquals(std::string("#"), options.CommentPrefixes[1], __func__, __LINE__, "the second comment prefix");
+    CheckEquals(";", options.CommentPrefixes[0], __func__, __LINE__, "the first comment prefix");
+    CheckEquals("#", options.CommentPrefixes[1], __func__, __LINE__, "the second comment prefix");
     CheckFalse(options.InlineComments, __func__, __LINE__, "InlineComments should be off");
     CheckFalse(options.QuotedValues, __func__, __LINE__, "QuotedValues should be off");
     CheckFalse(options.CaseSensitive, __func__, __LINE__, "names should be case-insensitive");
@@ -113,11 +113,11 @@ ASW_TEST(TTest_ASWIni_ReadingOptions, Defaults_MatchDocumentedValues)
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_ReadingOptions, ToString_DuplicateKeysNames)
 {
-    CheckEquals(std::string("FirstWins"), std::string(ASWIni::ToString(ASWIni::EDuplicateKeys::FirstWins)), __func__,
+    CheckEquals("FirstWins", ASWIni::ToString(ASWIni::EDuplicateKeys::FirstWins), __func__,
         __LINE__, "EDuplicateKeys::FirstWins");
-    CheckEquals(std::string("LastWins"), std::string(ASWIni::ToString(ASWIni::EDuplicateKeys::LastWins)), __func__,
+    CheckEquals("LastWins", ASWIni::ToString(ASWIni::EDuplicateKeys::LastWins), __func__,
         __LINE__, "EDuplicateKeys::LastWins");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::EDuplicateKeys>(99))),
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ASWIni::EDuplicateKeys>(99)),
         __func__, __LINE__, "an unknown value");
 }
 //---------------------------------------------------------------------------
@@ -262,8 +262,8 @@ ASW_TEST(TTest_ASWIni_WritingOptions, Defaults_MatchDocumentedValues)
 
     // Assert
     // The defaults the README and the 1.0 decisions document
-    CheckEquals(std::string(" = "), options.Separator, __func__, __LINE__, "Separator");
-    CheckEquals(std::string("; "), options.CommentPrefix, __func__, __LINE__, "CommentPrefix");
+    CheckEquals(" = ", options.Separator, __func__, __LINE__, "Separator");
+    CheckEquals("; ", options.CommentPrefix, __func__, __LINE__, "CommentPrefix");
     CheckEquals(ASWIni::ELineEnding::Auto, options.LineEnding, __func__, __LINE__, "LineEnding");
     CheckEquals(ASWIni::EBomMode::Auto, options.Bom, __func__, __LINE__, "Bom");
     CheckTrue(options.BlankLineBeforeNewSection, __func__, __LINE__, "BlankLineBeforeNewSection should be on");
@@ -272,29 +272,29 @@ ASW_TEST(TTest_ASWIni_WritingOptions, Defaults_MatchDocumentedValues)
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_WritingOptions, ToString_EnumNames)
 {
-    CheckEquals(std::string("Auto"), std::string(ASWIni::ToString(ASWIni::ELineEnding::Auto)), __func__, __LINE__,
+    CheckEquals("Auto", ASWIni::ToString(ASWIni::ELineEnding::Auto), __func__, __LINE__,
         "ELineEnding::Auto");
-    CheckEquals(std::string("Native"), std::string(ASWIni::ToString(ASWIni::ELineEnding::Native)), __func__, __LINE__,
+    CheckEquals("Native", ASWIni::ToString(ASWIni::ELineEnding::Native), __func__, __LINE__,
         "ELineEnding::Native");
-    CheckEquals(std::string("LF"), std::string(ASWIni::ToString(ASWIni::ELineEnding::LF)), __func__, __LINE__,
+    CheckEquals("LF", ASWIni::ToString(ASWIni::ELineEnding::LF), __func__, __LINE__,
         "ELineEnding::LF");
-    CheckEquals(std::string("CRLF"), std::string(ASWIni::ToString(ASWIni::ELineEnding::CRLF)), __func__, __LINE__,
+    CheckEquals("CRLF", ASWIni::ToString(ASWIni::ELineEnding::CRLF), __func__, __LINE__,
         "ELineEnding::CRLF");
-    CheckEquals(std::string("Auto"), std::string(ASWIni::ToString(ASWIni::EBomMode::Auto)), __func__, __LINE__,
+    CheckEquals("Auto", ASWIni::ToString(ASWIni::EBomMode::Auto), __func__, __LINE__,
         "EBomMode::Auto");
-    CheckEquals(std::string("Always"), std::string(ASWIni::ToString(ASWIni::EBomMode::Always)), __func__, __LINE__,
+    CheckEquals("Always", ASWIni::ToString(ASWIni::EBomMode::Always), __func__, __LINE__,
         "EBomMode::Always");
-    CheckEquals(std::string("Never"), std::string(ASWIni::ToString(ASWIni::EBomMode::Never)), __func__, __LINE__,
+    CheckEquals("Never", ASWIni::ToString(ASWIni::EBomMode::Never), __func__, __LINE__,
         "EBomMode::Never");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::ELineEnding>(99))), __func__,
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ASWIni::ELineEnding>(99)), __func__,
         __LINE__, "an unknown ELineEnding");
-    CheckEquals(std::string("CodeWins"), std::string(ASWIni::ToString(ASWIni::ECommentPolicy::CodeWins)), __func__,
+    CheckEquals("CodeWins", ASWIni::ToString(ASWIni::ECommentPolicy::CodeWins), __func__,
         __LINE__, "ECommentPolicy::CodeWins");
-    CheckEquals(std::string("FileWins"), std::string(ASWIni::ToString(ASWIni::ECommentPolicy::FileWins)), __func__,
+    CheckEquals("FileWins", ASWIni::ToString(ASWIni::ECommentPolicy::FileWins), __func__,
         __LINE__, "ECommentPolicy::FileWins");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::EBomMode>(99))), __func__,
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ASWIni::EBomMode>(99)), __func__,
         __LINE__, "an unknown EBomMode");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::ECommentPolicy>(99))),
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ASWIni::ECommentPolicy>(99)),
         __func__, __LINE__, "an unknown ECommentPolicy");
 }
 //---------------------------------------------------------------------------
@@ -429,7 +429,7 @@ ASW_TEST(TTest_ASWIni_SavingOptions, Defaults_MatchDocumentedValues)
     // The defaults the README and the 1.0 decisions document
     CheckTrue(options.AtomicSave, __func__, __LINE__, "AtomicSave should be on");
     CheckFalse(options.Backup, __func__, __LINE__, "Backup should be off");
-    CheckEquals(std::string(".bak"), options.BackupSuffix, __func__, __LINE__, "BackupSuffix");
+    CheckEquals(".bak", options.BackupSuffix, __func__, __LINE__, "BackupSuffix");
     CheckTrue(options.CreateFolders, __func__, __LINE__, "CreateFolders should be on");
 }
 //---------------------------------------------------------------------------
@@ -523,15 +523,15 @@ ASW_TEST(TTest_ASWIni_ValueOptions, Defaults_MatchDocumentedValues)
 //---------------------------------------------------------------------------
 ASW_TEST(TTest_ASWIni_ValueOptions, ToString_BoolFormatNames)
 {
-    CheckEquals(std::string("TrueFalse"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::TrueFalse)), __func__,
+    CheckEquals("TrueFalse", ASWIni::ToString(ASWIni::EBoolFormat::TrueFalse), __func__,
         __LINE__, "EBoolFormat::TrueFalse");
-    CheckEquals(std::string("YesNo"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::YesNo)), __func__, __LINE__,
+    CheckEquals("YesNo", ASWIni::ToString(ASWIni::EBoolFormat::YesNo), __func__, __LINE__,
         "EBoolFormat::YesNo");
-    CheckEquals(std::string("OnOff"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::OnOff)), __func__, __LINE__,
+    CheckEquals("OnOff", ASWIni::ToString(ASWIni::EBoolFormat::OnOff), __func__, __LINE__,
         "EBoolFormat::OnOff");
-    CheckEquals(std::string("OneZero"), std::string(ASWIni::ToString(ASWIni::EBoolFormat::OneZero)), __func__,
+    CheckEquals("OneZero", ASWIni::ToString(ASWIni::EBoolFormat::OneZero), __func__,
         __LINE__, "EBoolFormat::OneZero");
-    CheckEquals(std::string("Unknown"), std::string(ASWIni::ToString(static_cast<ASWIni::EBoolFormat>(99))), __func__,
+    CheckEquals("Unknown", ASWIni::ToString(static_cast<ASWIni::EBoolFormat>(99)), __func__,
         __LINE__, "an unknown EBoolFormat");
 }
 //---------------------------------------------------------------------------

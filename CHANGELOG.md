@@ -7,6 +7,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Win32 GUI test runner, the ASWUnitTests 1.5.0 GUI runner built on the Windows API alone: on
+  Windows, the CMake test build also makes `ASWIniTests_Win32_GUI.exe`, next to `ASWIniTests.exe`,
+  and `tests/win32/gui/rad370/ASWIniTests_Win32_GUI.cbproj` builds it with RAD Studio for Win32 and
+  Win64x. CI's Windows jobs run the tests in it too. Both GUI runners have ASWUnitTests 1.5.0's
+  light and dark themes, and every test runner has the ASWUnitTests icon.
+
 ## [1.0.0] - 2026-10-21
 
 The first release.

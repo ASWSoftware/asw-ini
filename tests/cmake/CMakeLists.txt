@@ -38,8 +38,9 @@ if(NOT TARGET ASWIni::ASWIni)
     add_subdirectory("${ASWINI_ROOT}" aswini)
 endif()
 
-add_executable(ASWIniTests
-    ${ASWUNITTESTS_SOURCES}
+# The test modules and helpers, which both the console runner and, on Windows, the Win32 GUI runner run (see
+# ASWIniTestObjects below).
+set(ASWINI_TEST_SOURCES
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Base.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Converters.cpp"
     "${ASWINI_TESTS_DIR}/Test_ASWIni_Document.cpp"
@@ -56,30 +57,67 @@ add_executable(ASWIniTests
     "${ASWINI_TESTS_DIR}/UT_Helper_Threads.cpp"
 )
 
-target_include_directories(ASWIniTests PRIVATE
+# ASWUnitTests' --test-timeout-seconds uses std::thread/std::future, which needs an explicit threading library on
+# Linux and some MinGW-w64 distributions.
+find_package(Threads REQUIRED)
+
+# The warnings the tests and the test runners compile with.
+function(aswini_set_test_warnings target)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /W4 /Zc:__cplusplus)
+    else()
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+# The tests, compiled once for both test runners. An object library, whose object files are all linked into each
+# runner, rather than a static library, from which a linker only takes the object files something refers to: nothing
+# refers to a test module, since each registers itself, so every test would be left out.
+add_library(ASWIniTestObjects OBJECT ${ASWINI_TEST_SOURCES})
+
+target_include_directories(ASWIniTestObjects PRIVATE
     "${ASWUNITTESTS_SOURCE_DIR}"
     "${ASWINI_TESTS_DIR}"
 )
 
-target_link_libraries(ASWIniTests PRIVATE ASWIni::ASWIni)
+# PUBLIC, so the runners link them too, and compile their own sources with ASWIni's options (ASWINI_SANITIZE's).
+target_link_libraries(ASWIniTestObjects PUBLIC ASWIni::ASWIni Threads::Threads)
+aswini_set_test_warnings(ASWIniTestObjects)
 
-# ASWUnitTests' --test-timeout-seconds uses std::thread/std::future, which needs an explicit threading library on
-# Linux and some MinGW-w64 distributions.
-find_package(Threads REQUIRED)
-target_link_libraries(ASWIniTests PRIVATE Threads::Threads)
+# The settings both test runners share.
+function(aswini_configure_test_runner target)
+    target_link_libraries(${target} PRIVATE ASWIniTestObjects)
+    aswini_set_test_warnings(${target})
 
-if(MSVC)
-    target_compile_options(ASWIniTests PRIVATE /W4 /Zc:__cplusplus)
-else()
-    target_compile_options(ASWIniTests PRIVATE -Wall -Wextra -Wpedantic)
+    if(MINGW)
+        # Statically link the MinGW runtime so the executable launches without MinGW's bin directory on PATH (e.g. on
+        # a CI runner).
+        target_link_options(${target} PRIVATE -static-libgcc -static-libstdc++ -static)
+    endif()
+
+    set_target_properties(${target} PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+    )
+endfunction()
+
+add_executable(ASWIniTests ${ASWUNITTESTS_SOURCES})
+
+target_include_directories(ASWIniTests PRIVATE "${ASWUNITTESTS_SOURCE_DIR}")
+aswini_configure_test_runner(ASWIniTests)
+
+if(WIN32)
+    # The ASWUnitTests icon, which the resource compiler finds through the include path.
+    target_sources(ASWIniTests PRIVATE "${ASWUNITTESTS_ROOT}/resource/ASWUnitTests_Icon.rc")
+    target_include_directories(ASWIniTests PRIVATE "${ASWUNITTESTS_ROOT}/resource")
+
+    # The Win32 GUI runner: the same tests in a window. Its WinMain takes the place of the console runner's main.cpp,
+    # and its sources list has the icon.
+    include("${ASWUNITTESTS_ROOT}/win32/gui/src/ASWUnitTests_Win32GUI_Sources.cmake")
+
+    add_executable(ASWIniTests_Win32_GUI WIN32 ${ASWUNITTESTS_WIN32_GUI_SOURCES})
+
+    target_include_directories(ASWIniTests_Win32_GUI PRIVATE ${ASWUNITTESTS_WIN32_GUI_INCLUDE_DIRS})
+    target_link_libraries(ASWIniTests_Win32_GUI PRIVATE ${ASWUNITTESTS_WIN32_GUI_LIBRARIES})
+    target_link_options(ASWIniTests_Win32_GUI PRIVATE ${ASWUNITTESTS_WIN32_GUI_LINK_OPTIONS})
+    aswini_configure_test_runner(ASWIniTests_Win32_GUI)
 endif()
-
-if(MINGW)
-    # Statically link the MinGW runtime so the executable launches without MinGW's bin directory on PATH (e.g. on a
-    # CI runner).
-    target_link_options(ASWIniTests PRIVATE -static-libgcc -static-libstdc++ -static)
-endif()
-
-set_target_properties(ASWIniTests PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-)

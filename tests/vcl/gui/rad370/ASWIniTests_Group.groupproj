@@ -9,6 +9,9 @@
         <Projects Include="..\..\..\rad370\ASWIniTests.cbproj">
             <Dependencies/>
         </Projects>
+        <Projects Include="..\..\..\win32\gui\rad370\ASWIniTests_Win32_GUI.cbproj">
+            <Dependencies/>
+        </Projects>
     </ItemGroup>
     <ProjectExtensions>
         <Borland.Personality>Default.Personality.12</Borland.Personality>
@@ -35,14 +38,23 @@
     <Target Name="ASWIniTests:Make">
         <MSBuild Projects="..\..\..\rad370\ASWIniTests.cbproj" Targets="Make"/>
     </Target>
+    <Target Name="ASWIniTests_Win32_GUI">
+        <MSBuild Projects="..\..\..\win32\gui\rad370\ASWIniTests_Win32_GUI.cbproj"/>
+    </Target>
+    <Target Name="ASWIniTests_Win32_GUI:Clean">
+        <MSBuild Projects="..\..\..\win32\gui\rad370\ASWIniTests_Win32_GUI.cbproj" Targets="Clean"/>
+    </Target>
+    <Target Name="ASWIniTests_Win32_GUI:Make">
+        <MSBuild Projects="..\..\..\win32\gui\rad370\ASWIniTests_Win32_GUI.cbproj" Targets="Make"/>
+    </Target>
     <Target Name="Build">
-        <CallTarget Targets="ASWIniTests_VCL_GUI;ASWIniTests"/>
+        <CallTarget Targets="ASWIniTests_VCL_GUI;ASWIniTests;ASWIniTests_Win32_GUI"/>
     </Target>
     <Target Name="Clean">
-        <CallTarget Targets="ASWIniTests_VCL_GUI:Clean;ASWIniTests:Clean"/>
+        <CallTarget Targets="ASWIniTests_VCL_GUI:Clean;ASWIniTests:Clean;ASWIniTests_Win32_GUI:Clean"/>
     </Target>
     <Target Name="Make">
-        <CallTarget Targets="ASWIniTests_VCL_GUI:Make;ASWIniTests:Make"/>
+        <CallTarget Targets="ASWIniTests_VCL_GUI:Make;ASWIniTests:Make;ASWIniTests_Win32_GUI:Make"/>
     </Target>
     <Import Project="$(BDS)\Bin\CodeGear.Group.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Group.Targets')"/>
 </Project>
